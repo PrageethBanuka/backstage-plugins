@@ -5,6 +5,11 @@ import {
   CHOREO_ANNOTATIONS,
   type WorkloadResource,
   type ReleaseBindingCondition,
+  type ComponentTrafficEntry,
+  type EndpointBackendWeight,
+  type EndpointEnvironment,
+  type EndpointReleaseSummary,
+  type EndpointSummary,
 } from '@openchoreo/backstage-plugin-common';
 import { CLUSTER_SCOPED_RESOURCE_KINDS } from './OpenChoreoClientApi';
 import type {
@@ -75,6 +80,13 @@ const API_ENDPOINTS = {
   UPDATE_RESOURCE_RELEASE_BINDING: '/update-resource-release-binding',
   DELETE_RESOURCE_RELEASE_BINDING: '/delete-resource-release-binding',
   PROJECT_RELEASE_BINDINGS: '/project-release-bindings',
+  ENDPOINTS: '/endpoints',
+  COMPONENT_TRAFFIC: '/component-traffic',
+  ENDPOINT_ENVIRONMENT_INFO: '/endpoint-environment-info',
+  ENDPOINT_RELEASES: '/endpoint-releases',
+  UPDATE_ENDPOINT_TRAFFIC: '/update-endpoint-traffic',
+  UPDATE_ENDPOINT_RELEASE_BINDING: '/update-endpoint-release-binding',
+  DELETE_ENDPOINT_RELEASE_BINDING: '/delete-endpoint-release-binding',
   PROJECT_ENVIRONMENT_INFO: '/project-environment-info',
   UPDATE_PROJECT_RELEASE_BINDING: '/update-project-release-binding',
   PROJECT_RELEASE_SCHEMA: '/project-release-schema',
@@ -536,6 +548,90 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
         namespaceName,
         environment,
       },
+    });
+  }
+
+  // ─── Endpoints ──────────────────────────────────────────────────────
+
+  async fetchProjectEndpoints(entity: Entity): Promise<EndpointSummary[]> {
+    const { projectName, namespaceName } = extractProjectEntityMetadata(entity);
+    return this.apiFetch<EndpointSummary[]>(API_ENDPOINTS.ENDPOINTS, {
+      params: { projectName, namespaceName },
+    });
+  }
+
+  async fetchComponentTraffic(
+    entity: Entity,
+  ): Promise<ComponentTrafficEntry[]> {
+    const metadata = extractEntityMetadata(entity);
+    return this.apiFetch<ComponentTrafficEntry[]>(
+      API_ENDPOINTS.COMPONENT_TRAFFIC,
+      { params: entityMetadataToParams(metadata) },
+    );
+  }
+
+  async fetchEndpointEnvironmentInfo(
+    entity: Entity,
+    endpointName: string,
+  ): Promise<EndpointEnvironment[]> {
+    const { projectName, namespaceName } = extractProjectEntityMetadata(entity);
+    return this.apiFetch<EndpointEnvironment[]>(
+      API_ENDPOINTS.ENDPOINT_ENVIRONMENT_INFO,
+      { params: { endpointName, projectName, namespaceName } },
+    );
+  }
+
+  async fetchEndpointReleases(
+    entity: Entity,
+    endpointName: string,
+  ): Promise<EndpointReleaseSummary[]> {
+    const { namespaceName } = extractProjectEntityMetadata(entity);
+    return this.apiFetch<EndpointReleaseSummary[]>(
+      API_ENDPOINTS.ENDPOINT_RELEASES,
+      { params: { endpointName, namespaceName } },
+    );
+  }
+
+  async updateEndpointTraffic(
+    entity: Entity,
+    endpointName: string,
+    backends: EndpointBackendWeight[],
+  ): Promise<{ latestRelease?: string; changed: boolean }> {
+    const { namespaceName } = extractProjectEntityMetadata(entity);
+    return this.apiFetch(API_ENDPOINTS.UPDATE_ENDPOINT_TRAFFIC, {
+      method: 'PUT',
+      body: { endpointName, namespaceName, backends },
+    });
+  }
+
+  async updateEndpointReleaseBinding(
+    entity: Entity,
+    endpointName: string,
+    environment: string,
+    releaseName: string,
+  ): Promise<{ bindingName: string; created: boolean }> {
+    const { projectName, namespaceName } = extractProjectEntityMetadata(entity);
+    return this.apiFetch(API_ENDPOINTS.UPDATE_ENDPOINT_RELEASE_BINDING, {
+      method: 'PUT',
+      body: {
+        endpointName,
+        projectName,
+        namespaceName,
+        environment,
+        releaseName,
+      },
+    });
+  }
+
+  async deleteEndpointReleaseBinding(
+    entity: Entity,
+    endpointName: string,
+    environment: string,
+  ): Promise<{ bindingName: string }> {
+    const { projectName, namespaceName } = extractProjectEntityMetadata(entity);
+    return this.apiFetch(API_ENDPOINTS.DELETE_ENDPOINT_RELEASE_BINDING, {
+      method: 'DELETE',
+      body: { endpointName, projectName, namespaceName, environment },
     });
   }
 

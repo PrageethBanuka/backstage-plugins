@@ -23,9 +23,11 @@ const ALPHA_EXTENSION_NAMES = [
   // component-page
   ['entity-content', 'component-deploy'],
   ['entity-card', 'deployment-status'],
+  ['entity-card', 'component-traffic'],
   ['entity-card', 'runtime-health'],
   // system-page
   ['entity-content', 'project-deploy'],
+  ['entity-content', 'project-endpoints'],
   ['entity-content', 'cell-diagram'],
   ['entity-content', 'project-diagram'],
   ['entity-card', 'project-contents'],

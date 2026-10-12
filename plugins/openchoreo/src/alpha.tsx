@@ -208,6 +208,15 @@ const deploymentStatusCard = EntityCardBlueprint.make({
   },
 });
 
+// Renders nothing unless an Endpoint routes to the component.
+const trafficCard = EntityCardBlueprint.make({
+  name: 'component-traffic',
+  params: {
+    filter: isOpenChoreoManagedOfKind('component'),
+    loader: () => import('./components/Endpoints').then(m => <m.TrafficCard />),
+  },
+});
+
 // RuntimeHealthCard is observability-gated. FeatureGate (returns null when
 // disabled) is the right wrapper because cards can vanish without breaking
 // any route — unlike EntityContent, which must remain in tree.
@@ -236,6 +245,19 @@ const projectDeployEntityContent = EntityContentBlueprint.make({
       import('./components/ProjectEnvironments').then(m => (
         <m.ProjectEnvironments />
       )),
+  },
+});
+
+// Endpoints route a project's traffic across its components with weights.
+const projectEndpointsEntityContent = EntityContentBlueprint.make({
+  name: 'project-endpoints',
+  params: {
+    path: '/endpoints',
+    title: 'Endpoints',
+    group: 'endpoints',
+    filter: isOpenChoreoManagedOfKind('system'),
+    loader: () =>
+      import('./components/Endpoints').then(m => <m.EndpointsTab />),
   },
 });
 
@@ -1010,8 +1032,10 @@ export const openChoreoPlugin = createFrontendPlugin({
     resourceDefinitionEntityContent,
     componentDeployEntityContent,
     deploymentStatusCard,
+    trafficCard,
     runtimeHealthCard,
     projectDeployEntityContent,
+    projectEndpointsEntityContent,
     cellDiagramEntityContent,
     projectDiagramEntityContent,
     projectContentsCard,

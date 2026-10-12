@@ -13,6 +13,7 @@ const OC_ENTITY_CONTENT_GROUPS: EntityContentGroupDefinitions = {
   development: { title: 'Development' },
   build: { title: 'Build' },
   deploy: { title: 'Deploy' },
+  endpoints: { title: 'Endpoints' },
   'cell-diagram': { title: 'Cell Diagram' },
   diagram: { title: 'Diagram' },
   logs: { title: 'Logs' },

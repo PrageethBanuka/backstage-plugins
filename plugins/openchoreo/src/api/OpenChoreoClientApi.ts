@@ -4,6 +4,11 @@ import type {
   WorkloadResource,
   ComponentRelease,
   ReleaseBindingCondition,
+  ComponentTrafficEntry,
+  EndpointBackendWeight,
+  EndpointEnvironment,
+  EndpointReleaseSummary,
+  EndpointSummary,
 } from '@openchoreo/backstage-plugin-common';
 import type { Environment } from '../components/RuntimeLogs/types';
 
@@ -759,6 +764,54 @@ export interface OpenChoreoClientApi {
     entity: Entity,
     environment: string,
   ): Promise<unknown>;
+
+  // ─── Endpoints ──────────────────────────────────────────────────────
+
+  /** List the Endpoints of a Project entity (catalog kind System). */
+  fetchProjectEndpoints(entity: Entity): Promise<EndpointSummary[]>;
+
+  /**
+   * List the Endpoints that send traffic to a Component entity, one entry
+   * per environment, with the component's live share.
+   */
+  fetchComponentTraffic(entity: Entity): Promise<ComponentTrafficEntry[]>;
+
+  /** Per-environment view of one Endpoint of a Project entity. */
+  fetchEndpointEnvironmentInfo(
+    entity: Entity,
+    endpointName: string,
+  ): Promise<EndpointEnvironment[]>;
+
+  /** An Endpoint's releases, newest first. */
+  fetchEndpointReleases(
+    entity: Entity,
+    endpointName: string,
+  ): Promise<EndpointReleaseSummary[]>;
+
+  /**
+   * Change an Endpoint's weights. Cuts a new release; no environment's
+   * traffic moves until it is rolled out.
+   */
+  updateEndpointTraffic(
+    entity: Entity,
+    endpointName: string,
+    backends: EndpointBackendWeight[],
+  ): Promise<{ latestRelease?: string; changed: boolean }>;
+
+  /** Pin an environment to a release: roll out, promote or roll back. */
+  updateEndpointReleaseBinding(
+    entity: Entity,
+    endpointName: string,
+    environment: string,
+    releaseName: string,
+  ): Promise<{ bindingName: string; created: boolean }>;
+
+  /** Stop routing an Endpoint in an environment. */
+  deleteEndpointReleaseBinding(
+    entity: Entity,
+    endpointName: string,
+    environment: string,
+  ): Promise<{ bindingName: string }>;
 
   /**
    * Fetch per-environment deploy info for a Project entity. Returns one entry
