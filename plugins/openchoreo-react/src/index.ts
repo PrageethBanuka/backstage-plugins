@@ -492,6 +492,14 @@ export {
   type UsePromoteToEnvPermissionResult,
 } from './hooks/usePromoteToEnvPermission';
 export {
+  useEndpointTrafficPermission,
+  type UseEndpointTrafficPermissionResult,
+} from './hooks/useEndpointTrafficPermission';
+export {
+  useEndpointRolloutPermission,
+  type UseEndpointRolloutPermissionResult,
+} from './hooks/useEndpointRolloutPermission';
+export {
   useResourcePromoteToEnvPermission,
   type UseResourcePromoteToEnvPermissionResult,
 } from './hooks/useResourcePromoteToEnvPermission';

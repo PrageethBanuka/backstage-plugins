@@ -9,6 +9,11 @@ import {
   openchoreoNotificationChannelReadPermission,
   openchoreoNotificationChannelUpdatePermission,
   openchoreoNotificationChannelDeletePermission,
+  openchoreoEndpointUpdatePermission,
+  openchoreoEndpointReleaseBindingCreatePermission,
+  openchoreoEndpointReleaseBindingUpdatePermission,
+  openchoreoEndpointReleaseBindingDeletePermission,
+  OPENCHOREO_RESOURCE_TYPE_PROJECT,
   openchoreoPermissions,
   OPENCHOREO_PERMISSION_TO_ACTION,
   OPENCHOREO_MANAGED_ENTITY_KINDS,
@@ -147,4 +152,31 @@ describe('NotificationChannel permissions', () => {
       ],
     ).toBe('observabilityalertsnotificationchannel:view');
   });
+});
+
+describe('Endpoint permissions', () => {
+  const endpointPermissions = [
+    [openchoreoEndpointUpdatePermission, 'endpoint:update'],
+    [
+      openchoreoEndpointReleaseBindingCreatePermission,
+      'endpointreleasebinding:create',
+    ],
+    [
+      openchoreoEndpointReleaseBindingUpdatePermission,
+      'endpointreleasebinding:update',
+    ],
+    [
+      openchoreoEndpointReleaseBindingDeletePermission,
+      'endpointreleasebinding:delete',
+    ],
+  ] as const;
+
+  it.each(endpointPermissions)(
+    '%o is project-scoped, registered and maps to %s',
+    (permission, action) => {
+      expect(permission.resourceType).toBe(OPENCHOREO_RESOURCE_TYPE_PROJECT);
+      expect(openchoreoPermissions.map(p => p.name)).toContain(permission.name);
+      expect(OPENCHOREO_PERMISSION_TO_ACTION[permission.name]).toBe(action);
+    },
+  );
 });

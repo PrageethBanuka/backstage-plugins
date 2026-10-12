@@ -1119,6 +1119,52 @@ export const openchoreoAuditLogsViewPermission = createPermission({
 });
 
 /**
+ * Permission to change an Endpoint's traffic split (its backend weights).
+ * Saving cuts a new EndpointRelease; no environment's traffic moves until a
+ * binding is pinned to it. Project-scoped: an Endpoint routes across several
+ * components of one project.
+ */
+export const openchoreoEndpointUpdatePermission = createPermission({
+  name: 'openchoreo.endpoint.update',
+  attributes: { action: 'update' },
+  resourceType: OPENCHOREO_RESOURCE_TYPE_PROJECT,
+});
+
+/**
+ * Permission to create an EndpointReleaseBinding: route an Endpoint in an
+ * environment for the first time. Project-scoped; evaluate it per
+ * environment so ABAC `resource.environment` constraints apply.
+ */
+export const openchoreoEndpointReleaseBindingCreatePermission =
+  createPermission({
+    name: 'openchoreo.endpointreleasebinding.create',
+    attributes: { action: 'create' },
+    resourceType: OPENCHOREO_RESOURCE_TYPE_PROJECT,
+  });
+
+/**
+ * Permission to update an EndpointReleaseBinding: move an environment's
+ * traffic to another EndpointRelease (roll out or roll back).
+ */
+export const openchoreoEndpointReleaseBindingUpdatePermission =
+  createPermission({
+    name: 'openchoreo.endpointreleasebinding.update',
+    attributes: { action: 'update' },
+    resourceType: OPENCHOREO_RESOURCE_TYPE_PROJECT,
+  });
+
+/**
+ * Permission to delete an EndpointReleaseBinding: stop routing an Endpoint in
+ * an environment and hand traffic back to the components' own routes.
+ */
+export const openchoreoEndpointReleaseBindingDeletePermission =
+  createPermission({
+    name: 'openchoreo.endpointreleasebinding.delete',
+    attributes: { action: 'delete' },
+    resourceType: OPENCHOREO_RESOURCE_TYPE_PROJECT,
+  });
+
+/**
  * All OpenChoreo permissions exported as an array.
  * Useful for registering all permissions with the permission framework.
  */
@@ -1150,6 +1196,10 @@ export const openchoreoPermissions = [
   openchoreoResourceReleaseBindingUpdatePermission,
   openchoreoResourceReleaseBindingCreatePermission,
   openchoreoResourceReleaseBindingDeletePermission,
+  openchoreoEndpointUpdatePermission,
+  openchoreoEndpointReleaseBindingCreatePermission,
+  openchoreoEndpointReleaseBindingUpdatePermission,
+  openchoreoEndpointReleaseBindingDeletePermission,
   openchoreoRoleViewPermission,
   openchoreoRoleCreatePermission,
   openchoreoRoleUpdatePermission,
@@ -1278,6 +1328,10 @@ export const OPENCHOREO_PERMISSION_TO_ACTION: Record<string, string> = {
   'openchoreo.resourcereleasebinding.update': 'resourcereleasebinding:update',
   'openchoreo.resourcereleasebinding.create': 'resourcereleasebinding:create',
   'openchoreo.resourcereleasebinding.delete': 'resourcereleasebinding:delete',
+  'openchoreo.endpoint.update': 'endpoint:update',
+  'openchoreo.endpointreleasebinding.create': 'endpointreleasebinding:create',
+  'openchoreo.endpointreleasebinding.update': 'endpointreleasebinding:update',
+  'openchoreo.endpointreleasebinding.delete': 'endpointreleasebinding:delete',
   'openchoreo.role.view': 'authzrole:view',
   'openchoreo.role.create': 'authzrole:create',
   'openchoreo.role.update': 'authzrole:update',
