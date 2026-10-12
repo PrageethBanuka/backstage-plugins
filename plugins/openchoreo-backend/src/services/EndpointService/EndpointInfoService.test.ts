@@ -77,6 +77,16 @@ const binding = (environment: string, project = 'shop') => ({
   },
 });
 
+const componentBinding = (component: string, environment: string) => ({
+  metadata: { name: `${component}-${environment}` },
+  spec: {
+    owner: { projectName: 'shop', componentName: component },
+    environment,
+    state: 'Active',
+  },
+  status: { endpoints: [{ name: 'http' }] },
+});
+
 const environment = (name: string, isProduction = false) => ({
   metadata: {
     name,
@@ -190,6 +200,15 @@ describe('EndpointInfoService', () => {
         [`${NS}/endpoints/{endpointName}`]: () =>
           createOkResponse(endpoint([90, 10])),
         [`${NS}/endpointreleasebindings`]: () => list([binding('development')]),
+        [`${NS}/releasebindings`]: opts =>
+          list(
+            opts.params.query.component === 'payments-v1'
+              ? [
+                  componentBinding('payments-v1', 'development'),
+                  componentBinding('payments-v1', 'staging'),
+                ]
+              : [componentBinding('payments-v2', 'development')],
+          ),
         [`${NS}/environments`]: () =>
           list([
             environment('production', true),
@@ -242,6 +261,11 @@ describe('EndpointInfoService', () => {
         }),
       );
       expect(result[2].isProduction).toBe(true);
+      expect(result.map(e => e.deployedBackends)).toEqual([
+        ['payments-v1/http', 'payments-v2/http'],
+        ['payments-v1/http'],
+        [],
+      ]);
     });
 
     it('refuses an endpoint of another project', async () => {

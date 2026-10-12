@@ -8,6 +8,7 @@ import {
 } from '@openchoreo/openchoreo-client-node';
 import type {
   ComponentTrafficEntry,
+  EndpointBackendWeight,
   EndpointEnvironment,
   EndpointEnvironmentSummary,
   EndpointReleaseSummary,
@@ -248,9 +249,19 @@ export class EndpointInfoService {
     token?: string,
   ): Promise<EndpointEnvironment[]> {
     const client = this.client(token);
-    const [endpoint, bindings, environments, promotionPaths] =
+    const endpoint = await this.getEndpoint(
+      client,
+      request.namespaceName,
+      request.endpointName,
+    );
+    if (endpoint.spec?.owner.projectName !== request.projectName) {
+      throw new NotFoundError(
+        `Endpoint ${request.endpointName} not found in project ${request.projectName}`,
+      );
+    }
+
+    const [bindings, environments, promotionPaths, deployed] =
       await Promise.all([
-        this.getEndpoint(client, request.namespaceName, request.endpointName),
         this.listBindings(client, request.namespaceName, {
           endpoint: request.endpointName,
         }),
@@ -268,13 +279,12 @@ export class EndpointInfoService {
             }),
         ),
         this.fetchPromotionPaths(client, request),
+        this.fetchDeployedBackends(
+          client,
+          request,
+          toBackendWeights(endpoint.spec?.backendRefs),
+        ),
       ]);
-
-    if (endpoint.spec?.owner.projectName !== request.projectName) {
-      throw new NotFoundError(
-        `Endpoint ${request.endpointName} not found in project ${request.projectName}`,
-      );
-    }
 
     const latestRelease = endpoint.status?.latestRelease?.name;
     const bindingByEnv = new Map<string, EndpointReleaseBinding>();
@@ -317,8 +327,64 @@ export class EndpointInfoService {
         statusMessage: derived.message,
         invokeURL: binding?.status?.invokeURL,
         backends: toBackendStatuses(binding),
+        deployedBackends: [...(deployed.get(envName) ?? [])].sort(),
       };
     });
+  }
+
+  /**
+   * For each environment, the Endpoint's backends whose component is
+   * deployed there and exposes the workload endpoint, as `component/endpoint`
+   * keys. Lets the UI check a rollout before the controller would report
+   * BackendsUnresolved.
+   */
+  private async fetchDeployedBackends(
+    client: ApiClient,
+    request: { namespaceName: string; projectName: string },
+    backends: EndpointBackendWeight[],
+  ): Promise<Map<string, Set<string>>> {
+    const deployed = new Map<string, Set<string>>();
+    const components = [...new Set(backends.map(b => b.componentName))];
+    const bindingsPerComponent = await Promise.all(
+      components.map(componentName =>
+        fetchAllPages(cursor =>
+          client
+            .GET('/api/v1/namespaces/{namespaceName}/releasebindings', {
+              params: {
+                path: { namespaceName: request.namespaceName },
+                query: { component: componentName, limit: 100, cursor },
+              },
+            })
+            .then(res => {
+              assertApiResponse(res, 'list release bindings');
+              return res.data!;
+            }),
+        ),
+      ),
+    );
+    for (const rb of bindingsPerComponent.flat()) {
+      const owner = rb.spec?.owner;
+      if (
+        !owner ||
+        owner.projectName !== request.projectName ||
+        rb.spec?.state === 'Undeploy'
+      ) {
+        continue;
+      }
+      const exposed = new Set((rb.status?.endpoints ?? []).map(e => e.name));
+      for (const b of backends) {
+        if (
+          b.componentName === owner.componentName &&
+          exposed.has(b.endpoint)
+        ) {
+          const env = rb.spec!.environment;
+          const set = deployed.get(env) ?? new Set<string>();
+          set.add(`${b.componentName}/${b.endpoint}`);
+          deployed.set(env, set);
+        }
+      }
+    }
+    return deployed;
   }
 
   private async fetchPromotionPaths(

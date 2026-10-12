@@ -87,6 +87,12 @@ export interface EndpointEnvironment {
   invokeURL?: string;
   /** Backends of the pinned release as resolved in this environment. */
   backends: EndpointBackendStatus[];
+  /**
+   * The Endpoint's backends that are deployed in this environment, as
+   * `component/endpoint` keys. A release can only route here when every
+   * backend it weights above 0 is in this list.
+   */
+  deployedBackends: string[];
 }
 
 /** An EndpointRelease, for the release history and rollback. */
