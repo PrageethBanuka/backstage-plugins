@@ -1554,7 +1554,11 @@ export interface paths {
      *     The git provider is automatically detected from the request headers:
      *     - GitHub: `X-Hub-Signature-256`
      *     - GitLab: `X-Gitlab-Token`
-     *     - Bitbucket: `X-Event-Key`
+     *     - Bitbucket: `X-Event-Key` (signed with `X-Hub-Signature`)
+     *
+     *     Every provider is authenticated: GitHub and Bitbucket via HMAC-SHA256 signature
+     *     verification against the configured webhook secret, GitLab via its shared token.
+     *     Requests without a valid signature/token for the detected provider are rejected.
      */
     post: operations['handleAutoBuild'];
     delete?: never;
@@ -1821,6 +1825,28 @@ export interface paths {
     get: operations['getReleaseBindingK8sResourceLogs'];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1alpha1/namespaces/{namespaceName}/releasebindings/{releaseBindingName}/trigger': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Manually trigger the cronjob of a release binding
+     * @description Creates a Job from the deployed CronJob's spec.jobTemplate with an owner reference back to the CronJob, the same behaviour as `kubectl create job --from=cronjob/<name>`. Only allowed when the component's workload type is cronjob. The triggered Job (and its pods) appear in the resource tree and logs like any other CronJob-owned Job.
+     *
+     *     An optional request body can override the container args for this run only. The override applies to the created Job and does not change the CronJob, so scheduled runs are unaffected.
+     */
+    post: operations['triggerReleaseBindingCronJob'];
     delete?: never;
     options?: never;
     head?: never;
@@ -2367,6 +2393,230 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/clusterendpointtypes': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List cluster endpoint types
+     * @description Returns a paginated list of cluster-scoped endpoint types. Endpoints in any namespace can reference them.
+     */
+    get: operations['listClusterEndpointTypes'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/clusterendpointtypes/{cetName}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get cluster endpoint type
+     * @description Returns details of a specific cluster endpoint type.
+     */
+    get: operations['getClusterEndpointType'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/namespaces/{namespaceName}/endpointtypes': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List endpoint types
+     * @description Returns a paginated list of endpoint types within a namespace.
+     */
+    get: operations['listEndpointTypes'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/namespaces/{namespaceName}/endpointtypes/{etName}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get endpoint type
+     * @description Returns details of a specific endpoint type.
+     */
+    get: operations['getEndpointType'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/namespaces/{namespaceName}/endpoints': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List endpoints
+     * @description Returns a paginated list of endpoints within a namespace, optionally filtered by project or by a component the endpoint routes to.
+     */
+    get: operations['listEndpoints'];
+    put?: never;
+    /**
+     * Create endpoint
+     * @description Creates a new endpoint within a namespace. The Endpoint controller cuts the first EndpointRelease.
+     */
+    post: operations['createEndpoint'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/namespaces/{namespaceName}/endpoints/{endpointName}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get endpoint
+     * @description Returns details of a specific endpoint.
+     */
+    get: operations['getEndpoint'];
+    /**
+     * Update endpoint
+     * @description Replaces an existing endpoint (full update). Changing spec.backendRefs or spec.parameters cuts a new EndpointRelease; traffic moves only when a binding is pinned to it. spec.owner and spec.type are immutable.
+     */
+    put: operations['updateEndpoint'];
+    post?: never;
+    /**
+     * Delete endpoint
+     * @description Deletes an endpoint by name. The Endpoint finalizer removes its EndpointReleaseBindings and EndpointReleases first; component routes take traffic back before the Endpoint's routes are removed.
+     */
+    delete: operations['deleteEndpoint'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/namespaces/{namespaceName}/endpointreleases': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List endpoint releases
+     * @description Returns a paginated list of endpoint releases within a namespace, optionally filtered by endpoint.
+     */
+    get: operations['listEndpointReleases'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/namespaces/{namespaceName}/endpointreleases/{endpointReleaseName}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get endpoint release
+     * @description Returns details of a specific endpoint release.
+     */
+    get: operations['getEndpointRelease'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/namespaces/{namespaceName}/endpointreleasebindings': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List endpoint release bindings
+     * @description Returns a paginated list of endpoint release bindings within a namespace, optionally filtered by endpoint and environment.
+     */
+    get: operations['listEndpointReleaseBindings'];
+    put?: never;
+    /**
+     * Create endpoint release binding
+     * @description Creates a new endpoint release binding within a namespace. Routes the endpoint in the binding's environment once spec.endpointRelease is set.
+     */
+    post: operations['createEndpointReleaseBinding'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/namespaces/{namespaceName}/endpointreleasebindings/{endpointReleaseBindingName}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get endpoint release binding
+     * @description Returns details of a specific endpoint release binding.
+     */
+    get: operations['getEndpointReleaseBinding'];
+    /**
+     * Update endpoint release binding
+     * @description Replaces an existing endpoint release binding (full update). Used to advance or roll back `spec.endpointRelease`, which moves the environment's traffic to that release's split. `spec.owner` and `spec.environment` are immutable.
+     */
+    put: operations['updateEndpointReleaseBinding'];
+    post?: never;
+    /**
+     * Delete endpoint release binding
+     * @description Deletes an endpoint release binding by name. The binding keeps its routes until the component routes it replaced are live again, so traffic is never left without a route.
+     */
+    delete: operations['deleteEndpointReleaseBinding'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/namespaces/{namespaceName}/deploymentpipelines': {
     parameters: {
       query?: never;
@@ -2712,13 +2962,13 @@ export interface components {
     /** @description Audit trail read path */
     AuditLogsFeature: {
       /**
-       * @description Whether clients can query audit logs through observerURL
+       * @description Whether audit logging is enabled
        * @example true
        */
       enabled: boolean;
       /**
        * Format: uri
-       * @description Base URL of the observer that serves the audit trail. Omitted when enabled is false.
+       * @description Base URL of the observer that serves audit logs. Omitted when audit logging is disabled or the referenced observability plane is not found.
        * @example https://observer.example.com
        */
       observerURL?: string;
@@ -3758,8 +4008,12 @@ export interface components {
         /** @description Name of the ClusterTrait resource */
         name: string;
       }[];
-      /** @description CEL-based validation rules evaluated during rendering */
+      /** @description CEL-based validation rules evaluated before rendering. Deprecated: use preRenderValidations (mutually exclusive). */
       validations?: components['schemas']['ValidationRule'][];
+      /** @description CEL-based validation rules evaluated before rendering; replaces the deprecated validations field */
+      preRenderValidations?: components['schemas']['ValidationRule'][];
+      /** @description CEL-based validation rules evaluated after all traits are applied, against the final rendered Kubernetes resources */
+      postRenderValidations?: components['schemas']['PostRenderValidation'][];
       /** @description Templates that generate Kubernetes resources dynamically */
       resources: {
         /** @description Unique identifier for this resource within the component type */
@@ -3812,8 +4066,12 @@ export interface components {
     ClusterTraitSpec: {
       parameters?: components['schemas']['SchemaSection'];
       environmentConfigs?: components['schemas']['SchemaSection'];
-      /** @description CEL-based validation rules evaluated during rendering */
+      /** @description CEL-based validation rules evaluated before rendering. Deprecated: use preRenderValidations (mutually exclusive). */
       validations?: components['schemas']['ValidationRule'][];
+      /** @description CEL-based validation rules evaluated before rendering; replaces the deprecated validations field */
+      preRenderValidations?: components['schemas']['ValidationRule'][];
+      /** @description CEL-based validation rules evaluated after all traits are applied, against the final rendered Kubernetes resources */
+      postRenderValidations?: components['schemas']['PostRenderValidation'][];
       /** @description New Kubernetes resources to create when this trait is applied */
       creates?: {
         /**
@@ -3869,6 +4127,8 @@ export interface components {
           value?: unknown;
         }[];
       }[];
+      /** @description Whole resources to delete that were previously produced by the ComponentType or earlier traits. Workload resource kinds (e.g. Deployment, StatefulSet, CronJob) cannot be removed. */
+      removes?: components['schemas']['TraitRemove'][];
     };
     /** @description Observed state of a ClusterTrait */
     ClusterTraitStatus: Record<string, never>;
@@ -3942,8 +4202,12 @@ export interface components {
         /** @description Name of the Trait or ClusterTrait resource */
         name: string;
       }[];
-      /** @description CEL-based validation rules evaluated during rendering */
+      /** @description CEL-based validation rules evaluated before rendering. Deprecated: use preRenderValidations (mutually exclusive). */
       validations?: components['schemas']['ValidationRule'][];
+      /** @description CEL-based validation rules evaluated before rendering; replaces the deprecated validations field */
+      preRenderValidations?: components['schemas']['ValidationRule'][];
+      /** @description CEL-based validation rules evaluated after all traits are applied, against the final rendered Kubernetes resources */
+      postRenderValidations?: components['schemas']['PostRenderValidation'][];
       /** @description Templates that generate Kubernetes resources dynamically */
       resources: {
         /** @description Unique identifier for this resource within the component type */
@@ -3996,8 +4260,12 @@ export interface components {
     TraitSpec: {
       parameters?: components['schemas']['SchemaSection'];
       environmentConfigs?: components['schemas']['SchemaSection'];
-      /** @description CEL-based validation rules evaluated during rendering */
+      /** @description CEL-based validation rules evaluated before rendering. Deprecated: use preRenderValidations (mutually exclusive). */
       validations?: components['schemas']['ValidationRule'][];
+      /** @description CEL-based validation rules evaluated before rendering; replaces the deprecated validations field */
+      preRenderValidations?: components['schemas']['ValidationRule'][];
+      /** @description CEL-based validation rules evaluated after all traits are applied, against the final rendered Kubernetes resources */
+      postRenderValidations?: components['schemas']['PostRenderValidation'][];
       /** @description New Kubernetes resources to create when this trait is applied */
       creates?: {
         /**
@@ -4053,12 +4321,73 @@ export interface components {
           value?: unknown;
         }[];
       }[];
+      /** @description Whole resources to delete that were previously produced by the ComponentType or earlier traits. Workload resource kinds (e.g. Deployment, StatefulSet, CronJob) cannot be removed. */
+      removes?: components['schemas']['TraitRemove'][];
     };
     /** @description Observed state of a Trait */
     TraitStatus: Record<string, never>;
+    /** @description Whole resource to delete that was previously produced by the ComponentType or earlier traits. Shared by TraitSpec and ClusterTraitSpec. */
+    TraitRemove: {
+      /** @description CEL expression for repeating this remove */
+      forEach?: string;
+      /** @description Loop variable name when using forEach */
+      var?: string;
+      /** @description Target resource to remove; matching resources are deleted entirely */
+      target: {
+        /** @description API group of the resource */
+        group: string;
+        /** @description API version of the resource */
+        version: string;
+        /** @description Resource type to remove */
+        kind: string;
+        /** @description CEL expression to filter which resources to remove */
+        where?: string;
+      };
+      /**
+       * @description Target plane for this remove
+       * @default dataplane
+       * @enum {string}
+       */
+      targetPlane: 'dataplane' | 'observabilityplane';
+    };
     /** @description CEL-based validation rule evaluated during rendering */
     ValidationRule: {
       /** @description CEL expression wrapped in ${...} that must evaluate to true */
+      rule: string;
+      /** @description Error message shown when the rule evaluates to false */
+      message: string;
+    };
+    /** @description CEL-based validation rule evaluated after all traits are applied, against the final rendered Kubernetes resources */
+    PostRenderValidation: {
+      /** @description Optional CEL guard evaluated against the source's context; if it evaluates to false the validation is skipped */
+      when?: string;
+      /** @description Optional CEL expression yielding a list; the validation is repeated per item with the loop variable bound. Requires var. */
+      forEach?: string;
+      /** @description Loop variable name for forEach iterations; available in target.where and rule. Required when forEach is set. */
+      var?: string;
+      /** @description Rendered resources this validation applies to */
+      target: {
+        /** @description API group of the resource */
+        group: string;
+        /** @description API version of the resource */
+        version: string;
+        /** @description Resource type to select */
+        kind: string;
+        /** @description CEL expression to filter which resources to select */
+        where?: string;
+        /**
+         * @description Require at least one rendered resource to match this target; when true and none match, the validation fails
+         * @default true
+         */
+        mustMatch: boolean;
+      };
+      /**
+       * @description Plane to scope selection to; without it a rule matches resources of the same GVK across every plane
+       * @default dataplane
+       * @enum {string}
+       */
+      targetPlane: 'dataplane' | 'observabilityplane';
+      /** @description CEL expression wrapped in ${...}, evaluated with resource bound to each match; must evaluate to true */
       rule: string;
       /** @description Error message shown when the rule evaluates to false */
       message: string;
@@ -4694,6 +5023,18 @@ export interface components {
       invokeURL?: string;
       internalURLs?: components['schemas']['EndpointGatewayURLs'];
       externalURLs?: components['schemas']['EndpointGatewayURLs'];
+      /** @description Endpoints whose routes serve this workload endpoint's gateway traffic in this environment. For the visibilities they claim, the component's own gateway routes are not rendered. */
+      routedBy?: components['schemas']['EndpointRouteOwner'][];
+    };
+    /** @description An Endpoint that routes traffic to a workload endpoint. */
+    EndpointRouteOwner: {
+      /**
+       * @description Name of the Endpoint
+       * @example payments-api
+       */
+      endpointName: string;
+      /** @description Gateway visibilities the Endpoint serves */
+      visibilities?: ('project' | 'namespace' | 'internal' | 'external')[];
     };
     /** @description Structured URL with its components */
     EndpointURL: {
@@ -5050,8 +5391,10 @@ export interface components {
     };
     /**
      * @description Desired state of a ProjectReleaseBinding. spec.owner and spec.environment
-     *     are immutable after creation. spec.projectRelease is the promote pin and is
-     *     advanced manually via `occ project promote` or kubectl edit.
+     *     are immutable after creation. spec.projectRelease is the promote pin:
+     *     left unset, the Project controller seeds it once with the project's
+     *     latest release; advancing it afterwards is manual (API update, GitOps,
+     *     kubectl edit).
      */
     ProjectReleaseBindingSpec: {
       /** @description Identifies the project this binding belongs to. */
@@ -5068,7 +5411,7 @@ export interface components {
        */
       environment: string;
       /**
-       * @description Pinned ProjectRelease name. Advanced manually (e.g. via `occ project promote`).
+       * @description Pinned ProjectRelease name. Left unset, it is seeded once by the Project controller with the latest release; advanced manually afterwards (e.g. via `occ project promote`).
        * @example my-app-abc123
        */
       projectRelease?: string;
@@ -5347,6 +5690,381 @@ export interface components {
       /** @description Resolved outputs for this environment, populated from the underlying RenderedRelease.status by the binding controller. */
       outputs?: components['schemas']['ResolvedResourceOutput'][];
     };
+    /** @description Routing manifest template emitted by an (Cluster)EndpointType for each EndpointReleaseBinding. */
+    EndpointTypeResource: {
+      /**
+       * @description Unique identifier for this resource within the endpoint type
+       * @example route
+       */
+      id: string;
+      /**
+       * @description Target plane for deployment
+       * @default dataplane
+       * @enum {string}
+       */
+      targetPlane: 'dataplane' | 'observabilityplane';
+      /** @description CEL expression determining if this resource should be created */
+      includeWhen?: string;
+      /** @description CEL expression for generating multiple resources from a list */
+      forEach?: string;
+      /** @description Loop variable name when using forEach */
+      var?: string;
+      /**
+       * @description Kubernetes resource body with ${...} CEL substitutions. The CEL context exposes
+       *     metadata.*, parameters.*, environmentConfigs.*, gateway.*, dataplane.*,
+       *     environment.* and backends[] (each with componentName, endpoint, serviceName,
+       *     namespace, port, weight, protocol, basePath and componentURLs).
+       */
+      template: {
+        [key: string]: unknown;
+      };
+    };
+    /** @description Desired state of a (Cluster)EndpointType. */
+    EndpointTypeSpec: {
+      parameters?: components['schemas']['SchemaSection'];
+      environmentConfigs?: components['schemas']['SchemaSection'];
+      /** @description CEL-based validation rules evaluated before rendering */
+      validations?: components['schemas']['ValidationRule'][];
+      /** @description Routing manifests (e.g. HTTPRoute, GRPCRoute, VirtualService) emitted on the data plane for each EndpointReleaseBinding. */
+      resources: components['schemas']['EndpointTypeResource'][];
+    };
+    /** @description Paginated list of cluster endpoint types */
+    ClusterEndpointTypeList: {
+      items: components['schemas']['ClusterEndpointType'][];
+      pagination: components['schemas']['Pagination'];
+    };
+    /**
+     * @description ClusterEndpointType resource.
+     *     Cluster-scoped sibling of EndpointType. Endpoints in any namespace can reference it.
+     */
+    ClusterEndpointType: {
+      /**
+       * @description API version of the resource
+       * @example openchoreo.dev/v1alpha1
+       */
+      readonly apiVersion?: string;
+      /**
+       * @description Kind of the resource
+       * @example ClusterEndpointType
+       */
+      readonly kind?: string;
+      metadata: components['schemas']['ObjectMeta'];
+      spec?: components['schemas']['EndpointTypeSpec'];
+      /** @description ClusterEndpointType status (currently empty) */
+      readonly status?: Record<string, never>;
+    };
+    /** @description Paginated list of endpoint types */
+    EndpointTypeList: {
+      items: components['schemas']['EndpointType'][];
+      pagination: components['schemas']['Pagination'];
+    };
+    /**
+     * @description EndpointType resource.
+     *     Platform-engineer template that defines how an Endpoint is routed (for example a
+     *     weighted HTTPRoute). Developers reference it from Endpoint.spec.type.
+     */
+    EndpointType: {
+      /**
+       * @description API version of the resource
+       * @example openchoreo.dev/v1alpha1
+       */
+      readonly apiVersion?: string;
+      /**
+       * @description Kind of the resource
+       * @example EndpointType
+       */
+      readonly kind?: string;
+      metadata: components['schemas']['ObjectMeta'];
+      spec?: components['schemas']['EndpointTypeSpec'];
+      /** @description EndpointType status (currently empty) */
+      readonly status?: Record<string, never>;
+    };
+    /** @description Reference to an EndpointType or ClusterEndpointType template. */
+    EndpointTypeRef: {
+      /**
+       * @description Endpoint type kind. Defaults to EndpointType (namespaced).
+       * @default EndpointType
+       * @enum {string}
+       */
+      kind: 'EndpointType' | 'ClusterEndpointType';
+      /**
+       * @description Template name.
+       * @example http-weighted
+       */
+      name: string;
+    };
+    /** @description A component workload endpoint the Endpoint routes traffic to, with its relative weight. */
+    EndpointBackendRef: {
+      /**
+       * @description Component in the Endpoint's project that serves this backend
+       * @example payments-v1
+       */
+      componentName: string;
+      /**
+       * @description Name of the endpoint in the component's Workload.spec.endpoints
+       * @example http
+       */
+      endpoint: string;
+      /**
+       * Format: int32
+       * @description Share of traffic relative to the sum of all weights (Gateway API semantics). 0 sends no traffic.
+       * @default 1
+       * @example 90
+       */
+      weight: number;
+    };
+    /** @description Paginated list of endpoints */
+    EndpointList: {
+      items: components['schemas']['Endpoint'][];
+      pagination: components['schemas']['Pagination'];
+    };
+    /**
+     * @description Endpoint resource.
+     *     Developer-facing routing intent for a project: which component workload endpoints
+     *     receive traffic and with what weights. Selects components; does not own them.
+     */
+    Endpoint: {
+      /**
+       * @description API version of the resource
+       * @example openchoreo.dev/v1alpha1
+       */
+      readonly apiVersion?: string;
+      /**
+       * @description Kind of the resource
+       * @example Endpoint
+       */
+      readonly kind?: string;
+      metadata: components['schemas']['ObjectMeta'];
+      spec?: components['schemas']['EndpointSpec'];
+      readonly status?: components['schemas']['EndpointStatus'];
+    };
+    /** @description Desired state of an Endpoint. spec.owner and spec.type are immutable after creation. */
+    EndpointSpec: {
+      /** @description Identifies the project that owns this Endpoint. */
+      owner: {
+        /**
+         * @description Parent project name
+         * @example shop
+         */
+        projectName: string;
+      };
+      type: components['schemas']['EndpointTypeRef'];
+      /** @description Component workload endpoints receiving traffic, with relative weights. */
+      backendRefs: components['schemas']['EndpointBackendRef'][];
+      /** @description Values for the parameter schema declared on the referenced (Cluster)EndpointType. Validated by the controller. */
+      parameters?: {
+        [key: string]: unknown;
+      };
+    };
+    /** @description Observed state of an Endpoint. */
+    EndpointStatus: {
+      /**
+       * Format: int64
+       * @description Most recent generation observed by the controller
+       */
+      observedGeneration?: number;
+      /** @description Latest available observations of the Endpoint's state. Includes Ready and Finalizing. */
+      conditions?: components['schemas']['Condition'][];
+      /** @description Most recent EndpointRelease for this Endpoint. The promote source for EndpointReleaseBinding pin advance. */
+      latestRelease?: {
+        /**
+         * @description Name of the EndpointRelease resource
+         * @example payments-api-5b7fc7b
+         */
+        name: string;
+        /**
+         * @description Content hash of Endpoint.spec + (Cluster)EndpointType.spec captured at release time
+         * @example 5b7fc7b
+         */
+        hash: string;
+      };
+    };
+    /** @description Paginated list of endpoint releases */
+    EndpointReleaseList: {
+      items: components['schemas']['EndpointRelease'][];
+      pagination: components['schemas']['Pagination'];
+    };
+    /**
+     * @description EndpointRelease resource.
+     *     Immutable snapshot of Endpoint.spec and the referenced (Cluster)EndpointType.spec
+     *     at the time it was cut. Created by the Endpoint controller.
+     */
+    EndpointRelease: {
+      /**
+       * @description API version of the resource
+       * @example openchoreo.dev/v1alpha1
+       */
+      readonly apiVersion?: string;
+      /**
+       * @description Kind of the resource
+       * @example EndpointRelease
+       */
+      readonly kind?: string;
+      metadata: components['schemas']['ObjectMeta'];
+      spec?: components['schemas']['EndpointReleaseSpec'];
+      /** @description EndpointRelease status (currently empty, immutable after creation) */
+      readonly status?: Record<string, never>;
+    };
+    /** @description Desired state of an EndpointRelease. Immutable after creation. */
+    EndpointReleaseSpec: {
+      owner: components['schemas']['EndpointReleaseOwner'];
+      /** @description Frozen snapshot of the referenced (Cluster)EndpointType. */
+      endpointType: {
+        /**
+         * @description Source kind (EndpointType or ClusterEndpointType)
+         * @enum {string}
+         */
+        kind: 'EndpointType' | 'ClusterEndpointType';
+        /**
+         * @description Source endpoint type name
+         * @example http-weighted
+         */
+        name: string;
+        spec: components['schemas']['EndpointTypeSpec'];
+      };
+      /** @description Snapshot of Endpoint.spec.backendRefs at release time. */
+      backendRefs: components['schemas']['EndpointBackendRef'][];
+      /** @description Snapshot of parameter values from Endpoint.spec at release time. */
+      parameters?: {
+        [key: string]: unknown;
+      };
+    };
+    /** @description Identifies the endpoint and project an EndpointRelease or EndpointReleaseBinding belongs to. */
+    EndpointReleaseOwner: {
+      /**
+       * @description Parent project name
+       * @example shop
+       */
+      projectName: string;
+      /**
+       * @description Parent endpoint name
+       * @example payments-api
+       */
+      endpointName: string;
+    };
+    /** @description Paginated list of endpoint release bindings */
+    EndpointReleaseBindingList: {
+      items: components['schemas']['EndpointReleaseBinding'][];
+      pagination: components['schemas']['Pagination'];
+    };
+    /**
+     * @description EndpointReleaseBinding resource.
+     *     Pins an EndpointRelease to an Environment. Moving the pin moves that environment's
+     *     traffic to the release's split; pinning an older release is a rollback.
+     */
+    EndpointReleaseBinding: {
+      /**
+       * @description API version of the resource
+       * @example openchoreo.dev/v1alpha1
+       */
+      readonly apiVersion?: string;
+      /**
+       * @description Kind of the resource
+       * @example EndpointReleaseBinding
+       */
+      readonly kind?: string;
+      metadata: components['schemas']['ObjectMeta'];
+      spec?: components['schemas']['EndpointReleaseBindingSpec'];
+      readonly status?: components['schemas']['EndpointReleaseBindingStatus'];
+    };
+    /**
+     * @description Desired state of an EndpointReleaseBinding. spec.owner and spec.environment are
+     *     immutable after creation. spec.endpointRelease is the promote pin.
+     */
+    EndpointReleaseBindingSpec: {
+      owner: components['schemas']['EndpointReleaseOwner'];
+      /**
+       * @description Target environment name. Immutable after creation.
+       * @example development
+       */
+      environment: string;
+      /**
+       * @description Pinned EndpointRelease name. The binding stays pending until it is set.
+       * @example payments-api-5b7fc7b
+       */
+      endpointRelease?: string;
+      /** @description Per-environment values for (Cluster)EndpointType.spec.environmentConfigs. */
+      endpointTypeEnvironmentConfigs?: {
+        [key: string]: unknown;
+      };
+    };
+    /** @description Resolution of one backendRef in the binding's environment. */
+    ResolvedEndpointBackend: {
+      /**
+       * @description Backend component name
+       * @example payments-v1
+       */
+      componentName: string;
+      /**
+       * @description Workload endpoint name on the backend component
+       * @example http
+       */
+      endpoint: string;
+      /**
+       * Format: int32
+       * @description Effective weight applied to this backend
+       * @example 90
+       */
+      weight?: number;
+      serviceURL?: components['schemas']['EndpointURL'];
+      /** @description Whether the backend was found deployed in this environment */
+      resolved: boolean;
+      /**
+       * @description Why the backend could not be resolved
+       * @example component payments-v3 is not deployed in environment staging
+       */
+      reason?: string;
+    };
+    /** @description A component workload endpoint. */
+    EndpointBackendSlot: {
+      /**
+       * @description Component name
+       * @example payments-v1
+       */
+      componentName: string;
+      /**
+       * @description Workload endpoint name
+       * @example http
+       */
+      endpoint: string;
+    };
+    /**
+     * @description The routing last confirmed accepted on the data plane. Component ReleaseBindings stop
+     *     rendering their own gateway routes for the claimed (component, endpoint, visibility) slots.
+     */
+    EndpointServingClaim: {
+      /**
+       * @description Release whose rendered routes were accepted
+       * @example payments-api-5b7fc7b
+       */
+      endpointRelease: string;
+      /** @description Component workload endpoints receiving traffic (non-zero weight) through the accepted routes */
+      backends?: components['schemas']['EndpointBackendSlot'][];
+      /** @description Gateway visibilities the accepted routes serve */
+      visibilities?: ('project' | 'namespace' | 'internal' | 'external')[];
+      /**
+       * Format: date-time
+       * @description When this claim was first established
+       */
+      since: string;
+      /** @description Set while the binding is being deleted and component routes are taking traffic back */
+      releasing?: boolean;
+    };
+    /** @description Observed state of an EndpointReleaseBinding. */
+    EndpointReleaseBindingStatus: {
+      /** @description Latest available observations of the binding's state. Includes BackendsResolved, Ready (aggregate), and Finalizing. */
+      conditions?: components['schemas']['Condition'][];
+      /** @description Resolution of each backendRef in this binding's environment */
+      backends?: components['schemas']['ResolvedEndpointBackend'][];
+      /**
+       * @description Primary resolved URL for this endpoint in the environment
+       * @example http://development-default.openchoreoapis.localhost:19080/payments-v1-http
+       */
+      invokeURL?: string;
+      internalURLs?: components['schemas']['EndpointGatewayURLs'];
+      externalURLs?: components['schemas']['EndpointGatewayURLs'];
+      serving?: components['schemas']['EndpointServingClaim'];
+    };
     /**
      * @description RenderedRelease resource.
      *     Contains the final rendered Kubernetes manifests deployed to data plane clusters.
@@ -5469,6 +6187,31 @@ export interface components {
       /** @description Optional human-readable message explaining the health status */
       message?: string;
     };
+    /** @description Reports that children of one kind could not be discovered under a node. It is attached to the nearest node the client can see, so a failure while expanding a hidden intermediate resource still surfaces somewhere. Its presence means the node's children of that kind are incomplete, not that there are none. */
+    ChildDiscoveryStatus: {
+      /**
+       * @description API group of the child kind that could not be discovered (empty for core)
+       * @example apps
+       */
+      group?: string;
+      /**
+       * @description API version of the child kind that could not be discovered
+       * @example v1
+       */
+      version: string;
+      /**
+       * @description Kind of the child resources that could not be discovered
+       * @example ReplicaSet
+       */
+      kind: string;
+      /**
+       * @description Why discovery of this child kind did not complete. Currently `forbidden`, meaning the platform is not permitted to list that kind, or `error`, which covers every other failure including a truncated result. Left open rather than enumerated so a new state does not break existing clients; treat an unrecognized value as `error`.
+       * @example forbidden
+       */
+      state: string;
+      /** @description Optional human-readable detail about the failure */
+      message?: string;
+    };
     /** @description A single resource in the resource tree */
     ResourceNode: {
       /** @description API group of the resource */
@@ -5492,11 +6235,20 @@ export interface components {
       createdAt?: string;
       /** @description References to parent resources */
       parentRefs?: components['schemas']['ResourceRef'][];
-      /** @description Full Kubernetes resource object */
+      /** @description The Kubernetes resource object. Reduced to `apiVersion`, `kind` and `metadata` when `metadataOnly` is true. */
       object: {
         [key: string]: unknown;
       };
       health?: components['schemas']['HealthInfo'];
+      /** @description True when `object` has been projected down to `apiVersion`, `kind` and `metadata` and therefore carries no spec, status or data. Absent means the metadata-only projection was not applied; resource-specific sanitization can still remove fields. A Secret's `data` and `stringData` are removed that way, unconditionally, whether or not the projection applied. */
+      metadataOnly?: boolean;
+      /**
+       * @description How this node was attributed to its parent, when the attribution was not exact. Set to `labelSelector` when the node was matched heuristically by labels, which can over-match; absent for exact ownerRef matches. Consoles should badge nodes that carry it.
+       * @example labelSelector
+       */
+      matchedBy?: string;
+      /** @description Per-kind child-discovery failures under this node. Present only when at least one kind of child could not be discovered; absent means discovery completed for every kind configured under this node. */
+      childrenStatus?: components['schemas']['ChildDiscoveryStatus'][];
     };
     /** @description A Kubernetes event associated with a resource */
     ResourceEvent: {
@@ -5564,6 +6316,37 @@ export interface components {
     ResourcePodLogsResponse: {
       /** @description Log entries from the pod */
       logEntries: components['schemas']['PodLogEntry'][];
+    };
+    /** @description Optional per-run overrides applied to the Job created from a manual cronjob trigger */
+    CronJobTriggerRequest: {
+      /**
+       * @description Replaces the container args for this run only. An empty array clears the args inherited from the CronJob's jobTemplate; omitting the field or sending null keeps them. Applies to the container named `main`, or to the only container if the pod has exactly one.
+       * @example [
+       *       "--mode",
+       *       "backfill",
+       *       "--date",
+       *       "2026-08-25"
+       *     ]
+       */
+      args?: string[] | null;
+    };
+    /** @description Response describing the Job created from a manual cronjob trigger */
+    CronJobTriggerResponse: {
+      /**
+       * @description Name of the Job that was created from the CronJob's jobTemplate
+       * @example my-task-1721563200
+       */
+      jobName: string;
+      /**
+       * @description Data plane namespace where the Job was created
+       * @example dp-my-project-my-component-dev
+       */
+      namespace: string;
+      /**
+       * @description Name of the CronJob the Job was created from
+       * @example my-task
+       */
+      cronJobName: string;
     };
     /** @description Response containing resource trees for all rendered releases owned by a release binding */
     K8sResourceTreeResponse: {
@@ -6264,6 +7047,37 @@ export interface components {
          */
         resources?: components['schemas']['WorkloadResourceDependency'][];
       };
+      source?: components['schemas']['WorkloadSource'];
+    };
+    /**
+     * @description Commit provenance of the image in container. Populated by the producer
+     *     (native CI's push-workload step, or an external CI calling this API or occ
+     *     directly) alongside the image, enabling Delivery Insights to compute Lead
+     *     Time for Changes from real deployments. Optional: DF/CFR/MTTR compute
+     *     without it; Lead Time reports unavailable when absent.
+     */
+    WorkloadSource: {
+      /**
+       * @description VCS commit SHA the running image was built from
+       * @example 7f01217e694993f0e12cbc74f104ba1a97e6048b
+       */
+      commit?: string;
+      /**
+       * @description VCS branch the commit was built from
+       * @example main
+       */
+      branch?: string;
+      /**
+       * @description VCS repository URL the commit belongs to
+       * @example https://github.com/my-org/my-repo
+       */
+      repository?: string;
+      /**
+       * Format: date-time
+       * @description When the commit was authored, not when it was committed or built.
+       *     This is the timestamp Lead Time for Changes measures from.
+       */
+      authoredAt?: string;
     };
     /** @description Observed state of a Workload */
     WorkloadStatus: Record<string, never>;
@@ -6974,6 +7788,20 @@ export interface components {
     ResourceQueryParam: string;
     /** @description Resource release binding name */
     ResourceReleaseBindingNameParam: string;
+    /** @description ClusterEndpointType name */
+    ClusterEndpointTypeNameParam: string;
+    /** @description EndpointType name */
+    EndpointTypeNameParam: string;
+    /** @description Endpoint name */
+    EndpointNameParam: string;
+    /** @description Endpoint release name */
+    EndpointReleaseNameParam: string;
+    /** @description Endpoint release binding name */
+    EndpointReleaseBindingNameParam: string;
+    /** @description Filter by endpoint name (matches spec.owner.endpointName) */
+    EndpointQueryParam: string;
+    /** @description Filter endpoints that route to this component (matches any spec.backendRefs[].componentName) */
+    EndpointBackendComponentQueryParam: string;
     /** @description Role name */
     RoleNameParam: string;
     /** @description Role mapping ID */
@@ -10996,6 +11824,8 @@ export interface operations {
         'X-Gitlab-Token'?: string;
         /** @description Bitbucket webhook event-key header used to detect Bitbucket events. */
         'X-Event-Key'?: string;
+        /** @description Bitbucket webhook HMAC-SHA256 signature (`sha256=<hex>`) used to validate Bitbucket events. */
+        'X-Hub-Signature'?: string;
       };
       path?: never;
       cookie?: never;
@@ -11762,6 +12592,41 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['ResourcePodLogsResponse'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  triggerReleaseBindingCronJob: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Release binding name */
+        releaseBindingName: components['parameters']['ReleaseBindingNameParam'];
+      };
+      cookie?: never;
+    };
+    /** @description Optional per-run overrides applied to the created Job */
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['CronJobTriggerRequest'];
+      };
+    };
+    responses: {
+      /** @description The Job created from the CronJob */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CronJobTriggerResponse'];
         };
       };
       400: components['responses']['BadRequest'];
@@ -13279,6 +14144,558 @@ export interface operations {
     requestBody?: never;
     responses: {
       /** @description Resource release binding deleted successfully */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  listClusterEndpointTypes: {
+    parameters: {
+      query?: {
+        /**
+         * @description A label selector to filter resources using Kubernetes label selector syntax.
+         *     Supports equality-based requirements: "key=value" (equality), "key!=value" (inequality).
+         *     Supports set-based requirements: "key in (val1,val2)" (value in set), "key notin (val1,val2)" (value not in set).
+         *     Supports existence checks: "key" (label exists), "!key" (label does not exist).
+         *     Multiple requirements are comma-separated and ANDed together.
+         */
+        labelSelector?: components['parameters']['LabelSelectorParam'];
+        /** @description Maximum number of items to return per page */
+        limit?: components['parameters']['LimitParam'];
+        /**
+         * @description Opaque pagination cursor from a previous response.
+         *     Pass the `nextCursor` value from pagination metadata to fetch the next page.
+         */
+        cursor?: components['parameters']['CursorParam'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of cluster endpoint types */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ClusterEndpointTypeList'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  getClusterEndpointType: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description ClusterEndpointType name */
+        cetName: components['parameters']['ClusterEndpointTypeNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cluster endpoint type details */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ClusterEndpointType'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  listEndpointTypes: {
+    parameters: {
+      query?: {
+        /**
+         * @description A label selector to filter resources using Kubernetes label selector syntax.
+         *     Supports equality-based requirements: "key=value" (equality), "key!=value" (inequality).
+         *     Supports set-based requirements: "key in (val1,val2)" (value in set), "key notin (val1,val2)" (value not in set).
+         *     Supports existence checks: "key" (label exists), "!key" (label does not exist).
+         *     Multiple requirements are comma-separated and ANDed together.
+         */
+        labelSelector?: components['parameters']['LabelSelectorParam'];
+        /** @description Maximum number of items to return per page */
+        limit?: components['parameters']['LimitParam'];
+        /**
+         * @description Opaque pagination cursor from a previous response.
+         *     Pass the `nextCursor` value from pagination metadata to fetch the next page.
+         */
+        cursor?: components['parameters']['CursorParam'];
+      };
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of endpoint types */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EndpointTypeList'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  getEndpointType: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description EndpointType name */
+        etName: components['parameters']['EndpointTypeNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint type details */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EndpointType'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  listEndpoints: {
+    parameters: {
+      query?: {
+        /** @description Filter resources by project name */
+        project?: components['parameters']['ProjectQueryParam'];
+        /** @description Filter endpoints that route to this component (matches any spec.backendRefs[].componentName) */
+        component?: components['parameters']['EndpointBackendComponentQueryParam'];
+        /**
+         * @description A label selector to filter resources using Kubernetes label selector syntax.
+         *     Supports equality-based requirements: "key=value" (equality), "key!=value" (inequality).
+         *     Supports set-based requirements: "key in (val1,val2)" (value in set), "key notin (val1,val2)" (value not in set).
+         *     Supports existence checks: "key" (label exists), "!key" (label does not exist).
+         *     Multiple requirements are comma-separated and ANDed together.
+         */
+        labelSelector?: components['parameters']['LabelSelectorParam'];
+        /** @description Maximum number of items to return per page */
+        limit?: components['parameters']['LimitParam'];
+        /**
+         * @description Opaque pagination cursor from a previous response.
+         *     Pass the `nextCursor` value from pagination metadata to fetch the next page.
+         */
+        cursor?: components['parameters']['CursorParam'];
+      };
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of endpoints */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EndpointList'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  createEndpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['Endpoint'];
+      };
+    };
+    responses: {
+      /** @description Endpoint created successfully */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Endpoint'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      409: components['responses']['Conflict'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  getEndpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint name */
+        endpointName: components['parameters']['EndpointNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint details */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Endpoint'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  updateEndpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint name */
+        endpointName: components['parameters']['EndpointNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['Endpoint'];
+      };
+    };
+    responses: {
+      /** @description Endpoint updated successfully */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Endpoint'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  deleteEndpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint name */
+        endpointName: components['parameters']['EndpointNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint deleted successfully */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  listEndpointReleases: {
+    parameters: {
+      query?: {
+        /** @description Filter by endpoint name (matches spec.owner.endpointName) */
+        endpoint?: components['parameters']['EndpointQueryParam'];
+        /**
+         * @description A label selector to filter resources using Kubernetes label selector syntax.
+         *     Supports equality-based requirements: "key=value" (equality), "key!=value" (inequality).
+         *     Supports set-based requirements: "key in (val1,val2)" (value in set), "key notin (val1,val2)" (value not in set).
+         *     Supports existence checks: "key" (label exists), "!key" (label does not exist).
+         *     Multiple requirements are comma-separated and ANDed together.
+         */
+        labelSelector?: components['parameters']['LabelSelectorParam'];
+        /** @description Maximum number of items to return per page */
+        limit?: components['parameters']['LimitParam'];
+        /**
+         * @description Opaque pagination cursor from a previous response.
+         *     Pass the `nextCursor` value from pagination metadata to fetch the next page.
+         */
+        cursor?: components['parameters']['CursorParam'];
+      };
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of endpoint releases */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EndpointReleaseList'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  getEndpointRelease: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint release name */
+        endpointReleaseName: components['parameters']['EndpointReleaseNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint release details */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EndpointRelease'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  listEndpointReleaseBindings: {
+    parameters: {
+      query?: {
+        /** @description Filter by endpoint name (matches spec.owner.endpointName) */
+        endpoint?: components['parameters']['EndpointQueryParam'];
+        /** @description Filter resources by environment name */
+        environment?: components['parameters']['EnvironmentQueryParam'];
+        /**
+         * @description A label selector to filter resources using Kubernetes label selector syntax.
+         *     Supports equality-based requirements: "key=value" (equality), "key!=value" (inequality).
+         *     Supports set-based requirements: "key in (val1,val2)" (value in set), "key notin (val1,val2)" (value not in set).
+         *     Supports existence checks: "key" (label exists), "!key" (label does not exist).
+         *     Multiple requirements are comma-separated and ANDed together.
+         */
+        labelSelector?: components['parameters']['LabelSelectorParam'];
+        /** @description Maximum number of items to return per page */
+        limit?: components['parameters']['LimitParam'];
+        /**
+         * @description Opaque pagination cursor from a previous response.
+         *     Pass the `nextCursor` value from pagination metadata to fetch the next page.
+         */
+        cursor?: components['parameters']['CursorParam'];
+      };
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of endpoint release bindings */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EndpointReleaseBindingList'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  createEndpointReleaseBinding: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['EndpointReleaseBinding'];
+      };
+    };
+    responses: {
+      /** @description Endpoint release binding created successfully */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EndpointReleaseBinding'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      409: components['responses']['Conflict'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  getEndpointReleaseBinding: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint release binding name */
+        endpointReleaseBindingName: components['parameters']['EndpointReleaseBindingNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint release binding details */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EndpointReleaseBinding'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  updateEndpointReleaseBinding: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint release binding name */
+        endpointReleaseBindingName: components['parameters']['EndpointReleaseBindingNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['EndpointReleaseBinding'];
+      };
+    };
+    responses: {
+      /** @description Endpoint release binding updated successfully */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EndpointReleaseBinding'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  deleteEndpointReleaseBinding: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint release binding name */
+        endpointReleaseBindingName: components['parameters']['EndpointReleaseBindingNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint release binding deleted successfully */
       204: {
         headers: {
           [name: string]: unknown;
