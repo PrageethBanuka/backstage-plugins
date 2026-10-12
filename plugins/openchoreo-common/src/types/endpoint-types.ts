@@ -93,6 +93,8 @@ export interface EndpointEnvironment {
    * backend it weights above 0 is in this list.
    */
   deployedBackends: string[];
+  /** Environments this one promotes to in the deployment pipeline. */
+  promotionTargets: { name: string }[];
 }
 
 /** An EndpointRelease, for the release history and rollback. */

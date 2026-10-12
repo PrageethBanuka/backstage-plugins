@@ -261,6 +261,11 @@ describe('EndpointInfoService', () => {
         }),
       );
       expect(result[2].isProduction).toBe(true);
+      expect(result.map(e => e.promotionTargets)).toEqual([
+        [{ name: 'staging' }],
+        [{ name: 'production' }],
+        [],
+      ]);
       expect(result.map(e => e.deployedBackends)).toEqual([
         ['payments-v1/http', 'payments-v2/http'],
         ['payments-v1/http'],

@@ -21,7 +21,10 @@ import {
   transformDeploymentPipeline,
   transformEnvironment,
 } from '../transformers';
-import { getEnvironmentOrder } from '../EnvironmentService/environmentOrder';
+import {
+  getEnvironmentOrder,
+  getSourceEnvName,
+} from '../EnvironmentService/environmentOrder';
 import {
   applyWeights,
   deriveEndpointStatus,
@@ -310,6 +313,17 @@ export class EndpointInfoService {
       if (!ordered.includes(env)) ordered.push(env);
     }
 
+    const targetsByEnv = new Map<string, { name: string }[]>();
+    for (const path of promotionPaths) {
+      const source = getSourceEnvName(path.sourceEnvironmentRef);
+      const targets = targetsByEnv.get(source) ?? [];
+      for (const t of path.targetEnvironmentRefs ?? []) {
+        if (!targets.some(x => x.name === t.name))
+          targets.push({ name: t.name });
+      }
+      targetsByEnv.set(source, targets);
+    }
+
     return ordered.map(envName => {
       const env = envByName.get(envName);
       const binding = bindingByEnv.get(envName);
@@ -328,6 +342,7 @@ export class EndpointInfoService {
         invokeURL: binding?.status?.invokeURL,
         backends: toBackendStatuses(binding),
         deployedBackends: [...(deployed.get(envName) ?? [])].sort(),
+        promotionTargets: targetsByEnv.get(envName) ?? [],
       };
     });
   }
