@@ -33,6 +33,7 @@ import {
 } from './services/ProjectReleaseService/ProjectReleaseInfoService';
 import { PlatformResourceService } from './services/PlatformResourceService/PlatformResourceService';
 import { WirelogsInfoService } from './services/WirelogsService/WirelogsInfoService';
+import { EndpointInfoService } from './services/EndpointService/EndpointInfoService';
 import { VersionService } from './services/VersionService/VersionService';
 import { AuthzService } from './services/AuthzService/AuthzService';
 import { DataPlaneInfoService } from './services/DataPlaneService/DataPlaneInfoService';
@@ -102,6 +103,7 @@ export async function createRouter({
   clusterResourceTypeInfoService,
   resourceReleaseInfoService,
   projectReleaseInfoService,
+  endpointInfoService,
   secretReferencesInfoService,
   secretsService,
   authzService,
@@ -132,6 +134,7 @@ export async function createRouter({
   clusterResourceTypeInfoService: ClusterResourceTypeInfoService;
   resourceReleaseInfoService: ResourceReleaseInfoService;
   projectReleaseInfoService: ProjectReleaseInfoService;
+  endpointInfoService: EndpointInfoService;
   secretReferencesInfoService: SecretReferencesService;
   secretsService: SecretsService;
   authzService: AuthzService;
@@ -1186,6 +1189,203 @@ export async function createRouter({
       ),
     );
   });
+
+  // ─── Endpoints (traffic routing across a project's components) ───────
+
+  router.get('/endpoints', async (req, res) => {
+    const { projectName, namespaceName } = req.query;
+
+    if (!projectName || !namespaceName) {
+      throw new InputError(
+        'projectName and namespaceName are required query parameters',
+      );
+    }
+
+    const userToken = getUserTokenFromRequest(req);
+
+    res.json(
+      await endpointInfoService.listProjectEndpoints(
+        {
+          projectName: projectName as string,
+          namespaceName: namespaceName as string,
+        },
+        userToken,
+      ),
+    );
+  });
+
+  router.get('/component-traffic', async (req, res) => {
+    const { componentName, projectName, namespaceName } = req.query;
+
+    if (!componentName || !projectName || !namespaceName) {
+      throw new InputError(
+        'componentName, projectName and namespaceName are required query parameters',
+      );
+    }
+
+    const userToken = getUserTokenFromRequest(req);
+
+    res.json(
+      await endpointInfoService.listComponentTraffic(
+        {
+          componentName: componentName as string,
+          projectName: projectName as string,
+          namespaceName: namespaceName as string,
+        },
+        userToken,
+      ),
+    );
+  });
+
+  router.get('/endpoint-environment-info', async (req, res) => {
+    const { endpointName, projectName, namespaceName } = req.query;
+
+    if (!endpointName || !projectName || !namespaceName) {
+      throw new InputError(
+        'endpointName, projectName and namespaceName are required query parameters',
+      );
+    }
+
+    const userToken = getUserTokenFromRequest(req);
+
+    res.json(
+      await endpointInfoService.fetchEndpointEnvironmentInfo(
+        {
+          endpointName: endpointName as string,
+          projectName: projectName as string,
+          namespaceName: namespaceName as string,
+        },
+        userToken,
+      ),
+    );
+  });
+
+  router.get('/endpoint-releases', async (req, res) => {
+    const { endpointName, namespaceName } = req.query;
+
+    if (!endpointName || !namespaceName) {
+      throw new InputError(
+        'endpointName and namespaceName are required query parameters',
+      );
+    }
+
+    const userToken = getUserTokenFromRequest(req);
+
+    res.json(
+      await endpointInfoService.listEndpointReleases(
+        {
+          endpointName: endpointName as string,
+          namespaceName: namespaceName as string,
+        },
+        userToken,
+      ),
+    );
+  });
+
+  router.put('/update-endpoint-traffic', requireAuth, async (req, res) => {
+    const { endpointName, namespaceName, backends } = req.body;
+
+    if (!endpointName || !namespaceName || !Array.isArray(backends)) {
+      throw new InputError(
+        'endpointName, namespaceName and backends are required in request body',
+      );
+    }
+    for (const b of backends) {
+      if (
+        !b ||
+        typeof b.componentName !== 'string' ||
+        typeof b.endpoint !== 'string' ||
+        typeof b.weight !== 'number'
+      ) {
+        throw new InputError(
+          'each backend needs componentName, endpoint and a numeric weight',
+        );
+      }
+    }
+
+    const userToken = getUserTokenFromRequest(req);
+
+    res.json(
+      await endpointInfoService.updateEndpointTraffic(
+        {
+          endpointName: endpointName as string,
+          namespaceName: namespaceName as string,
+          backends,
+        },
+        userToken,
+      ),
+    );
+  });
+
+  router.put(
+    '/update-endpoint-release-binding',
+    requireAuth,
+    async (req, res) => {
+      const {
+        endpointName,
+        projectName,
+        namespaceName,
+        environment,
+        releaseName,
+      } = req.body;
+
+      if (
+        !endpointName ||
+        !projectName ||
+        !namespaceName ||
+        !environment ||
+        !releaseName
+      ) {
+        throw new InputError(
+          'endpointName, projectName, namespaceName, environment and releaseName are required in request body',
+        );
+      }
+
+      const userToken = getUserTokenFromRequest(req);
+
+      res.json(
+        await endpointInfoService.updateEndpointReleaseBinding(
+          {
+            endpointName: endpointName as string,
+            projectName: projectName as string,
+            namespaceName: namespaceName as string,
+            environment: environment as string,
+            releaseName: releaseName as string,
+          },
+          userToken,
+        ),
+      );
+    },
+  );
+
+  router.delete(
+    '/delete-endpoint-release-binding',
+    requireAuth,
+    async (req, res) => {
+      const { endpointName, projectName, namespaceName, environment } =
+        req.body;
+
+      if (!endpointName || !projectName || !namespaceName || !environment) {
+        throw new InputError(
+          'endpointName, projectName, namespaceName and environment are required in request body',
+        );
+      }
+
+      const userToken = getUserTokenFromRequest(req);
+
+      res.json(
+        await endpointInfoService.deleteEndpointReleaseBinding(
+          {
+            endpointName: endpointName as string,
+            projectName: projectName as string,
+            namespaceName: namespaceName as string,
+            environment: environment as string,
+          },
+          userToken,
+        ),
+      );
+    },
+  );
 
   router.get('/project-environment-info', async (req, res) => {
     const { projectName, namespaceName } = req.query;

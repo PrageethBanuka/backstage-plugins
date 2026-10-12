@@ -91,6 +91,15 @@ function createMockServices() {
       fetchProjectRelease: jest.fn(),
       fetchProjectReleaseSchema: jest.fn(),
     },
+    endpointInfoService: {
+      listProjectEndpoints: jest.fn(),
+      listComponentTraffic: jest.fn(),
+      fetchEndpointEnvironmentInfo: jest.fn(),
+      listEndpointReleases: jest.fn(),
+      updateEndpointTraffic: jest.fn(),
+      updateEndpointReleaseBinding: jest.fn(),
+      deleteEndpointReleaseBinding: jest.fn(),
+    },
     secretReferencesInfoService: {
       fetchSecretReferences: jest.fn(),
     },
@@ -1486,6 +1495,132 @@ describe('createRouter', () => {
       expect(response.status).toBe(200);
       expect(response.text).toContain('event: timeout');
       expect(response.text).not.toContain('Failed to open wirelogs stream');
+    });
+  });
+  describe('Endpoint routes', () => {
+    const scope = { projectName: 'shop', namespaceName: 'default' };
+
+    it("GET /endpoints lists a project's endpoints", async () => {
+      services.endpointInfoService.listProjectEndpoints.mockResolvedValue([
+        { name: 'payments-api' },
+      ]);
+
+      const response = await request(app).get('/endpoints').query(scope);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([{ name: 'payments-api' }]);
+      expect(
+        services.endpointInfoService.listProjectEndpoints,
+      ).toHaveBeenCalledWith(scope, 'mock-user-token');
+    });
+
+    it('GET /endpoints returns 400 without a project', async () => {
+      const response = await request(app)
+        .get('/endpoints')
+        .query({ namespaceName: 'default' });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('GET /component-traffic passes the component through', async () => {
+      services.endpointInfoService.listComponentTraffic.mockResolvedValue([]);
+
+      const response = await request(app)
+        .get('/component-traffic')
+        .query({ ...scope, componentName: 'payments-v1' });
+
+      expect(response.status).toBe(200);
+      expect(
+        services.endpointInfoService.listComponentTraffic,
+      ).toHaveBeenCalledWith(
+        { ...scope, componentName: 'payments-v1' },
+        'mock-user-token',
+      );
+    });
+
+    it('GET /endpoint-environment-info returns 400 without an endpoint', async () => {
+      const response = await request(app)
+        .get('/endpoint-environment-info')
+        .query(scope);
+
+      expect(response.status).toBe(400);
+    });
+
+    it('PUT /update-endpoint-traffic forwards the new weights', async () => {
+      services.endpointInfoService.updateEndpointTraffic.mockResolvedValue({
+        latestRelease: 'payments-api-abc',
+        changed: true,
+      });
+      const backends = [
+        { componentName: 'payments-v1', endpoint: 'http', weight: 50 },
+        { componentName: 'payments-v2', endpoint: 'http', weight: 50 },
+      ];
+
+      const response = await request(app).put('/update-endpoint-traffic').send({
+        namespaceName: 'default',
+        endpointName: 'payments-api',
+        backends,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.latestRelease).toBe('payments-api-abc');
+      expect(
+        services.endpointInfoService.updateEndpointTraffic,
+      ).toHaveBeenCalledWith(
+        { namespaceName: 'default', endpointName: 'payments-api', backends },
+        'mock-user-token',
+      );
+    });
+
+    it('PUT /update-endpoint-traffic rejects a non-numeric weight', async () => {
+      const response = await request(app)
+        .put('/update-endpoint-traffic')
+        .send({
+          namespaceName: 'default',
+          endpointName: 'payments-api',
+          backends: [
+            { componentName: 'payments-v1', endpoint: 'http', weight: '50' },
+          ],
+        });
+
+      expect(response.status).toBe(400);
+      expect(
+        services.endpointInfoService.updateEndpointTraffic,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('PUT /update-endpoint-release-binding requires a release', async () => {
+      const response = await request(app)
+        .put('/update-endpoint-release-binding')
+        .send({
+          ...scope,
+          endpointName: 'payments-api',
+          environment: 'development',
+        });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('DELETE /delete-endpoint-release-binding stops routing in an environment', async () => {
+      services.endpointInfoService.deleteEndpointReleaseBinding.mockResolvedValue(
+        { bindingName: 'payments-api-development' },
+      );
+
+      const response = await request(app)
+        .delete('/delete-endpoint-release-binding')
+        .send({
+          ...scope,
+          endpointName: 'payments-api',
+          environment: 'development',
+        });
+
+      expect(response.status).toBe(200);
+      expect(
+        services.endpointInfoService.deleteEndpointReleaseBinding,
+      ).toHaveBeenCalledWith(
+        { ...scope, endpointName: 'payments-api', environment: 'development' },
+        'mock-user-token',
+      );
     });
   });
 });

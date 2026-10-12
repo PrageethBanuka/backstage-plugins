@@ -263,6 +263,20 @@ export type {
   CreateComponentReleaseRequest,
 } from './types/bff-types';
 
+// Endpoint (traffic routing) BFF types
+export type {
+  EndpointRoutingStatus,
+  EndpointBackendWeight,
+  EndpointBackendStatus,
+  EndpointEnvironmentSummary,
+  EndpointSummary,
+  EndpointEnvironment,
+  EndpointReleaseSummary,
+  ComponentTrafficEntry,
+  UpdateEndpointTrafficRequest,
+  UpdateEndpointReleaseBindingRequest,
+} from './types/endpoint-types';
+
 // Convenience aliases for backwards compatibility
 import type {
   BuildResponse,
