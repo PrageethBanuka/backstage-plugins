@@ -19,7 +19,7 @@
   ],
   "versionField": "openChoreoVersion",
   "versionFile": "src/version.ts",
-  "lastSyncCommit": "d91f1361",
-  "lastSyncDate": "2026-10-12T00:00:00+05:30",
-  "lastSyncDescription": "feat(api): add OpenChoreo API endpoints for the Endpoint family (feature/endpoint-mvp)"
+  "lastSyncCommit": "d60dbbed",
+  "lastSyncDate": "2026-10-13T00:00:00+05:30",
+  "lastSyncDescription": "feat(api): expose K8s resources for EndpointReleaseBindings (feature/endpoint-mvp)"
 }

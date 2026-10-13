@@ -2617,6 +2617,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/namespaces/{namespaceName}/endpointreleasebindings/{endpointReleaseBindingName}/k8sresources/tree': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get K8s resource tree for an endpoint release binding
+     * @description Returns a hierarchical view of the live Kubernetes resources (the HTTPRoute and anything it owns) deployed by the RenderedReleases owned by this endpoint release binding.
+     */
+    get: operations['getEndpointReleaseBindingK8sResourceTree'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/namespaces/{namespaceName}/endpointreleasebindings/{endpointReleaseBindingName}/k8sresources/events': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get K8s resource events for an endpoint release binding
+     * @description Returns Kubernetes events for a specific resource in the endpoint release binding's resource tree.
+     */
+    get: operations['getEndpointReleaseBindingK8sResourceEvents'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/namespaces/{namespaceName}/deploymentpipelines': {
     parameters: {
       query?: never;
@@ -14702,6 +14742,75 @@ export interface operations {
         };
         content?: never;
       };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  getEndpointReleaseBindingK8sResourceTree: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint release binding name */
+        endpointReleaseBindingName: components['parameters']['EndpointReleaseBindingNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description K8s resource tree */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['K8sResourceTreeResponse'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  getEndpointReleaseBindingK8sResourceEvents: {
+    parameters: {
+      query: {
+        /** @description API group of the resource (empty string or omitted for core resources) */
+        group?: string;
+        /** @description API version of the resource (e.g. v1) */
+        version: string;
+        /** @description Kind of the resource */
+        kind: string;
+        /** @description Name of the resource */
+        name: string;
+      };
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint release binding name */
+        endpointReleaseBindingName: components['parameters']['EndpointReleaseBindingNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Resource events */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ResourceEventsResponse'];
+        };
+      };
+      400: components['responses']['BadRequest'];
       401: components['responses']['Unauthorized'];
       403: components['responses']['Forbidden'];
       404: components['responses']['NotFound'];
