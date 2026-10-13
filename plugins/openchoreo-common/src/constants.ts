@@ -22,6 +22,12 @@ export const CHOREO_ANNOTATIONS = {
   RESOURCE_TYPE_KIND: 'openchoreo.io/resource-type-kind',
   PROJECT_TYPE: 'openchoreo.io/project-type',
   PROJECT_TYPE_KIND: 'openchoreo.io/project-type-kind',
+  // Endpoint CR (project-scoped traffic routing). These are distinct from the
+  // ENDPOINT_* keys below, which describe a Workload endpoint of a Component.
+  ENDPOINT_CR: 'openchoreo.io/endpoint-cr',
+  ENDPOINT_CR_UID: 'openchoreo.io/endpoint-cr-uid',
+  ENDPOINT_CR_TYPE: 'openchoreo.io/endpoint-cr-type',
+  ENDPOINT_CR_TYPE_KIND: 'openchoreo.io/endpoint-cr-type-kind',
   ENDPOINT_NAME: 'openchoreo.io/endpoint-name',
   ENDPOINT_TYPE: 'openchoreo.io/endpoint-type',
   ENDPOINT_PORT: 'openchoreo.io/endpoint-port',

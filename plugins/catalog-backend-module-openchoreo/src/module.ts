@@ -17,6 +17,7 @@ import {
   DeploymentPipelineEntityProcessor,
   ComponentEntityProcessor,
   ResourceEntityProcessor,
+  EndpointEntityProcessor,
   ComponentTypeEntityProcessor,
   TraitTypeEntityProcessor,
   WorkflowEntityProcessor,
@@ -139,6 +140,10 @@ export const catalogModuleOpenchoreo = createBackendModule({
 
         // Register the Resource entity processor (emits instanceOf relation to (Cluster)ResourceType)
         catalog.addProcessor(new ResourceEntityProcessor());
+
+        // Register the Endpoint entity processor (validates the custom kind and
+        // emits partOf Project and dependsOn Component relations)
+        catalog.addProcessor(new EndpointEntityProcessor());
 
         // Register the ComponentType entity processor
         catalog.addProcessor(new ComponentTypeEntityProcessor());

@@ -7,6 +7,10 @@ export type {
   PromotionPath,
   TargetEnvironmentRef,
 } from './DeploymentPipelineEntityV1alpha1';
+export type {
+  EndpointEntityV1alpha1,
+  EndpointBackend,
+} from './EndpointEntityV1alpha1';
 export type { ComponentTypeEntityV1alpha1 } from './ComponentTypeEntityV1alpha1';
 export type { TraitTypeEntityV1alpha1 } from './TraitTypeEntityV1alpha1';
 export type { WorkflowEntityV1alpha1 } from './WorkflowEntityV1alpha1';

@@ -1450,6 +1450,7 @@ export const CATALOG_PERMISSION_TO_ACTION: Record<string, string> = {
 export const OPENCHOREO_MANAGED_ENTITY_KINDS = [
   'Component',
   'Resource',
+  'Endpoint',
   'System',
   'Domain',
   'Dataplane',
@@ -1498,6 +1499,11 @@ export const CATALOG_KIND_TO_ACTION: Record<string, Record<string, string>> = {
     'catalog.entity.read': 'resource:view',
     'catalog.entity.delete': 'resource:delete',
     'catalog.entity.refresh': 'resource:update',
+  },
+  endpoint: {
+    'catalog.entity.read': 'endpoint:view',
+    'catalog.entity.delete': 'endpoint:delete',
+    'catalog.entity.refresh': 'endpoint:update',
   },
   system: {
     'catalog.entity.read': 'project:view',

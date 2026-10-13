@@ -76,6 +76,7 @@ type NewClusterProjectType =
   OpenChoreoComponents['schemas']['ClusterProjectType'];
 type NewProjectType = OpenChoreoComponents['schemas']['ProjectType'];
 type NewResource = OpenChoreoComponents['schemas']['ResourceInstance'];
+type NewEndpoint = OpenChoreoComponents['schemas']['Endpoint'];
 type NewNamespace = OpenChoreoComponents['schemas']['Namespace'];
 type NewAgentConnectionStatus =
   OpenChoreoComponents['schemas']['AgentConnectionStatus'];
@@ -842,6 +843,69 @@ export function translateResourceToEntity(
       owner: config.defaultOwner,
       system: resource.projectName,
       ...(hasParameters && { parameters: resource.parameters as any }),
+    },
+  };
+}
+
+/**
+ * Translates an OpenChoreo Endpoint to a Backstage Endpoint entity.
+ *
+ * An Endpoint is project-level traffic routing, at the same level as a
+ * Resource: `spec.system` links it to the owning Project and `spec.type` names
+ * its (Cluster)EndpointType, whose kind lives in an annotation so catalog
+ * filters stay flat. `spec.backends` mirrors the Endpoint's backendRefs so the
+ * processor can relate the Endpoint to the Components it routes to.
+ */
+export function translateEndpointToEntity(
+  endpoint: {
+    name: string;
+    uid?: string;
+    displayName?: string;
+    description?: string;
+    projectName: string;
+    typeName: string;
+    typeKind: 'EndpointType' | 'ClusterEndpointType';
+    backends: Array<{ component: string; endpoint: string; weight: number }>;
+    createdAt?: string;
+    deletionTimestamp?: string;
+  },
+  namespaceName: string,
+  config: ResourceEntityTranslationConfig,
+): Entity {
+  return {
+    apiVersion: 'backstage.io/v1alpha1',
+    kind: 'Endpoint',
+    metadata: {
+      name: endpoint.name,
+      namespace: namespaceName,
+      title: endpoint.displayName || endpoint.name,
+      description: endpoint.description || `${endpoint.name} endpoint`,
+      tags: ['openchoreo', 'endpoint', endpoint.typeName],
+      annotations: {
+        'backstage.io/managed-by-location': `provider:${config.locationKey}`,
+        'backstage.io/managed-by-origin-location': `provider:${config.locationKey}`,
+        [CHOREO_ANNOTATIONS.NAMESPACE]: namespaceName,
+        [CHOREO_ANNOTATIONS.PROJECT]: endpoint.projectName,
+        [CHOREO_ANNOTATIONS.ENDPOINT_CR]: endpoint.name,
+        ...(endpoint.uid && {
+          [CHOREO_ANNOTATIONS.ENDPOINT_CR_UID]: endpoint.uid,
+        }),
+        [CHOREO_ANNOTATIONS.ENDPOINT_CR_TYPE]: endpoint.typeName,
+        [CHOREO_ANNOTATIONS.ENDPOINT_CR_TYPE_KIND]: endpoint.typeKind,
+        [CHOREO_ANNOTATIONS.CREATED_AT]: endpoint.createdAt || '',
+        ...(endpoint.deletionTimestamp && {
+          [CHOREO_ANNOTATIONS.DELETION_TIMESTAMP]: endpoint.deletionTimestamp,
+        }),
+      },
+      labels: {
+        [CHOREO_LABELS.MANAGED]: 'true',
+      },
+    },
+    spec: {
+      type: endpoint.typeName,
+      owner: config.defaultOwner,
+      system: endpoint.projectName,
+      backends: endpoint.backends,
     },
   };
 }
@@ -2003,6 +2067,41 @@ export function translateNewResourceToEntity(
       parameters: spec?.parameters as Record<string, unknown> | undefined,
       createdAt: getCreatedAt(resource),
       deletionTimestamp: getDeletionTimestamp(resource),
+    },
+    namespaceName,
+    { locationKey: ctx.providerName, defaultOwner: ctx.defaultOwner },
+  );
+}
+
+/**
+ * Translates a new-API Endpoint (typed-client `Endpoint` shape) into a
+ * Backstage Endpoint entity.
+ */
+export function translateNewEndpointToEntity(
+  endpoint: NewEndpoint,
+  namespaceName: string,
+  ctx: NewApiTranslatorContext,
+): Entity {
+  const spec = endpoint.spec;
+  const typeKind =
+    (spec?.type?.kind as 'EndpointType' | 'ClusterEndpointType' | undefined) ??
+    'EndpointType';
+  return translateEndpointToEntity(
+    {
+      name: getName(endpoint)!,
+      uid: getUid(endpoint),
+      displayName: getDisplayName(endpoint),
+      description: getDescription(endpoint),
+      projectName: spec?.owner?.projectName ?? '',
+      typeName: spec?.type?.name ?? '',
+      typeKind,
+      backends: (spec?.backendRefs ?? []).map(ref => ({
+        component: ref.componentName,
+        endpoint: ref.endpoint,
+        weight: ref.weight ?? 1,
+      })),
+      createdAt: getCreatedAt(endpoint),
+      deletionTimestamp: getDeletionTimestamp(endpoint),
     },
     namespaceName,
     { locationKey: ctx.providerName, defaultOwner: ctx.defaultOwner },

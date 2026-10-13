@@ -122,6 +122,8 @@ const KIND_TO_ENTITY_LEVEL: Record<string, EntityLevel> = {
   system: 'system',
   component: 'component',
   resource: 'resource',
+  // Endpoints are project-level siblings of Components and Resources.
+  endpoint: 'resource',
   dataplane: 'namespace-scoped',
   workflowplane: 'namespace-scoped',
   observabilityplane: 'namespace-scoped',
@@ -308,7 +310,11 @@ function buildScopeFilter(
         key: `metadata.annotations.${CHOREO_ANNOTATIONS.PROJECT_ID}`,
         values: [parsed.project],
       });
-    } else if (kindLower === 'component' || kindLower === 'resource') {
+    } else if (
+      kindLower === 'component' ||
+      kindLower === 'resource' ||
+      kindLower === 'endpoint'
+    ) {
       conditions.push({
         key: `metadata.annotations.${CHOREO_ANNOTATIONS.PROJECT}`,
         values: [parsed.project],

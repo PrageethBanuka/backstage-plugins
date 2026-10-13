@@ -48,6 +48,7 @@ import {
   translateNewClusterProjectTypeToEntity,
   translateNewProjectTypeToEntity,
   translateNewResourceToEntity,
+  translateNewEndpointToEntity,
   translateNewResourceTypeToEntity,
   translateNewTraitToEntity,
   translateNewWorkflowPlaneToEntity,
@@ -89,6 +90,7 @@ type NewProjectType = OpenChoreoComponents['schemas']['ProjectType'];
 type NewClusterProjectType =
   OpenChoreoComponents['schemas']['ClusterProjectType'];
 type NewResource = OpenChoreoComponents['schemas']['ResourceInstance'];
+type NewEndpoint = OpenChoreoComponents['schemas']['Endpoint'];
 type NewTrait = OpenChoreoComponents['schemas']['Trait'];
 type NewWorkflow = OpenChoreoComponents['schemas']['Workflow'];
 type NewClusterComponentType =
@@ -522,6 +524,19 @@ export class EventDeltaApplier {
         },
       ) as any,
       'resource',
+      `${ns}/${name}`,
+    );
+  }
+
+  private fetchEndpoint(client: OpenChoreoApiClient, ns: string, name: string) {
+    return this.fetchOne<NewEndpoint>(
+      client.GET(
+        '/api/v1/namespaces/{namespaceName}/endpoints/{endpointName}',
+        {
+          params: { path: { namespaceName: ns, endpointName: name } },
+        },
+      ) as any,
+      'endpoint',
       `${ns}/${name}`,
     );
   }
@@ -1453,6 +1468,18 @@ export class EventDeltaApplier {
     ]);
   }
 
+  private async refreshEndpoint(ns: string, name: string): Promise<void> {
+    const client = await this.createApiClient();
+    const endpoint = await this.fetchEndpoint(client, ns, name);
+    if (!endpoint) {
+      await this.removeEntityRefs([this.buildEntityRef('endpoint', ns, name)]);
+      return;
+    }
+    await this.upsertEntities([
+      translateNewEndpointToEntity(endpoint, ns, this.translatorContext),
+    ]);
+  }
+
   private async refreshWorkflow(ns: string, name: string): Promise<void> {
     const client = await this.createApiClient();
     const wf = await this.fetchWorkflow(client, ns, name);
@@ -1724,6 +1751,9 @@ export class EventDeltaApplier {
         return;
       case 'resource':
         await this.refreshResource(ns, name);
+        return;
+      case 'endpoint':
+        await this.refreshEndpoint(ns, name);
         return;
       case 'workflow':
         await this.refreshWorkflow(ns, name);

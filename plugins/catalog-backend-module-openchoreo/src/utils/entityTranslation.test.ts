@@ -9,6 +9,7 @@ import {
   translateNewProjectToEntity,
   translateNewProjectTypeToEntity,
   translateNewResourceToEntity,
+  translateNewEndpointToEntity,
   translateNewResourceTypeToEntity,
   translateNotificationChannelToEntity,
   translateProjectTypeToEntity,
@@ -979,5 +980,88 @@ describe('translateNewComponentToEntity — spec.dependsOn', () => {
     );
 
     expect((entity.spec as any).dependsOn).toBeUndefined();
+  });
+});
+
+describe('translateNewEndpointToEntity', () => {
+  const ctx = {
+    providerName: 'openchoreo-provider',
+    defaultOwner: 'group:default/openchoreo',
+  } as any;
+
+  it('translates an Endpoint into a project-level Endpoint entity', () => {
+    const entity = translateNewEndpointToEntity(
+      {
+        apiVersion: 'openchoreo.dev/v1alpha1',
+        kind: 'Endpoint',
+        metadata: {
+          name: 'payments-api',
+          namespace: 'default',
+          uid: 'ep-uid-1',
+          annotations: { 'openchoreo.dev/display-name': 'Payments API' },
+          creationTimestamp: '2026-10-12T06:57:05Z',
+        } as any,
+        spec: {
+          owner: { projectName: 'shop' },
+          type: { kind: 'ClusterEndpointType', name: 'http-weighted' },
+          backendRefs: [
+            { componentName: 'payments-v1', endpoint: 'http', weight: 90 },
+            { componentName: 'payments-v2', endpoint: 'http', weight: 10 },
+            { componentName: 'payments-v3', endpoint: 'http' },
+          ],
+        } as any,
+      } as any,
+      'default',
+      ctx,
+    );
+
+    expect(entity.kind).toBe('Endpoint');
+    expect(entity.metadata.name).toBe('payments-api');
+    expect(entity.metadata.title).toBe('Payments API');
+    expect(entity.metadata.labels).toMatchObject({
+      'openchoreo.io/managed': 'true',
+    });
+    expect(entity.spec).toMatchObject({
+      type: 'http-weighted',
+      owner: 'group:default/openchoreo',
+      system: 'shop',
+    });
+    expect(entity.spec?.backends).toEqual([
+      { component: 'payments-v1', endpoint: 'http', weight: 90 },
+      { component: 'payments-v2', endpoint: 'http', weight: 10 },
+      // an omitted weight defaults to 1, like the CRD
+      { component: 'payments-v3', endpoint: 'http', weight: 1 },
+    ]);
+    expect(entity.metadata.annotations).toMatchObject({
+      'backstage.io/managed-by-location': 'provider:openchoreo-provider',
+      'openchoreo.io/namespace': 'default',
+      'openchoreo.io/project': 'shop',
+      'openchoreo.io/endpoint-cr': 'payments-api',
+      'openchoreo.io/endpoint-cr-uid': 'ep-uid-1',
+      'openchoreo.io/endpoint-cr-type': 'http-weighted',
+      'openchoreo.io/endpoint-cr-type-kind': 'ClusterEndpointType',
+    });
+  });
+
+  it('does not reuse the workload endpoint annotation keys', () => {
+    const entity = translateNewEndpointToEntity(
+      {
+        metadata: { name: 'e', namespace: 'default' } as any,
+        spec: {
+          owner: { projectName: 'shop' },
+          type: { kind: 'EndpointType', name: 'plain' },
+          backendRefs: [],
+        } as any,
+      } as any,
+      'default',
+      ctx,
+    );
+
+    const annotations = entity.metadata.annotations ?? {};
+    expect(annotations).not.toHaveProperty('openchoreo.io/endpoint-type');
+    expect(annotations).not.toHaveProperty('openchoreo.io/endpoint-name');
+    expect(annotations['openchoreo.io/endpoint-cr-type-kind']).toBe(
+      'EndpointType',
+    );
   });
 });

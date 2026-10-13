@@ -340,6 +340,62 @@ describe('matchesCatalogEntityCapability.apply', () => {
     });
   });
 
+  describe('Endpoint entities (project-sibling of Component)', () => {
+    const endpointEntity = () =>
+      makeEntity('Endpoint', {
+        [CHOREO_ANNOTATIONS.NAMESPACE]: 'acme',
+        [CHOREO_ANNOTATIONS.PROJECT]: 'payments',
+      });
+
+    it('is allowed by a project-level path', () => {
+      expect(
+        apply(endpointEntity(), {
+          endpoint: {
+            action: 'endpoint:view',
+            allowedPaths: ['ns/acme/project/payments'],
+            deniedPaths: [],
+          },
+        }),
+      ).toBe(true);
+    });
+
+    it('is hidden by a deny on the parent Project', () => {
+      expect(
+        apply(endpointEntity(), {
+          endpoint: {
+            action: 'endpoint:view',
+            allowedPaths: ['*'],
+            deniedPaths: ['ns/acme/project/payments'],
+          },
+        }),
+      ).toBe(false);
+    });
+
+    it('is not hidden by a deny on a sibling Component', () => {
+      expect(
+        apply(endpointEntity(), {
+          endpoint: {
+            action: 'endpoint:view',
+            allowedPaths: ['*'],
+            deniedPaths: ['ns/acme/project/payments/component/orders-api'],
+          },
+        }),
+      ).toBe(true);
+    });
+
+    it('is not allowed by a path for another project', () => {
+      expect(
+        apply(endpointEntity(), {
+          endpoint: {
+            action: 'endpoint:view',
+            allowedPaths: ['ns/acme/project/orders'],
+            deniedPaths: [],
+          },
+        }),
+      ).toBe(false);
+    });
+  });
+
   describe('cluster-scoped entities', () => {
     it('allows ClusterDataplane only when global wildcard "*" is allowed', () => {
       const entity = makeEntity('ClusterDataplane', {});

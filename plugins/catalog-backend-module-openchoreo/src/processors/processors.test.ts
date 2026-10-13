@@ -1,5 +1,10 @@
 import { processingResult } from '@backstage/plugin-catalog-node';
-import { RELATION_HAS_PART, RELATION_PART_OF } from '@backstage/catalog-model';
+import {
+  RELATION_DEPENDENCY_OF,
+  RELATION_DEPENDS_ON,
+  RELATION_HAS_PART,
+  RELATION_PART_OF,
+} from '@backstage/catalog-model';
 import {
   RELATION_HOSTED_ON,
   RELATION_HOSTS,
@@ -30,6 +35,7 @@ import { ClusterTraitTypeEntityProcessor } from './ClusterTraitTypeEntityProcess
 import { ClusterWorkflowEntityProcessor } from './ClusterWorkflowEntityProcessor';
 import { ClusterWorkflowPlaneEntityProcessor } from './ClusterWorkflowPlaneEntityProcessor';
 import { ComponentEntityProcessor } from './ComponentEntityProcessor';
+import { EndpointEntityProcessor } from './EndpointEntityProcessor';
 import { ResourceEntityProcessor } from './ResourceEntityProcessor';
 import { ComponentTypeEntityProcessor } from './ComponentTypeEntityProcessor';
 import { CustomAnnotationProcessor } from './CustomAnnotationProcessor';
@@ -1773,5 +1779,107 @@ describe('ResourceEntityProcessor', () => {
     const call = emit.mock.calls[0][0];
     expect(call.relation.source.namespace).toBe('default');
     expect(call.relation.target.namespace).toBe('default');
+  });
+});
+
+describe('EndpointEntityProcessor', () => {
+  const processor = new EndpointEntityProcessor();
+  const endpoint = (spec: any, namespace = 'default') =>
+    ({
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Endpoint',
+      metadata: { name: 'payments-api', namespace },
+      spec,
+    } as any);
+
+  it('validates only the Endpoint kind', async () => {
+    expect(await processor.validateEntityKind(endpoint({}))).toBe(true);
+    expect(
+      await processor.validateEntityKind({
+        apiVersion: 'backstage.io/v1alpha1',
+        kind: 'Resource',
+        metadata: { name: 'x' },
+      } as any),
+    ).toBe(false);
+  });
+
+  it('emits partOf/hasPart to the Project', async () => {
+    const emit = jest.fn();
+    await processor.postProcessEntity(
+      endpoint({ system: 'shop', backends: [] }),
+      mockLocation,
+      emit,
+    );
+
+    const ref = {
+      kind: 'endpoint',
+      namespace: 'default',
+      name: 'payments-api',
+    };
+    const system = { kind: 'system', namespace: 'default', name: 'shop' };
+    expect(emit).toHaveBeenCalledWith(
+      processingResult.relation({
+        source: ref,
+        target: system,
+        type: RELATION_PART_OF,
+      }),
+    );
+    expect(emit).toHaveBeenCalledWith(
+      processingResult.relation({
+        source: system,
+        target: ref,
+        type: RELATION_HAS_PART,
+      }),
+    );
+  });
+
+  it('emits dependsOn/dependencyOf once per backend component', async () => {
+    const emit = jest.fn();
+    await processor.postProcessEntity(
+      endpoint({
+        system: 'shop',
+        backends: [
+          { component: 'payments-v1', endpoint: 'http', weight: 90 },
+          { component: 'payments-v2', endpoint: 'http', weight: 10 },
+          { component: 'payments-v2', endpoint: 'grpc', weight: 0 },
+        ],
+      }),
+      mockLocation,
+      emit,
+    );
+
+    const ref = {
+      kind: 'endpoint',
+      namespace: 'default',
+      name: 'payments-api',
+    };
+    const v2 = { kind: 'component', namespace: 'default', name: 'payments-v2' };
+    const dependsOn = emit.mock.calls.filter(
+      ([c]) => c.relation.type === RELATION_DEPENDS_ON,
+    );
+    expect(dependsOn.map(([c]) => c.relation.target.name)).toEqual([
+      'payments-v1',
+      'payments-v2',
+    ]);
+    expect(emit).toHaveBeenCalledWith(
+      processingResult.relation({
+        source: v2,
+        target: ref,
+        type: RELATION_DEPENDENCY_OF,
+      }),
+    );
+  });
+
+  it('leaves other kinds untouched', async () => {
+    const emit = jest.fn();
+    const other = {
+      kind: 'Resource',
+      metadata: { name: 'x' },
+      spec: {},
+    } as any;
+    expect(await processor.postProcessEntity(other, mockLocation, emit)).toBe(
+      other,
+    );
+    expect(emit).not.toHaveBeenCalled();
   });
 });

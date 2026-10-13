@@ -123,6 +123,7 @@ describe('EventDeltaApplier.handleEvent', () => {
       ],
     },
     { kind: 'Resource', expectedRefs: ['resource:test-ns/order'] },
+    { kind: 'Endpoint', expectedRefs: ['endpoint:test-ns/order'] },
     { kind: 'Workflow', expectedRefs: ['workflow:test-ns/order'] },
   ];
 
