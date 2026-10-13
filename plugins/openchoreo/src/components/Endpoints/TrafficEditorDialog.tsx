@@ -23,7 +23,10 @@ import {
 import { makeStyles, useTheme } from '@material-ui/core/styles';
 import { Alert } from '@material-ui/lab';
 import { StatusBadge } from '@openchoreo/backstage-design-system';
-import { useEndpointRolloutPermission } from '@openchoreo/backstage-plugin-react';
+import {
+  formatRelativeTime,
+  useEndpointRolloutPermission,
+} from '@openchoreo/backstage-plugin-react';
 import type {
   EndpointBackendWeight,
   EndpointEnvironment,
@@ -118,6 +121,11 @@ export const TrafficEditorDialog = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedRelease, setSavedRelease] = useState<string | undefined>();
+  // True when the saved split matched a release that already existed.
+  const [reusedRelease, setReusedRelease] = useState<{
+    name: string;
+    createdAt?: string;
+  } | null>(null);
   const [selectedEnvs, setSelectedEnvs] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -127,6 +135,7 @@ export const TrafficEditorDialog = ({
     setBusy(false);
     setError(null);
     setSavedRelease(undefined);
+    setReusedRelease(null);
     setSelectedEnvs(new Set());
   }, [open, backends]);
 
@@ -153,6 +162,9 @@ export const TrafficEditorDialog = ({
     setBusy(true);
     setError(null);
     try {
+      // Releases are named by their split, so saving a split that already
+      // exists gives back that release instead of cutting a new one.
+      const knownBefore = new Map(releases.map(r => [r.name, r]));
       const res = await onSave(draft);
       if (!res.latestRelease) {
         setError(
@@ -161,6 +173,12 @@ export const TrafficEditorDialog = ({
         return;
       }
       setSavedRelease(res.latestRelease);
+      const existing = knownBefore.get(res.latestRelease);
+      setReusedRelease(
+        existing
+          ? { name: existing.name, createdAt: existing.createdAt }
+          : null,
+      );
       const firstEnv = environments.find(
         e => missingBackends(e, draft).length === 0 && !e.isProduction,
       );
@@ -319,9 +337,23 @@ export const TrafficEditorDialog = ({
           </>
         ) : (
           <>
+            {reusedRelease ? (
+              <Alert severity="info" style={{ marginBottom: 16 }}>
+                These weights match release{' '}
+                <strong>{reusedRelease.name}</strong>
+                {reusedRelease.createdAt
+                  ? `, created ${formatRelativeTime(reusedRelease.createdAt)}`
+                  : ''}
+                , so that release is reused. Nothing new was created.
+              </Alert>
+            ) : (
+              <Typography variant="body2" color="textSecondary" paragraph>
+                Release <strong>{savedRelease}</strong> is saved.
+              </Typography>
+            )}
             <Typography variant="body2" color="textSecondary" paragraph>
-              Release <strong>{savedRelease}</strong> is saved. Choose where to
-              roll it out; you can also do this later from each environment.
+              Choose where to roll it out; you can also do this later from each
+              environment.
             </Typography>
             <Table size="small">
               <TableHead>

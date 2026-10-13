@@ -381,12 +381,13 @@ export function CompactEntityHeader(props: CompactEntityHeaderProps) {
 
   // Expected number of parent breadcrumb levels for the URL kind, used to size
   // the skeleton trail while loading so it matches the real trail's shape:
-  // Component/Resource/API sit under Namespace > Project (2), Project under
+  // Component/Resource/Endpoint/API sit under Namespace > Project (2), Project under
   // Namespace (1), Namespace and standalone platform resources have none (0).
   const loadingAncestorCount = (() => {
     switch (kind.toLowerCase()) {
       case 'component':
       case 'resource':
+      case 'endpoint':
       case 'api':
         return 2;
       case 'system':

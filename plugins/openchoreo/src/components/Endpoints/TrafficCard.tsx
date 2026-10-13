@@ -5,10 +5,7 @@ import { Link } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { Card, StatusBadge } from '@openchoreo/backstage-design-system';
-import {
-  CHOREO_ANNOTATIONS,
-  type ComponentTrafficEntry,
-} from '@openchoreo/backstage-plugin-common';
+import type { ComponentTrafficEntry } from '@openchoreo/backstage-plugin-common';
 import { openChoreoClientApiRef } from '../../api/OpenChoreoClientApi';
 import { useOverviewCardStyles } from '../Environments/OverviewCard/styles';
 import { deriveEndpointBadgeStatus, ENDPOINT_BADGE_LABEL } from './badgeStatus';
@@ -87,8 +84,7 @@ export const TrafficCard = () => {
   }
 
   const namespace = entity.metadata.namespace || 'default';
-  const project = entity.metadata.annotations?.[CHOREO_ANNOTATIONS.PROJECT];
-  const endpointsTab = `/catalog/${namespace}/system/${project}/endpoints`;
+  const endpointsTab = `/catalog/${namespace}/component/${entity.metadata.name}/endpoints`;
 
   return (
     <Card padding={16} className={cardClasses.card}>
@@ -107,7 +103,9 @@ export const TrafficCard = () => {
           >
             <Box className={classes.rowHead}>
               <Typography variant="body2">
-                <Link to={`${endpointsTab}/${entry.endpointName}`}>
+                <Link
+                  to={`/catalog/${namespace}/endpoint/${entry.endpointName}`}
+                >
                   <strong>{entry.endpointName}</strong>
                 </Link>{' '}
                 <Typography
@@ -154,7 +152,7 @@ export const TrafficCard = () => {
       <Box className={cardClasses.actions}>
         <Link to={endpointsTab} style={{ textDecoration: 'none' }}>
           <Button variant="outlined" color="primary" size="small">
-            Go to Endpoints
+            All endpoints
           </Button>
         </Link>
       </Box>

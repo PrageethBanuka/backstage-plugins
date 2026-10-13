@@ -174,8 +174,12 @@ const resourceDefinitionEntityContent = EntityContentBlueprint.make({
     title: 'Definition',
     group: 'definition',
     // API entities are excluded — upstream api-docs owns their /definition tab.
+    // Endpoints are excluded until the definition editor supports them (it
+    // needs the Endpoint kind in the platform-resource service and its own
+    // update/delete permissions).
     filter: entity =>
-      isOpenChoreoManagedEntity(entity) && entity.kind.toLowerCase() !== 'api',
+      isOpenChoreoManagedEntity(entity) &&
+      !['api', 'endpoint'].includes(entity.kind.toLowerCase()),
     loader: () =>
       import('./components/ResourceDefinition').then(m => (
         <m.ResourceDefinitionTab />
@@ -248,16 +252,79 @@ const projectDeployEntityContent = EntityContentBlueprint.make({
   },
 });
 
-// Endpoints route a project's traffic across its components with weights.
-const projectEndpointsEntityContent = EntityContentBlueprint.make({
-  name: 'project-endpoints',
+// ─── Endpoint page (managed) tab + cards ──────────────────────────────────
+//
+// An Endpoint is a project-level entity at the same level as a Resource: its
+// Deploy tab is the Resource Deploy tab with a Traffic tile in place of the
+// "Set up" tile. Components list the Endpoints that route to them.
+
+const endpointDeployEntityContent = EntityContentBlueprint.make({
+  name: 'endpoint-deploy',
+  params: {
+    path: '/environments',
+    title: 'Deploy',
+    group: 'deploy',
+    filter: isOpenChoreoManagedOfKind('endpoint'),
+    loader: () =>
+      import('./components/Endpoints').then(m => <m.EndpointDeploy />),
+  },
+});
+
+const endpointTrafficOverviewCard = EntityCardBlueprint.make({
+  name: 'endpoint-traffic',
+  params: {
+    filter: isOpenChoreoManagedOfKind('endpoint'),
+    loader: () =>
+      import('./components/EndpointOverview').then(m => (
+        <m.EndpointTrafficOverviewCard />
+      )),
+  },
+});
+
+const endpointDeploymentsCard = EntityCardBlueprint.make({
+  name: 'endpoint-deployments',
+  params: {
+    filter: isOpenChoreoManagedOfKind('endpoint'),
+    loader: () =>
+      import('./components/EndpointOverview').then(m => (
+        <m.EndpointDeploymentsCard />
+      )),
+  },
+});
+
+const endpointBackendsCard = EntityCardBlueprint.make({
+  name: 'endpoint-backends',
+  params: {
+    filter: isOpenChoreoManagedOfKind('endpoint'),
+    loader: () =>
+      import('./components/EndpointOverview').then(m => (
+        <m.EndpointBackendsCard />
+      )),
+  },
+});
+
+const endpointOverviewLayout = EntityContentLayoutBlueprint.make({
+  name: 'endpoint-overview',
+  params: {
+    filter: isOpenChoreoManagedOfKind('endpoint'),
+    loader: () =>
+      import('./extensions/entityLayouts/EndpointOverviewLayout').then(
+        m => m.default,
+      ),
+  },
+});
+
+// The Endpoints that send traffic to a component. Appears for every
+// component; it is empty until an Endpoint routes to it.
+const componentEndpointsEntityContent = EntityContentBlueprint.make({
+  name: 'component-endpoints',
   params: {
     path: '/endpoints',
     title: 'Endpoints',
     group: 'endpoints',
-    filter: isOpenChoreoManagedOfKind('system'),
+    filter: isOpenChoreoManagedOfKind('component'),
     loader: () =>
-      import('./components/Endpoints').then(m => <m.EndpointsTab />),
+      import('./components/Endpoints').then(m => <m.ComponentEndpoints />),
   },
 });
 
@@ -1035,7 +1102,11 @@ export const openChoreoPlugin = createFrontendPlugin({
     trafficCard,
     runtimeHealthCard,
     projectDeployEntityContent,
-    projectEndpointsEntityContent,
+    endpointDeployEntityContent,
+    endpointTrafficOverviewCard,
+    endpointDeploymentsCard,
+    endpointBackendsCard,
+    componentEndpointsEntityContent,
     cellDiagramEntityContent,
     projectDiagramEntityContent,
     projectContentsCard,
@@ -1077,6 +1148,7 @@ export const openChoreoPlugin = createFrontendPlugin({
     systemOverviewLayout,
     domainOverviewLayout,
     resourceOverviewLayout,
+    endpointOverviewLayout,
     environmentOverviewLayout,
     dataplaneOverviewLayout,
     clusterDataplaneOverviewLayout,

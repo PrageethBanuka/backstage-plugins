@@ -41,11 +41,12 @@ export const APPLICATION_VIEW: GraphViewDefinition = {
   id: 'developer',
   label: 'Developer Resources',
   description:
-    'Projects, Components, Resources, Deployment Pipelines, and Environments',
+    'Projects, Components, Resources, Endpoints, Deployment Pipelines, and Environments',
   kinds: [
     'system',
     'component',
     'resource',
+    'endpoint',
     'deploymentpipeline',
     'environment',
   ],
@@ -181,6 +182,7 @@ export const ALL_FILTERABLE_KINDS: {
   { id: 'system', label: 'Project' },
   { id: 'component', label: 'Component' },
   { id: 'resource', label: 'Resource' },
+  { id: 'endpoint', label: 'Endpoint' },
   { id: 'deploymentpipeline', label: 'Pipeline' },
   { id: 'environment', label: 'Environment' },
   { id: 'dataplane', label: 'Data Plane' },

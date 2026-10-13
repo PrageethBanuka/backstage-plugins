@@ -18,7 +18,11 @@ export type {
 } from './components/Environments/EnvironmentsContext';
 export { ResourceEnvironments } from './components/ResourceEnvironments';
 export { ProjectEnvironments } from './components/ProjectEnvironments';
-export { EndpointsTab, TrafficCard } from './components/Endpoints';
+export {
+  EndpointDeploy,
+  ComponentEndpoints,
+  TrafficCard,
+} from './components/Endpoints';
 export { ApiTryOut } from './components/ApiTryOut';
 export { CellDiagram } from './components/CellDiagram/CellDiagram';
 export {

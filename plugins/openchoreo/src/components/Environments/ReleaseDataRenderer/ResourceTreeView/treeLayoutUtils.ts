@@ -50,6 +50,7 @@ function aggregateHealth(nodes: ResourceTreeNode[]): HealthStatus {
 export function buildTreeNodes(
   resourceTreeData: ResourceTreeData,
   releaseBindingData?: Record<string, unknown> | null,
+  rootKind: string = 'ReleaseBinding',
 ): TreeNode[] {
   const nodes: TreeNode[] = [];
 
@@ -92,11 +93,11 @@ export function buildTreeNodes(
     ((releaseBindingData?.metadata as Record<string, unknown>)
       ?.name as string) ??
     undefined;
-  const rootName = bindingName ?? 'ReleaseBinding';
+  const rootName = bindingName ?? rootKind;
 
   nodes.push({
     id: ROOT_NODE_ID,
-    kind: 'ReleaseBinding',
+    kind: rootKind,
     name: rootName,
     isRoot: true,
     healthStatus: rootHealth,

@@ -4,6 +4,7 @@ import { TrafficEditorDialog } from './TrafficEditorDialog';
 
 const mockRolloutPerm = jest.fn();
 jest.mock('@openchoreo/backstage-plugin-react', () => ({
+  formatRelativeTime: () => '3 days ago',
   useEndpointRolloutPermission: (env: string, hasBinding: boolean) =>
     mockRolloutPerm(env, hasBinding),
 }));
@@ -120,6 +121,40 @@ describe('TrafficEditorDialog', () => {
         'payments-api-bbb',
       ),
     );
+  });
+
+  it('says so when the saved split matches an existing release', async () => {
+    const props = renderDialog({
+      releases: [
+        {
+          name: 'payments-api-bbb',
+          createdAt: '2026-10-09T00:00:00Z',
+          backends: [],
+        },
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: '50 / 50' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save as new release' }),
+    );
+
+    await waitFor(() => expect(props.onSave).toHaveBeenCalled());
+    expect(
+      await screen.findByText(/so that release is reused/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('payments-api-bbb')).toBeInTheDocument();
+  });
+
+  it('does not claim a reuse when the release is new', async () => {
+    const props = renderDialog();
+    fireEvent.click(screen.getByRole('button', { name: '50 / 50' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save as new release' }),
+    );
+
+    await waitFor(() => expect(props.onSave).toHaveBeenCalled());
+    expect(await screen.findByLabelText('development')).toBeInTheDocument();
+    expect(screen.queryByText(/is reused/)).not.toBeInTheDocument();
   });
 
   it('blocks an environment the user may not change', async () => {

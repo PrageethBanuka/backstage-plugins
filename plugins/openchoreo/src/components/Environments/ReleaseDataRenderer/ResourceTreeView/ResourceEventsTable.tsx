@@ -16,6 +16,7 @@ import { openChoreoClientApiRef } from '../../../../api/OpenChoreoClientApi';
 import type { ResourceEvent } from '../../../../api/OpenChoreoClientApi';
 import type { LayoutNode } from './treeTypes';
 import { useTreeStyles } from './treeStyles';
+import { useResourceTreeSource } from './ResourceTreeSourceContext';
 
 interface ResourceEventsTableProps {
   node: LayoutNode;
@@ -85,6 +86,7 @@ export const ResourceEventsTable: FC<ResourceEventsTableProps> = ({
   const treeClasses = useTreeStyles();
   const classes = useEventStyles();
   const client = useApi(openChoreoClientApiRef);
+  const treeSource = useResourceTreeSource();
 
   const [events, setEvents] = useState<ResourceEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,16 +100,19 @@ export const ResourceEventsTable: FC<ResourceEventsTableProps> = ({
       setError(null);
 
       try {
-        const response = await client.fetchResourceEvents(
-          namespaceName,
-          releaseBindingName,
-          {
-            group: node.group ?? '',
-            version: node.version ?? '',
-            kind: node.kind,
-            name: node.name,
-          },
-        );
+        const resource = {
+          group: node.group ?? '',
+          version: node.version ?? '',
+          kind: node.kind,
+          name: node.name,
+        };
+        const response = treeSource
+          ? await treeSource.fetchEvents(resource)
+          : await client.fetchResourceEvents(
+              namespaceName,
+              releaseBindingName,
+              resource,
+            );
 
         if (!cancelled) {
           const responseData = (response as any)?.data ?? response;
@@ -138,6 +143,7 @@ export const ResourceEventsTable: FC<ResourceEventsTableProps> = ({
     };
   }, [
     client,
+    treeSource,
     namespaceName,
     releaseBindingName,
     node.kind,

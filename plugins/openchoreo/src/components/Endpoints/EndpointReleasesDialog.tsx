@@ -88,6 +88,12 @@ export const EndpointReleasesDialog = ({
   );
   const release = releases.find(r => r.name === selected);
   const pinned = environment?.endpointRelease;
+  const latest = environment?.latestRelease;
+  // The latest release (the Endpoint's current split) leads the list, so
+  // "latest" is never a surprise; the rest stay newest first.
+  const ordered = [...releases].sort(
+    (a, b) => Number(b.name === latest) - Number(a.name === latest),
+  );
   const missing =
     environment && release
       ? missingBackends(environment, release.backends)
@@ -109,7 +115,7 @@ export const EndpointReleasesDialog = ({
       <DialogContent dividers className={classes.content}>
         <Box className={classes.listPane}>
           <List dense disablePadding>
-            {releases.map(r => (
+            {ordered.map(r => (
               <ListItem
                 key={r.name}
                 button
@@ -120,6 +126,7 @@ export const EndpointReleasesDialog = ({
                   primary={
                     <span className={classes.releaseName}>
                       {r.name}
+                      {r.name === latest ? ' · latest' : ''}
                       {r.name === pinned ? ' · pinned' : ''}
                     </span>
                   }
@@ -130,6 +137,15 @@ export const EndpointReleasesDialog = ({
               </ListItem>
             ))}
           </List>
+          <Typography
+            variant="caption"
+            color="textSecondary"
+            component="p"
+            style={{ padding: '8px 16px' }}
+          >
+            Releases are named by their split, so saving a split again reuses
+            its release.
+          </Typography>
         </Box>
         <Box className={classes.detailPane}>
           {release ? (

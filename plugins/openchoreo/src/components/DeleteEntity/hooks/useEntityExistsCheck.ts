@@ -14,6 +14,7 @@ import { getDeletionTimestamp } from '../utils';
 const KIND_DISPLAY_NAMES: Record<string, string> = {
   component: 'Component',
   resource: 'Resource',
+  endpoint: 'Endpoint',
   system: 'Project',
   environment: 'Environment',
   dataplane: 'Dataplane',

@@ -15,6 +15,7 @@ import CloudIcon from '@material-ui/icons/Cloud';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import FileCopyOutlinedIcon from '@material-ui/icons/FileCopyOutlined';
 import HistoryIcon from '@material-ui/icons/History';
+import OpenInNewIcon from '@material-ui/icons/OpenInNew';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import ReportProblemOutlinedIcon from '@material-ui/icons/ReportProblemOutlined';
 import CallMadeIcon from '@material-ui/icons/CallMade';
@@ -31,7 +32,12 @@ import {
   useEndpointEnvironmentsContext,
 } from './EndpointEnvironmentsContext';
 import { deriveEndpointBadgeStatus, ENDPOINT_BADGE_LABEL } from './badgeStatus';
-import { missingBackends, statusMessage } from './endpointUi';
+import {
+  describeSplit,
+  missingBackends,
+  splitLabel,
+  statusMessage,
+} from './endpointUi';
 import { TrafficSplitBar } from './TrafficSplitBar';
 
 interface EndpointEnvironmentDetailPanelProps {
@@ -85,6 +91,7 @@ function EndpointEnvironmentDetailContent({ env, onClose }: ContentProps) {
     onStopRoutingRequest,
     onChangeTraffic,
     onViewReleases,
+    onViewArtifacts,
   } = useEndpointEnvironmentsContext();
 
   const hasBinding = Boolean(env.bindingName);
@@ -129,7 +136,17 @@ function EndpointEnvironmentDetailContent({ env, onClose }: ContentProps) {
     !rolloutPerm.loading &&
     rollOutTooltip === '';
 
-  const rollOutLabel = hasBinding ? 'Roll out latest' : 'Route traffic here';
+  // The label names the split it applies, so the button never hides which
+  // release goes live.
+  const splitText = splitLabel(latestBackends);
+  const rollOutLabel = hasBinding
+    ? `Roll out ${splitText}`
+    : `Route ${splitText} here`;
+  if (canRollOut && latest) {
+    rollOutTooltip = `Pins ${latest} (${describeSplit(latestBackends)}) in ${
+      env.displayName
+    }.`;
+  }
 
   return (
     <Box className={classes.panel}>
@@ -175,7 +192,9 @@ function EndpointEnvironmentDetailContent({ env, onClose }: ContentProps) {
           <Box className={classes.section}>
             <InfoRow
               label="Release"
-              value={env.endpointRelease || '(unset)'}
+              value={`${env.endpointRelease || '(unset)'}${
+                isLatest ? ' · latest' : ''
+              }`}
               onCopy={
                 env.endpointRelease
                   ? () => copyToClipboard(env.endpointRelease!, 'release name')
@@ -286,6 +305,16 @@ function EndpointEnvironmentDetailContent({ env, onClose }: ContentProps) {
               >
                 Releases
               </Button>
+              {hasBinding && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<OpenInNewIcon fontSize="small" />}
+                  onClick={() => onViewArtifacts(env.name)}
+                >
+                  View K8s artifacts
+                </Button>
+              )}
             </Box>
           </Box>
         </Box>

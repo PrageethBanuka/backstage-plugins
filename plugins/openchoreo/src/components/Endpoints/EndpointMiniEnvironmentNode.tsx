@@ -15,6 +15,7 @@ import {
 import ArrowDropDownIcon from '@material-ui/icons/ArrowDropDown';
 import CloudIcon from '@material-ui/icons/Cloud';
 import HistoryIcon from '@material-ui/icons/History';
+import OpenInNewIcon from '@material-ui/icons/OpenInNew';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
@@ -56,6 +57,7 @@ export const EndpointMiniEnvironmentNode = ({
     refetch,
     onRollOut,
     onViewReleases,
+    onViewArtifacts,
   } = useEndpointEnvironmentsContext();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [promoteAnchor, setPromoteAnchor] = useState<HTMLElement | null>(null);
@@ -267,6 +269,23 @@ export const EndpointMiniEnvironmentNode = ({
           <HistoryIcon fontSize="small" style={{ marginRight: 8 }} />
           Releases
         </MenuItem>
+        <Tooltip
+          title={env.bindingName ? '' : 'Not routed in this environment yet.'}
+          placement="left"
+        >
+          <span>
+            <MenuItem
+              disabled={!env.bindingName}
+              onClick={() => {
+                closeMenu();
+                onViewArtifacts(env.name);
+              }}
+            >
+              <OpenInNewIcon fontSize="small" style={{ marginRight: 8 }} />
+              View K8s artifacts
+            </MenuItem>
+          </span>
+        </Tooltip>
       </Menu>
 
       <Menu

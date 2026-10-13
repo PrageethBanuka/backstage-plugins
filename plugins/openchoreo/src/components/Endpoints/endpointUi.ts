@@ -55,6 +55,12 @@ export function describeSplit(backends: EndpointBackendWeight[]): string {
   return backends.map((b, i) => `${b.componentName} ${pct[i]}%`).join(', ');
 }
 
+/** A split as bare percentages, e.g. `75 / 25`, for button labels. */
+export function splitLabel(backends: EndpointBackendWeight[]): string {
+  if (backends.length === 0) return 'no traffic';
+  return sharePercents(backends.map(b => b.weight)).join(' / ');
+}
+
 /**
  * One plain sentence about an environment's state, using the controller's
  * own message where it has one. Undefined when there is nothing to say.

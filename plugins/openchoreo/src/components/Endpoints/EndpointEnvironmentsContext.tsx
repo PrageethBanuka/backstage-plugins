@@ -25,6 +25,8 @@ export interface EndpointEnvironmentsContextValue {
   onChangeTraffic: () => void;
   /** Open the release history for an environment (rollback). */
   onViewReleases: (environment: string) => void;
+  /** Open the K8s artifacts of an environment's binding. */
+  onViewArtifacts: (environment: string) => void;
 }
 
 const EndpointEnvironmentsContext =

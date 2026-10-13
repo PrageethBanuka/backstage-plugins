@@ -87,6 +87,8 @@ const API_ENDPOINTS = {
   UPDATE_ENDPOINT_TRAFFIC: '/update-endpoint-traffic',
   UPDATE_ENDPOINT_RELEASE_BINDING: '/update-endpoint-release-binding',
   DELETE_ENDPOINT_RELEASE_BINDING: '/delete-endpoint-release-binding',
+  ENDPOINT_RESOURCE_TREE: '/endpoint-resourcetree',
+  ENDPOINT_RESOURCE_EVENTS: '/endpoint-resource-events',
   PROJECT_ENVIRONMENT_INFO: '/project-environment-info',
   UPDATE_PROJECT_RELEASE_BINDING: '/update-project-release-binding',
   PROJECT_RELEASE_SCHEMA: '/project-release-schema',
@@ -225,6 +227,34 @@ function extractProjectEntityMetadata(entity: Entity): ProjectEntityMetadata {
   }
 
   return { projectName, namespaceName };
+}
+
+interface EndpointEntityMetadata {
+  endpointName: string;
+  projectName: string;
+  namespaceName: string;
+}
+
+/**
+ * An Endpoint entity (catalog kind Endpoint) is project-scoped: its name is
+ * the Endpoint CR name, and the project and OpenChoreo namespace are
+ * annotated, the same as a Resource.
+ */
+function extractEndpointEntityMetadata(entity: Entity): EndpointEntityMetadata {
+  const annotations = entity.metadata.annotations ?? {};
+  const endpointName =
+    annotations[CHOREO_ANNOTATIONS.ENDPOINT_CR] ?? entity.metadata.name;
+  const projectName = annotations[CHOREO_ANNOTATIONS.PROJECT];
+  const namespaceName = annotations[CHOREO_ANNOTATIONS.NAMESPACE];
+
+  if (!endpointName || !projectName || !namespaceName) {
+    throw new Error(
+      'Missing required OpenChoreo annotations on Endpoint entity. ' +
+        `Required: ${CHOREO_ANNOTATIONS.PROJECT} and ${CHOREO_ANNOTATIONS.NAMESPACE}`,
+    );
+  }
+
+  return { endpointName, projectName, namespaceName };
 }
 
 // ============================================
@@ -570,11 +600,21 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
     );
   }
 
+  async fetchEndpoint(entity: Entity): Promise<EndpointSummary | null> {
+    const { endpointName, projectName, namespaceName } =
+      extractEndpointEntityMetadata(entity);
+    const endpoints = await this.apiFetch<EndpointSummary[]>(
+      API_ENDPOINTS.ENDPOINTS,
+      { params: { projectName, namespaceName } },
+    );
+    return endpoints.find(e => e.name === endpointName) ?? null;
+  }
+
   async fetchEndpointEnvironmentInfo(
     entity: Entity,
-    endpointName: string,
   ): Promise<EndpointEnvironment[]> {
-    const { projectName, namespaceName } = extractProjectEntityMetadata(entity);
+    const { endpointName, projectName, namespaceName } =
+      extractEndpointEntityMetadata(entity);
     return this.apiFetch<EndpointEnvironment[]>(
       API_ENDPOINTS.ENDPOINT_ENVIRONMENT_INFO,
       { params: { endpointName, projectName, namespaceName } },
@@ -583,9 +623,9 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
 
   async fetchEndpointReleases(
     entity: Entity,
-    endpointName: string,
   ): Promise<EndpointReleaseSummary[]> {
-    const { namespaceName } = extractProjectEntityMetadata(entity);
+    const { endpointName, namespaceName } =
+      extractEndpointEntityMetadata(entity);
     return this.apiFetch<EndpointReleaseSummary[]>(
       API_ENDPOINTS.ENDPOINT_RELEASES,
       { params: { endpointName, namespaceName } },
@@ -594,10 +634,10 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
 
   async updateEndpointTraffic(
     entity: Entity,
-    endpointName: string,
     backends: EndpointBackendWeight[],
   ): Promise<{ latestRelease?: string; changed: boolean }> {
-    const { namespaceName } = extractProjectEntityMetadata(entity);
+    const { endpointName, namespaceName } =
+      extractEndpointEntityMetadata(entity);
     return this.apiFetch(API_ENDPOINTS.UPDATE_ENDPOINT_TRAFFIC, {
       method: 'PUT',
       body: { endpointName, namespaceName, backends },
@@ -606,11 +646,11 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
 
   async updateEndpointReleaseBinding(
     entity: Entity,
-    endpointName: string,
     environment: string,
     releaseName: string,
   ): Promise<{ bindingName: string; created: boolean }> {
-    const { projectName, namespaceName } = extractProjectEntityMetadata(entity);
+    const { endpointName, projectName, namespaceName } =
+      extractEndpointEntityMetadata(entity);
     return this.apiFetch(API_ENDPOINTS.UPDATE_ENDPOINT_RELEASE_BINDING, {
       method: 'PUT',
       body: {
@@ -625,13 +665,34 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
 
   async deleteEndpointReleaseBinding(
     entity: Entity,
-    endpointName: string,
     environment: string,
   ): Promise<{ bindingName: string }> {
-    const { projectName, namespaceName } = extractProjectEntityMetadata(entity);
+    const { endpointName, projectName, namespaceName } =
+      extractEndpointEntityMetadata(entity);
     return this.apiFetch(API_ENDPOINTS.DELETE_ENDPOINT_RELEASE_BINDING, {
       method: 'DELETE',
       body: { endpointName, projectName, namespaceName, environment },
+    });
+  }
+
+  async fetchEndpointResourceTree(
+    entity: Entity,
+    endpointReleaseBindingName: string,
+  ): Promise<any> {
+    const { namespaceName } = extractEndpointEntityMetadata(entity);
+    return this.apiFetch(API_ENDPOINTS.ENDPOINT_RESOURCE_TREE, {
+      params: { namespaceName, endpointReleaseBindingName },
+    });
+  }
+
+  async fetchEndpointResourceEvents(
+    entity: Entity,
+    endpointReleaseBindingName: string,
+    resource: { group: string; version: string; kind: string; name: string },
+  ): Promise<any> {
+    const { namespaceName } = extractEndpointEntityMetadata(entity);
+    return this.apiFetch(API_ENDPOINTS.ENDPOINT_RESOURCE_EVENTS, {
+      params: { namespaceName, endpointReleaseBindingName, ...resource },
     });
   }
 

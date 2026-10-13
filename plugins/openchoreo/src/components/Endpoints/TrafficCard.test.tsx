@@ -56,7 +56,11 @@ describe('TrafficCard', () => {
     expect(await screen.findByText('10% here')).toBeInTheDocument();
     expect(screen.getByText('payments-api').closest('a')).toHaveAttribute(
       'href',
-      '/catalog/default/system/shop/endpoints/payments-api',
+      '/catalog/default/endpoint/payments-api',
+    );
+    expect(screen.getByText('All endpoints').closest('a')).toHaveAttribute(
+      'href',
+      '/catalog/default/component/payments-v2/endpoints',
     );
     expect(
       screen.getByText('http://dev.example.com/payments-v1-http'),

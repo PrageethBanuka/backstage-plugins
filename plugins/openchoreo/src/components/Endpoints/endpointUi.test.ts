@@ -1,5 +1,10 @@
 import type { EndpointEnvironment } from '@openchoreo/backstage-plugin-common';
-import { describeSplit, missingBackends, sharePercents } from './endpointUi';
+import {
+  describeSplit,
+  missingBackends,
+  sharePercents,
+  splitLabel,
+} from './endpointUi';
 
 describe('sharePercents', () => {
   it('turns weights into percentages', () => {
@@ -50,5 +55,20 @@ describe('missingBackends', () => {
         { componentName: 'payments-v2', endpoint: 'http', weight: 0 },
       ]),
     ).toEqual([]);
+  });
+});
+
+describe('splitLabel', () => {
+  it('writes a split as bare percentages for button labels', () => {
+    expect(
+      splitLabel([
+        { componentName: 'payments-v1', endpoint: 'http', weight: 3 },
+        { componentName: 'payments-v2', endpoint: 'http', weight: 1 },
+      ]),
+    ).toBe('75 / 25');
+  });
+
+  it('copes with no backends', () => {
+    expect(splitLabel([])).toBe('no traffic');
   });
 });

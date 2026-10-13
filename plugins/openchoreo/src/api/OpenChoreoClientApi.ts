@@ -776,17 +776,14 @@ export interface OpenChoreoClientApi {
    */
   fetchComponentTraffic(entity: Entity): Promise<ComponentTrafficEntry[]>;
 
-  /** Per-environment view of one Endpoint of a Project entity. */
-  fetchEndpointEnvironmentInfo(
-    entity: Entity,
-    endpointName: string,
-  ): Promise<EndpointEnvironment[]>;
+  /** The Endpoint itself (type, backends, latest release), or null if gone. */
+  fetchEndpoint(entity: Entity): Promise<EndpointSummary | null>;
+
+  /** Per-environment view of an Endpoint entity. */
+  fetchEndpointEnvironmentInfo(entity: Entity): Promise<EndpointEnvironment[]>;
 
   /** An Endpoint's releases, newest first. */
-  fetchEndpointReleases(
-    entity: Entity,
-    endpointName: string,
-  ): Promise<EndpointReleaseSummary[]>;
+  fetchEndpointReleases(entity: Entity): Promise<EndpointReleaseSummary[]>;
 
   /**
    * Change an Endpoint's weights. Cuts a new release; no environment's
@@ -794,14 +791,12 @@ export interface OpenChoreoClientApi {
    */
   updateEndpointTraffic(
     entity: Entity,
-    endpointName: string,
     backends: EndpointBackendWeight[],
   ): Promise<{ latestRelease?: string; changed: boolean }>;
 
   /** Pin an environment to a release: roll out, promote or roll back. */
   updateEndpointReleaseBinding(
     entity: Entity,
-    endpointName: string,
     environment: string,
     releaseName: string,
   ): Promise<{ bindingName: string; created: boolean }>;
@@ -809,9 +804,21 @@ export interface OpenChoreoClientApi {
   /** Stop routing an Endpoint in an environment. */
   deleteEndpointReleaseBinding(
     entity: Entity,
-    endpointName: string,
     environment: string,
   ): Promise<{ bindingName: string }>;
+
+  /** Live K8s resources applied by an environment's EndpointReleaseBinding. */
+  fetchEndpointResourceTree(
+    entity: Entity,
+    endpointReleaseBindingName: string,
+  ): Promise<any>;
+
+  /** Kubernetes events of one resource in that tree. */
+  fetchEndpointResourceEvents(
+    entity: Entity,
+    endpointReleaseBindingName: string,
+    resource: { group: string; version: string; kind: string; name: string },
+  ): Promise<any>;
 
   /**
    * Fetch per-environment deploy info for a Project entity. Returns one entry

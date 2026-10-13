@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { EmptyState, Link } from '@backstage/core-components';
+import { EmptyState } from '@backstage/core-components';
 import { PageLoader } from '@openchoreo/backstage-design-system';
-import { Box, Typography } from '@material-ui/core';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
-import { useParams } from 'react-router-dom';
+import { Box } from '@material-ui/core';
+import { useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { ForbiddenState } from '@openchoreo/backstage-plugin-react';
+import { CHOREO_ANNOTATIONS } from '@openchoreo/backstage-plugin-common';
 import type {
   EndpointBackendWeight,
   EndpointEnvironment,
@@ -35,15 +35,18 @@ import { backendKey } from './endpointUi';
 const SETTLING_POLL_MS = 3000;
 
 /**
- * One Endpoint's environments, mounted at `/endpoints/:endpointName` on the
- * Project page. Same layout and flow as ResourceEnvironmentsList: the
+ * An Endpoint's Deploy tab, mounted at `/environments` on the Endpoint
+ * entity page. Same layout and flow as ResourceEnvironmentsList: the
  * pipeline canvas with a leading Traffic tile on the left, the selected
  * tile's detail panel on the right, and the dialogs lifted up here.
  */
 export const EndpointEnvironmentsList = () => {
   const canvasClasses = useResourceDeployFlowCanvasStyles();
   const { entity } = useEntity();
-  const { endpointName = '' } = useParams();
+  const navigate = useNavigate();
+  const endpointName =
+    entity.metadata.annotations?.[CHOREO_ANNOTATIONS.ENDPOINT_CR] ??
+    entity.metadata.name;
   const client = useApi(openChoreoClientApiRef);
   const notification = useNotification();
 
@@ -89,13 +92,13 @@ export const EndpointEnvironmentsList = () => {
     async (opts: { showProgress?: boolean } = {}) => {
       if (opts.showProgress) setLoading(true);
       try {
-        const [endpoints, envInfo, releaseList] = await Promise.all([
-          client.fetchProjectEndpoints(entity),
-          client.fetchEndpointEnvironmentInfo(entity, endpointName),
-          client.fetchEndpointReleases(entity, endpointName),
+        const [summary, envInfo, releaseList] = await Promise.all([
+          client.fetchEndpoint(entity),
+          client.fetchEndpointEnvironmentInfo(entity),
+          client.fetchEndpointReleases(entity),
         ]);
         if (cancelledRef.current) return;
-        setEndpoint(endpoints.find(e => e.name === endpointName) ?? null);
+        setEndpoint(summary);
         setEnvs(envInfo ?? []);
         setReleases(releaseList ?? []);
         setError(null);
@@ -106,7 +109,7 @@ export const EndpointEnvironmentsList = () => {
         if (!cancelledRef.current && opts.showProgress) setLoading(false);
       }
     },
-    [client, entity, endpointName],
+    [client, entity],
   );
 
   useEffect(() => {
@@ -128,7 +131,6 @@ export const EndpointEnvironmentsList = () => {
       try {
         await client.updateEndpointReleaseBinding(
           entity,
-          endpointName,
           environment,
           releaseName,
         );
@@ -146,20 +148,16 @@ export const EndpointEnvironmentsList = () => {
         if (!cancelledRef.current) setPendingAction(null);
       }
     },
-    [client, entity, endpointName, notification, fetchAll],
+    [client, entity, notification, fetchAll],
   );
 
   const handleSaveTraffic = useCallback(
     async (backends: EndpointBackendWeight[]) => {
-      const res = await client.updateEndpointTraffic(
-        entity,
-        endpointName,
-        backends,
-      );
+      const res = await client.updateEndpointTraffic(entity, backends);
       await fetchAll();
       return res;
     },
-    [client, entity, endpointName, fetchAll],
+    [client, entity, fetchAll],
   );
 
   const handleRollOutMany = useCallback(
@@ -167,7 +165,6 @@ export const EndpointEnvironmentsList = () => {
       for (const environment of environments) {
         await client.updateEndpointReleaseBinding(
           entity,
-          endpointName,
           environment,
           releaseName,
         );
@@ -177,7 +174,7 @@ export const EndpointEnvironmentsList = () => {
       );
       await fetchAll();
     },
-    [client, entity, endpointName, notification, fetchAll],
+    [client, entity, notification, fetchAll],
   );
 
   const handleStopConfirm = useCallback(async () => {
@@ -185,11 +182,7 @@ export const EndpointEnvironmentsList = () => {
     const environment = stopTarget;
     setPendingAction({ env: environment, kind: 'stop' });
     try {
-      await client.deleteEndpointReleaseBinding(
-        entity,
-        endpointName,
-        environment,
-      );
+      await client.deleteEndpointReleaseBinding(entity, environment);
       if (cancelledRef.current) return;
       setStopTarget(null);
       notification.showSuccess(
@@ -240,9 +233,20 @@ export const EndpointEnvironmentsList = () => {
             onStopRoutingRequest: setStopTarget,
             onChangeTraffic: () => setEditorOpen(true),
             onViewReleases: setReleasesEnv,
+            onViewArtifacts: (environment: string) =>
+              navigate(`release/${encodeURIComponent(environment)}`),
           }
         : null,
-    [endpoint, envs, releases, loading, fetchAll, pendingAction, handleRollOut],
+    [
+      endpoint,
+      envs,
+      releases,
+      loading,
+      fetchAll,
+      pendingAction,
+      handleRollOut,
+      navigate,
+    ],
   );
 
   if (isForbiddenError(error)) {
@@ -268,7 +272,6 @@ export const EndpointEnvironmentsList = () => {
             ? getErrorMessage(error)
             : `This project has no Endpoint named ${endpointName}.`
         }
-        action={<Link to="..">Back to Endpoints</Link>}
       />
     );
   }
@@ -283,15 +286,6 @@ export const EndpointEnvironmentsList = () => {
   return (
     <EndpointEnvironmentsProvider value={contextValue}>
       <NotificationBanner notification={notification.notification} />
-      <Box display="flex" alignItems="center" gridGap={8} mb={1}>
-        <Link to="..">
-          <Box display="flex" alignItems="center" gridGap={4}>
-            <ArrowBackIcon fontSize="small" />
-            Endpoints
-          </Box>
-        </Link>
-        <Typography variant="h6">/ {endpointName}</Typography>
-      </Box>
       <Box className={canvasClasses.splitContainer}>
         <EndpointDeployFlowCanvas
           environments={envs}

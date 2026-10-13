@@ -13,6 +13,7 @@ import { ResourceDetailPanel } from './ResourceDetailPanel';
 import { ReleaseStatusBar } from './ReleaseStatusBar';
 import { useTreeStyles } from './treeStyles';
 import { buildTreeNodes, computeTreeLayout } from './treeLayoutUtils';
+import { useResourceTreeSource } from './ResourceTreeSourceContext';
 import { treeHasPodNode } from './podUtils';
 import type { ExecContext, LayoutNode } from './treeTypes';
 import type { ResourceTreeData } from '../types';
@@ -39,6 +40,7 @@ export const ResourceTreeView: FC<ResourceTreeViewProps> = ({
 }) => {
   const classes = useTreeStyles();
   const [selectedNode, setSelectedNode] = useState<LayoutNode | null>(null);
+  const rootKind = useResourceTreeSource()?.rootKind;
 
   // Whether the workload pod is surfaced in the tree. Drives whether the
   // Terminal lives on the Pod node drawer (true) or the ReleaseBinding
@@ -49,9 +51,13 @@ export const ResourceTreeView: FC<ResourceTreeViewProps> = ({
   );
 
   const layout = useMemo(() => {
-    const nodes = buildTreeNodes(resourceTreeData, releaseBindingData);
+    const nodes = buildTreeNodes(
+      resourceTreeData,
+      releaseBindingData,
+      rootKind,
+    );
     return computeTreeLayout(nodes);
-  }, [resourceTreeData, releaseBindingData]);
+  }, [resourceTreeData, releaseBindingData, rootKind]);
 
   useEffect(() => {
     if (selectedNode && !layout.nodes.some(n => n.id === selectedNode.id)) {

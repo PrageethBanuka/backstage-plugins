@@ -2,6 +2,7 @@ import type { IconComponent } from '@backstage/core-plugin-api';
 import CloudIcon from '@material-ui/icons/Cloud';
 import NotificationsIcon from '@material-ui/icons/Notifications';
 import DnsIcon from '@material-ui/icons/Dns';
+import CallSplitIcon from '@material-ui/icons/CallSplit';
 import AccountTreeIcon from '@material-ui/icons/AccountTree';
 import VisibilityIcon from '@material-ui/icons/Visibility';
 import BuildIcon from '@material-ui/icons/Build';
@@ -33,6 +34,7 @@ export const KIND_ICONS: Record<string, IconComponent> = {
   projecttype: CategoryIcon,
   clusterprojecttype: CategoryIcon,
   resource: StorageIcon,
+  endpoint: CallSplitIcon,
   traittype: ExtensionIcon,
   clustertraittype: ExtensionIcon,
   workflow: PlayCircleOutlineIcon,

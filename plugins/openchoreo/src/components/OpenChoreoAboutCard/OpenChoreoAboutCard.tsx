@@ -129,6 +129,7 @@ function OpenChoreoAboutContent({ entity }: { entity: Entity }) {
   const isComponent = entity.kind.toLocaleLowerCase('en-US') === 'component';
   const isAPI = entity.kind.toLocaleLowerCase('en-US') === 'api';
   const isResource = entity.kind.toLocaleLowerCase('en-US') === 'resource';
+  const isEndpoint = entity.kind.toLocaleLowerCase('en-US') === 'endpoint';
 
   const partOfSystemRelations = getEntityRelations(entity, RELATION_PART_OF, {
     kind: 'system',
@@ -186,6 +187,7 @@ function OpenChoreoAboutContent({ entity }: { entity: Entity }) {
       {(isAPI ||
         isComponent ||
         isResource ||
+        isEndpoint ||
         partOfSystemRelations.length > 0) && (
         <Grid item xs={12} sm={6} lg={4}>
           <AboutField label="Project" value="No Project">

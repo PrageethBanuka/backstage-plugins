@@ -2,13 +2,12 @@
 '@openchoreo/backstage-plugin': minor
 ---
 
-Add an Endpoints tab to Project pages and a Traffic card to Component
+Add traffic management for Endpoints and a Traffic card to Component
 overviews. Endpoints route a project's traffic across its components with
 weights, for example a 90/10 canary.
 
-- The Endpoints tab lists the project's Endpoints with their latest split and
-  where each is routed. Opening one shows its environments on the same
-  pipeline canvas and detail panel as the Resource deploy view.
+- An Endpoint's Deploy tab shows its environments on the same pipeline canvas
+  and detail panel as the Resource deploy view.
 - Change traffic is a two-step dialog: save the split as a new release, then
   roll it out to the environments you choose. Each environment is checked
   first for permission and for every weighted backend being deployed there.

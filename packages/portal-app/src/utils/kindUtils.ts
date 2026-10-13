@@ -7,6 +7,7 @@ export const kindDisplayNames: Record<string, string> = {
   user: 'User',
   group: 'Group',
   resource: 'Resource',
+  endpoint: 'Endpoint',
   location: 'Location',
   template: 'Template',
   dataplane: 'Dataplane',
@@ -39,7 +40,7 @@ export interface KindCategory {
 export const kindCategories: KindCategory[] = [
   {
     label: 'Developer Resources',
-    kinds: ['system', 'component', 'api', 'resource'],
+    kinds: ['system', 'component', 'api', 'resource', 'endpoint'],
   },
   {
     label: 'Platform Resources',

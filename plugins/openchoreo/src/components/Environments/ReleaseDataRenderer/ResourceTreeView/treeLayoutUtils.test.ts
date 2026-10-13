@@ -113,6 +113,21 @@ describe('buildTreeNodes', () => {
     expect(root!.parentIds).toEqual([]);
   });
 
+  it('labels the root with the given kind, defaulting to ReleaseBinding', () => {
+    const data = { renderedReleases: [] } as any;
+    const binding = { name: 'payments-api-development', status: 'Ready' };
+
+    expect(buildTreeNodes(data, binding)[0].kind).toBe('ReleaseBinding');
+    const endpointRoot = buildTreeNodes(
+      data,
+      binding,
+      'EndpointReleaseBinding',
+    )[0];
+    expect(endpointRoot.kind).toBe('EndpointReleaseBinding');
+    expect(endpointRoot.name).toBe('payments-api-development');
+    expect(endpointRoot.healthStatus).toBe('Healthy');
+  });
+
   it('creates intermediate RenderedRelease nodes per release', () => {
     const nodes = buildTreeNodes(singleReleaseData);
     const releaseNodes = nodes.filter(n => n.kind === 'RenderedRelease');
