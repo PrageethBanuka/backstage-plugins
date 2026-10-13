@@ -1282,6 +1282,64 @@ export async function createRouter({
     );
   });
 
+  router.get('/endpoint-resourcetree', async (req, res) => {
+    const { namespaceName, endpointReleaseBindingName } = req.query;
+
+    if (!namespaceName || !endpointReleaseBindingName) {
+      throw new InputError(
+        'namespaceName and endpointReleaseBindingName are required query parameters',
+      );
+    }
+
+    const userToken = getUserTokenFromRequest(req);
+
+    res.json(
+      await endpointInfoService.fetchEndpointResourceTree(
+        {
+          namespaceName: namespaceName as string,
+          endpointReleaseBindingName: endpointReleaseBindingName as string,
+        },
+        userToken,
+      ),
+    );
+  });
+
+  router.get('/endpoint-resource-events', requireAuth, async (req, res) => {
+    const { namespaceName, endpointReleaseBindingName, group, version } =
+      req.query;
+    const { kind, name } = req.query;
+
+    if (
+      !namespaceName ||
+      !endpointReleaseBindingName ||
+      group === undefined ||
+      group === null ||
+      !version ||
+      !kind ||
+      !name
+    ) {
+      throw new InputError(
+        'namespaceName, endpointReleaseBindingName, group, version, kind and name are required query parameters',
+      );
+    }
+
+    const userToken = getUserTokenFromRequest(req);
+
+    res.json(
+      await endpointInfoService.fetchEndpointResourceEvents(
+        {
+          namespaceName: namespaceName as string,
+          endpointReleaseBindingName: endpointReleaseBindingName as string,
+          group: group as string,
+          version: version as string,
+          kind: kind as string,
+          name: name as string,
+        },
+        userToken,
+      ),
+    );
+  });
+
   router.put('/update-endpoint-traffic', requireAuth, async (req, res) => {
     const { endpointName, namespaceName, backends } = req.body;
 

@@ -437,6 +437,69 @@ export class EndpointInfoService {
     return transformDeploymentPipeline(pipelineRes.data!).promotionPaths ?? [];
   }
 
+  /**
+   * The live Kubernetes resources an environment's EndpointReleaseBinding
+   * applied (its RenderedRelease and the HTTPRoute), for the K8s artifacts
+   * view. Bindings are named `<endpoint>-<environment>`.
+   */
+  async fetchEndpointResourceTree(
+    request: { namespaceName: string; endpointReleaseBindingName: string },
+    token?: string,
+  ) {
+    const { data, error, response } = await this.client(token).GET(
+      '/api/v1/namespaces/{namespaceName}/endpointreleasebindings/{endpointReleaseBindingName}/k8sresources/tree',
+      {
+        params: {
+          path: {
+            namespaceName: request.namespaceName,
+            endpointReleaseBindingName: request.endpointReleaseBindingName,
+          },
+        },
+      },
+    );
+    assertApiResponse(
+      { data, error, response },
+      'fetch endpoint resource tree',
+    );
+    return data;
+  }
+
+  /** Kubernetes events for one resource in an endpoint binding's tree. */
+  async fetchEndpointResourceEvents(
+    request: {
+      namespaceName: string;
+      endpointReleaseBindingName: string;
+      group: string;
+      version: string;
+      kind: string;
+      name: string;
+    },
+    token?: string,
+  ) {
+    const { data, error, response } = await this.client(token).GET(
+      '/api/v1/namespaces/{namespaceName}/endpointreleasebindings/{endpointReleaseBindingName}/k8sresources/events',
+      {
+        params: {
+          path: {
+            namespaceName: request.namespaceName,
+            endpointReleaseBindingName: request.endpointReleaseBindingName,
+          },
+          query: {
+            ...(request.group ? { group: request.group } : {}),
+            version: request.version,
+            kind: request.kind,
+            name: request.name,
+          },
+        },
+      },
+    );
+    assertApiResponse(
+      { data, error, response },
+      'fetch endpoint resource events',
+    );
+    return data;
+  }
+
   /** An Endpoint's releases, newest first. */
   async listEndpointReleases(
     request: { namespaceName: string; endpointName: string },

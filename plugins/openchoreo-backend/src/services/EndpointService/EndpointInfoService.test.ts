@@ -409,6 +409,83 @@ describe('EndpointInfoService', () => {
     });
   });
 
+  describe('endpoint resource tree', () => {
+    it('reads the tree of the environment binding', async () => {
+      routeGET({
+        [`${NS}/endpointreleasebindings/{endpointReleaseBindingName}/k8sresources/tree`]:
+          opts => ({
+            data: {
+              renderedReleases: [
+                { name: opts.params.path.endpointReleaseBindingName },
+              ],
+            },
+            response: { ok: true, status: 200 },
+          }),
+      });
+
+      const tree = await service.fetchEndpointResourceTree(
+        {
+          namespaceName: 'default',
+          endpointReleaseBindingName: 'payments-api-development',
+        },
+        'token',
+      );
+
+      expect(tree).toEqual({
+        renderedReleases: [{ name: 'payments-api-development' }],
+      });
+    });
+
+    it('fails when the API refuses', async () => {
+      routeGET({
+        [`${NS}/endpointreleasebindings/{endpointReleaseBindingName}/k8sresources/tree`]:
+          () => ({
+            error: { error: 'forbidden' },
+            response: { ok: false, status: 403, statusText: 'Forbidden' },
+          }),
+      });
+
+      await expect(
+        service.fetchEndpointResourceTree(
+          { namespaceName: 'default', endpointReleaseBindingName: 'x' },
+          'token',
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('sends the group only for non-core resources when reading events', async () => {
+      const seen: any[] = [];
+      routeGET({
+        [`${NS}/endpointreleasebindings/{endpointReleaseBindingName}/k8sresources/events`]:
+          opts => {
+            seen.push(opts.params.query);
+            return {
+              data: { events: [] },
+              response: { ok: true, status: 200 },
+            };
+          },
+      });
+      const base = {
+        namespaceName: 'default',
+        endpointReleaseBindingName: 'payments-api-development',
+        version: 'v1',
+        name: 'route',
+      };
+
+      await service.fetchEndpointResourceEvents(
+        { ...base, group: 'gateway.networking.k8s.io', kind: 'HTTPRoute' },
+        'token',
+      );
+      await service.fetchEndpointResourceEvents(
+        { ...base, group: '', kind: 'Service' },
+        'token',
+      );
+
+      expect(seen[0]).toMatchObject({ group: 'gateway.networking.k8s.io' });
+      expect(seen[1]).not.toHaveProperty('group');
+    });
+  });
+
   describe('deleteEndpointReleaseBinding', () => {
     it('fails clearly when the endpoint is not routed there', async () => {
       routeGET({ [`${NS}/endpointreleasebindings`]: () => list([]) });
