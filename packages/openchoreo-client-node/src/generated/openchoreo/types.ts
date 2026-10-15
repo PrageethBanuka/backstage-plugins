@@ -1197,7 +1197,8 @@ export interface paths {
     post?: never;
     /**
      * Delete component
-     * @description Deletes a component by name.
+     * @description Deletes a component by name. Refused with 409 while an Endpoint still sends the component traffic
+     *     in some environment and has other backends to move it to; move its weight to 0 and roll out first.
      */
     delete: operations['deleteComponent'];
     options?: never;
@@ -3378,6 +3379,34 @@ export interface components {
          */
         releaseHash?: string;
       };
+      /**
+       * @description Reverse index of the Endpoints that route to this component, with the weight each gives it
+       *     in the release pinned per environment. Derived by the controller; the component does not own them.
+       */
+      endpoints?: components['schemas']['ComponentEndpointRef'][];
+    };
+    /** @description An Endpoint that routes to a component's workload endpoint. */
+    ComponentEndpointRef: {
+      /**
+       * @description Endpoint name
+       * @example payments-api
+       */
+      name: string;
+      /**
+       * @description Workload endpoint of the component the Endpoint routes to
+       * @example http
+       */
+      endpoint: string;
+      /** @description Weight of this component in the release pinned in each environment where the Endpoint is bound */
+      environments?: {
+        /** @example production */
+        name: string;
+        /**
+         * Format: int32
+         * @example 90
+         */
+        weight: number;
+      }[];
     };
     /**
      * @description Component resource.
@@ -5889,12 +5918,19 @@ export interface components {
         projectName: string;
       };
       type: components['schemas']['EndpointTypeRef'];
-      /** @description Component workload endpoints receiving traffic, with relative weights. */
-      backendRefs: components['schemas']['EndpointBackendRef'][];
+      /** @description Component workload endpoints receiving traffic, with relative weights. May be empty; see reclaimPolicy. */
+      backendRefs?: components['schemas']['EndpointBackendRef'][];
       /** @description Values for the parameter schema declared on the referenced (Cluster)EndpointType. Validated by the controller. */
       parameters?: {
         [key: string]: unknown;
       };
+      /**
+       * @description What happens when the Endpoint has no backends left. Delete removes it and hands its URL back;
+       *     Retain keeps it as Orphaned, without routes, until a backend is added.
+       * @default Delete
+       * @enum {string}
+       */
+      reclaimPolicy: 'Delete' | 'Retain';
     };
     /** @description Observed state of an Endpoint. */
     EndpointStatus: {
@@ -7159,6 +7195,13 @@ export interface components {
         type?: string;
         content?: string;
       };
+      endpointType?: components['schemas']['EndpointTypeRef'];
+      /**
+       * @description Name of the Endpoint that serves this endpoint when endpointType is set.
+       *     Defaults to <component>-<endpoint>. The Endpoint is created if missing and is not owned by the component.
+       * @example payments-api
+       */
+      endpointName?: string;
     };
     /** @description A connection to another component's endpoint */
     WorkloadConnection: {
@@ -11029,6 +11072,7 @@ export interface operations {
       401: components['responses']['Unauthorized'];
       403: components['responses']['Forbidden'];
       404: components['responses']['NotFound'];
+      409: components['responses']['Conflict'];
       500: components['responses']['InternalError'];
     };
   };

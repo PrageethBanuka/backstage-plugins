@@ -19,7 +19,7 @@
   ],
   "versionField": "openChoreoVersion",
   "versionFile": "src/version.ts",
-  "lastSyncCommit": "d60dbbed",
-  "lastSyncDate": "2026-10-13T00:00:00+05:30",
-  "lastSyncDescription": "feat(api): expose K8s resources for EndpointReleaseBindings (feature/endpoint-mvp)"
+  "lastSyncCommit": "8ae2dde9",
+  "lastSyncDate": "2026-10-15T00:00:00+05:30",
+  "lastSyncDescription": "feat(api): refuse deleting a component an Endpoint still routes to (feature/endpoint-lifecycle)"
 }
