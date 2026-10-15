@@ -58,9 +58,21 @@ export interface EndpointSummary {
   /** The latest split (Endpoint.spec.backendRefs). */
   backends: EndpointBackendWeight[];
   latestRelease?: string;
+  /** What happens when no backend is left: Delete, or Retain as Orphaned. */
+  reclaimPolicy: EndpointReclaimPolicy;
+  /**
+   * How the Endpoint was created: "portal", or "workload/<component>/<endpoint>"
+   * when a Workload endpoint declared it. History only.
+   */
+  createdFrom?: string;
+  /** True while the Endpoint has no backends and is kept (reclaimPolicy Retain). */
+  orphaned: boolean;
   /** Environments with a binding; unbound environments are omitted. */
   environments: EndpointEnvironmentSummary[];
 }
+
+/** Endpoint.spec.reclaimPolicy. */
+export type EndpointReclaimPolicy = 'Delete' | 'Retain';
 
 /**
  * Per-environment view of one Endpoint. One entry per environment of the
@@ -114,6 +126,12 @@ export interface ComponentTrafficEntry {
   totalWeight: number;
   /** This component's share of the Endpoint's traffic, 0-100, rounded. */
   sharePercent: number;
+  /**
+   * Whether the release has backends other than this component. A component
+   * with weight above 0 next to other backends can't be deleted until its
+   * traffic is moved (StillRouted); the only backend can.
+   */
+  hasOtherBackends: boolean;
   invokeURL?: string;
 }
 

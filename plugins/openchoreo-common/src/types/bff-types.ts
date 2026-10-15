@@ -826,6 +826,17 @@ export interface WorkloadEndpoint {
   type: 'TCP' | 'UDP' | 'HTTP' | 'gRPC' | 'Websocket' | 'GraphQL';
   port: number;
   schema?: Schema;
+  /**
+   * Serve this endpoint through an Endpoint of this type. The Endpoint is
+   * created if missing and has its own lifecycle; it is not owned by the
+   * component.
+   */
+  endpointType?: {
+    kind: 'EndpointType' | 'ClusterEndpointType';
+    name: string;
+  };
+  /** Name of that Endpoint. Defaults to <component>-<endpoint>. */
+  endpointName?: string;
 }
 
 export interface Dependency {

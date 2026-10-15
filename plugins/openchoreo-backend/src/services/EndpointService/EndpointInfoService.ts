@@ -38,6 +38,15 @@ type EndpointReleaseBinding =
 
 type ApiClient = ReturnType<typeof createOpenChoreoApiClient>;
 
+/** Records how an Endpoint was created: "portal" or "workload/<component>/<endpoint>". */
+const CREATED_FROM_ANNOTATION = 'openchoreo.dev/created-from';
+
+/** An Endpoint with no backends left, kept because its reclaimPolicy is Retain. */
+const isOrphaned = (ep: Endpoint): boolean =>
+  (ep.status?.conditions ?? []).some(
+    c => c.type === 'Orphaned' && c.status === 'True',
+  );
+
 /** How long updateEndpointTraffic waits for the controller to cut the release. */
 const RELEASE_WAIT_MS = 10_000;
 const RELEASE_POLL_MS = 500;
@@ -179,6 +188,9 @@ export class EndpointInfoService {
         },
         backends: toBackendWeights(ep.spec?.backendRefs),
         latestRelease: ep.status?.latestRelease?.name,
+        reclaimPolicy: ep.spec?.reclaimPolicy ?? 'Delete',
+        createdFrom: ep.metadata.annotations?.[CREATED_FROM_ANNOTATION],
+        orphaned: isOrphaned(ep),
         environments,
       };
     });
@@ -187,6 +199,10 @@ export class EndpointInfoService {
   /**
    * Lists the Endpoints that send traffic to a component, one entry per
    * environment the Endpoint is bound to, with this component's live share.
+   *
+   * The component's reverse index (status.endpoints, kept by the Component
+   * controller) names the Endpoints, so only their bindings are read instead
+   * of every Endpoint and binding in the namespace.
    */
   async listComponentTraffic(
     request: {
@@ -197,36 +213,53 @@ export class EndpointInfoService {
     token?: string,
   ): Promise<ComponentTrafficEntry[]> {
     const client = this.client(token);
-    const endpoints = (
-      await this.listEndpoints(client, request.namespaceName, {
-        component: request.componentName,
-      })
-    ).filter(ep => ep.spec?.owner.projectName === request.projectName);
-    if (endpoints.length === 0) {
+    const res = await client.GET(
+      '/api/v1/namespaces/{namespaceName}/components/{componentName}',
+      {
+        params: {
+          path: {
+            namespaceName: request.namespaceName,
+            componentName: request.componentName,
+          },
+        },
+      },
+    );
+    assertApiResponse(res, 'get component');
+    const endpointNames = [
+      ...new Set((res.data!.status?.endpoints ?? []).map(ref => ref.name)),
+    ];
+    if (endpointNames.length === 0) {
       return [];
     }
 
+    const bindingLists = await Promise.all(
+      endpointNames.map(endpoint =>
+        this.listBindings(client, request.namespaceName, { endpoint }),
+      ),
+    );
     const bindingsByEndpoint = this.groupBindings(
-      await this.listBindings(client, request.namespaceName, {}),
+      bindingLists.flat(),
       request.projectName,
     );
 
     const entries: ComponentTrafficEntry[] = [];
-    for (const ep of endpoints) {
-      for (const binding of bindingsByEndpoint.get(ep.metadata.name) ?? []) {
+    for (const endpointName of endpointNames) {
+      for (const binding of bindingsByEndpoint.get(endpointName) ?? []) {
         const backends = toBackendStatuses(binding);
         const totalWeight = backends.reduce((sum, b) => sum + b.weight, 0);
-        const weight = backends
-          .filter(b => b.componentName === request.componentName)
-          .reduce((sum, b) => sum + b.weight, 0);
+        const mine = backends.filter(
+          b => b.componentName === request.componentName,
+        );
+        const weight = mine.reduce((sum, b) => sum + b.weight, 0);
         entries.push({
-          endpointName: ep.metadata.name,
+          endpointName,
           environment: binding.spec!.environment,
           status: deriveEndpointStatus(binding).status,
           weight,
           totalWeight,
           sharePercent:
             totalWeight > 0 ? Math.round((weight / totalWeight) * 100) : 0,
+          hasOtherBackends: backends.length > mine.length,
           invokeURL: binding.status?.invokeURL,
         });
       }

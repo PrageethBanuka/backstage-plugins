@@ -144,17 +144,71 @@ describe('EndpointInfoService', () => {
         'staging',
       ]);
       expect(result[0].environments[0].status).toBe('Routing');
+      expect(result[0].reclaimPolicy).toBe('Delete');
+      expect(result[0].orphaned).toBe(false);
+    });
+
+    it('reports how an Endpoint was created and whether it is orphaned', async () => {
+      const ep = {
+        ...endpoint([90, 10]),
+        metadata: {
+          name: 'payments-api',
+          namespace: 'default',
+          annotations: {
+            'openchoreo.dev/created-from': 'workload/payments-v1/http',
+          },
+        },
+        spec: { ...endpoint([90, 10]).spec, reclaimPolicy: 'Retain' },
+        status: {
+          conditions: [
+            {
+              type: 'Orphaned',
+              status: 'True',
+              reason: 'NoBackends',
+              lastTransitionTime: '2026-10-12T00:00:00Z',
+            },
+          ],
+        },
+      };
+      routeGET({
+        [`${NS}/endpoints`]: () => list([ep]),
+        [`${NS}/endpointreleasebindings`]: () => list([]),
+      });
+
+      const [result] = await service.listProjectEndpoints(
+        { namespaceName: 'default', projectName: 'shop' },
+        'token',
+      );
+
+      expect(result.createdFrom).toBe('workload/payments-v1/http');
+      expect(result.reclaimPolicy).toBe('Retain');
+      expect(result.orphaned).toBe(true);
     });
   });
 
   describe('listComponentTraffic', () => {
-    it("reports the component's live share per environment", async () => {
+    const component = (endpoints: unknown[]) =>
+      createOkResponse({
+        metadata: { name: 'payments-v2', namespace: 'default' },
+        status: { endpoints },
+      });
+
+    it("reads the component's reverse index and reports its live share per environment", async () => {
       routeGET({
-        [`${NS}/endpoints`]: opts => {
-          expect(opts.params.query.component).toBe('payments-v2');
-          return list([endpoint([90, 10])]);
+        [`${NS}/components/{componentName}`]: opts => {
+          expect(opts.params.path.componentName).toBe('payments-v2');
+          return component([
+            {
+              name: 'payments-api',
+              endpoint: 'http',
+              environments: [{ name: 'development', weight: 10 }],
+            },
+          ]);
         },
-        [`${NS}/endpointreleasebindings`]: () => list([binding('development')]),
+        [`${NS}/endpointreleasebindings`]: opts => {
+          expect(opts.params.query.endpoint).toBe('payments-api');
+          return list([binding('development')]);
+        },
       });
 
       const result = await service.listComponentTraffic(
@@ -173,12 +227,17 @@ describe('EndpointInfoService', () => {
           weight: 10,
           totalWeight: 100,
           sharePercent: 10,
+          hasOtherBackends: true,
         }),
       ]);
+      expect(mockGET).not.toHaveBeenCalledWith(
+        `${NS}/endpoints`,
+        expect.anything(),
+      );
     });
 
     it('skips the binding lookup when nothing routes to the component', async () => {
-      routeGET({ [`${NS}/endpoints`]: () => list([]) });
+      routeGET({ [`${NS}/components/{componentName}`]: () => component([]) });
 
       const result = await service.listComponentTraffic(
         {
