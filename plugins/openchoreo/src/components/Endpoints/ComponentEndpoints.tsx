@@ -7,11 +7,20 @@ import {
 } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
 import { useEntity } from '@backstage/plugin-catalog-react';
-import { Box, Typography } from '@material-ui/core';
+import { Box, Button, Typography } from '@material-ui/core';
+import AddIcon from '@material-ui/icons/Add';
+import { Link as RouterLink } from 'react-router-dom';
 import { makeStyles } from '@material-ui/core/styles';
 import { PageLoader, StatusBadge } from '@openchoreo/backstage-design-system';
-import { ForbiddenState } from '@openchoreo/backstage-plugin-react';
-import type { ComponentTrafficEntry } from '@openchoreo/backstage-plugin-common';
+import {
+  buildCreateEndpointPath,
+  ForbiddenState,
+  useEndpointCreatePermission,
+} from '@openchoreo/backstage-plugin-react';
+import {
+  CHOREO_ANNOTATIONS,
+  type ComponentTrafficEntry,
+} from '@openchoreo/backstage-plugin-common';
 import { openChoreoClientApiRef } from '../../api/OpenChoreoClientApi';
 import { getErrorMessage, isForbiddenError } from '../../utils/errorUtils';
 import { deriveEndpointBadgeStatus, ENDPOINT_BADGE_LABEL } from './badgeStatus';
@@ -31,9 +40,40 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+/** Opens the Endpoint template with this component as the first backend. */
+const CreateEndpointButton = () => {
+  const { entity } = useEntity();
+  const { canCreate, loading, createDeniedTooltip } =
+    useEndpointCreatePermission();
+  const projectName = entity.metadata.annotations?.[CHOREO_ANNOTATIONS.PROJECT];
+  const namespaceName =
+    entity.metadata.annotations?.[CHOREO_ANNOTATIONS.NAMESPACE] ??
+    entity.metadata.namespace ??
+    'default';
+  const componentName =
+    entity.metadata.annotations?.[CHOREO_ANNOTATIONS.COMPONENT] ??
+    entity.metadata.name;
+  if (!projectName) return null;
+  return (
+    <span title={createDeniedTooltip}>
+      <Button
+        variant="outlined"
+        color="primary"
+        startIcon={<AddIcon />}
+        component={RouterLink}
+        to={buildCreateEndpointPath(projectName, namespaceName, componentName)}
+        disabled={loading || !canCreate}
+      >
+        Create Endpoint
+      </Button>
+    </span>
+  );
+};
+
 /**
  * The Component page's Endpoints tab: every Endpoint that sends traffic to
  * this component, one row per environment, with the component's live share.
+ * The list comes from the component's reverse index (status.endpoints).
  * Read-only: traffic is changed on the Endpoint's own page.
  */
 export const ComponentEndpoints = () => {
@@ -86,6 +126,7 @@ export const ComponentEndpoints = () => {
         missing="content"
         title="No endpoints route to this component"
         description="An Endpoint routes traffic across a project's components with weights, for example a 90/10 canary. Endpoints that include this component appear here."
+        action={<CreateEndpointButton />}
       />
     );
   }
@@ -143,11 +184,16 @@ export const ComponentEndpoints = () => {
   ];
 
   return (
-    <Table<ComponentTrafficEntry>
-      title={`${entries.length} ${entries.length === 1 ? 'route' : 'routes'}`}
-      options={{ paging: false, search: false, padding: 'dense' }}
-      columns={columns}
-      data={entries}
-    />
+    <Box display="flex" flexDirection="column" gridGap={16}>
+      <Box display="flex" justifyContent="flex-end">
+        <CreateEndpointButton />
+      </Box>
+      <Table<ComponentTrafficEntry>
+        title={`${entries.length} ${entries.length === 1 ? 'route' : 'routes'}`}
+        options={{ paging: false, search: false, padding: 'dense' }}
+        columns={columns}
+        data={entries}
+      />
+    </Box>
   );
 };

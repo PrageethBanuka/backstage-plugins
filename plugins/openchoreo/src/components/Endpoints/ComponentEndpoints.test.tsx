@@ -7,10 +7,11 @@ import { ComponentEndpoints } from './ComponentEndpoints';
 
 jest.mock('@backstage/core-components', () => ({
   Link: ({ to, children }: any) => <a href={to}>{children}</a>,
-  EmptyState: ({ title, description }: any) => (
+  EmptyState: ({ title, description, action }: any) => (
     <div>
       <h2>{title}</h2>
       <p>{description}</p>
+      {action}
     </div>
   ),
   Table: ({ title, data, columns }: any) => (
@@ -35,6 +36,13 @@ jest.mock('../../utils/errorUtils', () => ({
 }));
 jest.mock('@openchoreo/backstage-plugin-react', () => ({
   ForbiddenState: ({ message }: any) => <div>{message}</div>,
+  buildCreateEndpointPath: (project: string, ns: string, component: string) =>
+    `/create-endpoint/${ns}/${project}/${component}`,
+  useEndpointCreatePermission: () => ({
+    canCreate: true,
+    loading: false,
+    createDeniedTooltip: '',
+  }),
 }));
 
 const entity = {
@@ -101,11 +109,15 @@ describe('ComponentEndpoints', () => {
     expect(screen.getByText('http://dev.example.com/pay')).toBeInTheDocument();
   });
 
-  it('explains the empty state', async () => {
+  it('explains the empty state and offers to create an Endpoint for this component', async () => {
     renderTab(jest.fn().mockResolvedValue([]));
     expect(
       await screen.findByText('No endpoints route to this component'),
     ).toBeInTheDocument();
+    expect(screen.getByText('Create Endpoint').closest('a')).toHaveAttribute(
+      'href',
+      '/create-endpoint/default/shop/payments-v2',
+    );
   });
 
   it('shows a forbidden state on 403', async () => {

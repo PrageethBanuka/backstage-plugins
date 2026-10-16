@@ -88,7 +88,9 @@ describe('TrafficEditorDialog', () => {
 
   it('adds a project component as a backend at 0% (a canary on the same Endpoint)', async () => {
     const props = renderDialog({
-      backends: [{ componentName: 'payments-v1', endpoint: 'http', weight: 100 }],
+      backends: [
+        { componentName: 'payments-v1', endpoint: 'http', weight: 100 },
+      ],
       componentOptions: ['payments-v1', 'payments-v2'],
     });
     const add = screen.getByRole('button', { name: 'Add at 0%' });

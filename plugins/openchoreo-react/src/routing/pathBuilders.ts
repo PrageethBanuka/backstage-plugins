@@ -152,6 +152,29 @@ export function buildCreateResourcePath(
 }
 
 /**
+ * Build path to the create-openchoreo-endpoint template, pre-filled with the
+ * project and with one component as the first backend. Used from a
+ * Component's Endpoints tab.
+ */
+export function buildCreateEndpointPath(
+  projectName: string,
+  namespaceName: string,
+  componentName: string,
+  workloadEndpoint = 'http',
+): string {
+  const formData = {
+    project_namespace: {
+      project_name: projectName,
+      namespace_name: namespaceName,
+    },
+    backends: [{ componentName, endpoint: workloadEndpoint, weight: 100 }],
+  };
+  const params = new URLSearchParams();
+  params.set('formData', JSON.stringify(formData));
+  return `/create/templates/default/create-openchoreo-endpoint?${params.toString()}`;
+}
+
+/**
  * Build path to workflow list with specific tab
  */
 export function buildWorkflowListPath(

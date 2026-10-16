@@ -33,6 +33,7 @@ export {
   buildWorkflowConfigPath,
   buildWorkflowListPath,
   buildCreateComponentPath,
+  buildCreateEndpointPath,
 } from './pathBuilders';
 
 // Hook

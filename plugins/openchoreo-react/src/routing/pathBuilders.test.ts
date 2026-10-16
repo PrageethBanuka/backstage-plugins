@@ -12,6 +12,7 @@ import {
   buildWorkflowConfigPath,
   buildCreateComponentPath,
   buildCreateResourcePath,
+  buildCreateEndpointPath,
   buildWorkflowListPath,
 } from './pathBuilders';
 
@@ -221,5 +222,23 @@ describe('buildCreateResourcePath', () => {
     ]);
     // First namespace is the form's pre-selected default.
     expect(params.get('namespace')).toBe('proj-ns');
+  });
+});
+
+describe('buildCreateEndpointPath', () => {
+  it('opens the Endpoint template with the project and component pre-filled', () => {
+    const url = buildCreateEndpointPath('shop', 'default', 'payments-v1');
+    expect(url.split('?')[0]).toBe(
+      '/create/templates/default/create-openchoreo-endpoint',
+    );
+    const formData = JSON.parse(
+      new URLSearchParams(url.split('?')[1]).get('formData')!,
+    );
+    expect(formData).toEqual({
+      project_namespace: { project_name: 'shop', namespace_name: 'default' },
+      backends: [
+        { componentName: 'payments-v1', endpoint: 'http', weight: 100 },
+      ],
+    });
   });
 });
