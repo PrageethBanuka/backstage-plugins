@@ -1,5 +1,6 @@
 import {
   openchoreoEndpointCreatePermission,
+  openchoreoEndpointDeletePermission,
   openchoreoProjectTypeCreatePermission,
   openchoreoProjectTypeUpdatePermission,
   openchoreoProjectTypeDeletePermission,
@@ -158,6 +159,7 @@ describe('NotificationChannel permissions', () => {
 describe('Endpoint permissions', () => {
   const endpointPermissions = [
     [openchoreoEndpointUpdatePermission, 'endpoint:update'],
+    [openchoreoEndpointDeletePermission, 'endpoint:delete'],
     [
       openchoreoEndpointReleaseBindingCreatePermission,
       'endpointreleasebinding:create',

@@ -1141,6 +1141,16 @@ export const openchoreoEndpointUpdatePermission = createPermission({
 });
 
 /**
+ * Permission to delete an Endpoint. Its routes in every environment and its
+ * releases go with it. Project-scoped, like changing its traffic.
+ */
+export const openchoreoEndpointDeletePermission = createPermission({
+  name: 'openchoreo.endpoint.delete',
+  attributes: { action: 'delete' },
+  resourceType: OPENCHOREO_RESOURCE_TYPE_PROJECT,
+});
+
+/**
  * Permission to create an EndpointReleaseBinding: route an Endpoint in an
  * environment for the first time. Project-scoped; evaluate it per
  * environment so ABAC `resource.environment` constraints apply.
@@ -1208,6 +1218,7 @@ export const openchoreoPermissions = [
   openchoreoResourceReleaseBindingDeletePermission,
   openchoreoEndpointCreatePermission,
   openchoreoEndpointUpdatePermission,
+  openchoreoEndpointDeletePermission,
   openchoreoEndpointReleaseBindingCreatePermission,
   openchoreoEndpointReleaseBindingUpdatePermission,
   openchoreoEndpointReleaseBindingDeletePermission,
@@ -1341,6 +1352,7 @@ export const OPENCHOREO_PERMISSION_TO_ACTION: Record<string, string> = {
   'openchoreo.resourcereleasebinding.delete': 'resourcereleasebinding:delete',
   'openchoreo.endpoint.create': 'endpoint:create',
   'openchoreo.endpoint.update': 'endpoint:update',
+  'openchoreo.endpoint.delete': 'endpoint:delete',
   'openchoreo.endpointreleasebinding.create': 'endpointreleasebinding:create',
   'openchoreo.endpointreleasebinding.update': 'endpointreleasebinding:update',
   'openchoreo.endpointreleasebinding.delete': 'endpointreleasebinding:delete',

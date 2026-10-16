@@ -38,6 +38,8 @@ import {
   openchoreoClusterProjectTypeUpdatePermission,
   openchoreoClusterProjectTypeDeletePermission,
   openchoreoResourceUpdatePermission,
+  openchoreoEndpointUpdatePermission,
+  openchoreoEndpointDeletePermission,
   openchoreoResourceDeletePermission,
   openchoreoClusterTraitUpdatePermission,
   openchoreoClusterTraitDeletePermission,
@@ -105,6 +107,11 @@ export const KIND_TO_PERMISSIONS: Record<string, PermissionEntry> = {
   resource: {
     update: openchoreoResourceUpdatePermission,
     delete: openchoreoResourceDeletePermission,
+    isResourceScoped: true,
+  },
+  endpoint: {
+    update: openchoreoEndpointUpdatePermission,
+    delete: openchoreoEndpointDeletePermission,
     isResourceScoped: true,
   },
   componenttype: {

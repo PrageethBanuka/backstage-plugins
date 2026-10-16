@@ -5,6 +5,7 @@ import {
   openchoreoComponentUpdatePermission,
   openchoreoProjectUpdatePermission,
   openchoreoClusterComponentTypeDeletePermission,
+  openchoreoEndpointDeletePermission,
 } from '@openchoreo/backstage-plugin-common';
 import { useEntityDeletePermission } from './useEntityDeletePermission';
 
@@ -36,6 +37,18 @@ describe('useEntityDeletePermission', () => {
     });
     expect(result.current.canDelete).toBe(true);
     expect(result.current.deniedTooltip).toBe('');
+  });
+
+  it('checks endpoint:delete with the entity ref for Endpoints', () => {
+    const { result } = renderHook(() =>
+      useEntityDeletePermission(makeEntity('Endpoint')),
+    );
+
+    expect(mockUsePermission).toHaveBeenCalledWith({
+      permission: openchoreoEndpointDeletePermission,
+      resourceRef: 'endpoint:default/test',
+    });
+    expect(result.current.canDelete).toBe(true);
   });
 
   it('checks a basic permission without resourceRef for cluster-scoped kinds', () => {
