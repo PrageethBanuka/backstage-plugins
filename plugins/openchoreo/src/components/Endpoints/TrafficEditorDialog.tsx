@@ -6,6 +6,11 @@ import {
   CircularProgress,
   Dialog,
   DialogActions,
+  FormControl,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Select,
   DialogContent,
   DialogTitle,
   Slider,
@@ -22,6 +27,7 @@ import {
 } from '@material-ui/core';
 import { makeStyles, useTheme } from '@material-ui/core/styles';
 import { Alert } from '@material-ui/lab';
+import RemoveCircleOutlineIcon from '@material-ui/icons/RemoveCircleOutline';
 import { StatusBadge } from '@openchoreo/backstage-design-system';
 import {
   formatRelativeTime,
@@ -33,7 +39,12 @@ import type {
   EndpointReleaseSummary,
 } from '@openchoreo/backstage-plugin-common';
 import { getErrorMessage } from '../../utils/errorUtils';
-import { backendColor, missingBackends, sharePercents } from './endpointUi';
+import {
+  backendColor,
+  backendKey,
+  missingBackends,
+  sharePercents,
+} from './endpointUi';
 import { TrafficSplitBar } from './TrafficSplitBar';
 
 const useStyles = makeStyles(theme => ({
@@ -48,7 +59,7 @@ const useStyles = makeStyles(theme => ({
   },
   sliderRow: {
     display: 'grid',
-    gridTemplateColumns: 'minmax(120px, 180px) minmax(0, 1fr) 80px',
+    gridTemplateColumns: 'minmax(120px, 180px) minmax(0, 1fr) 80px 36px',
     alignItems: 'center',
     gap: theme.spacing(2),
     [theme.breakpoints.down('xs')]: {
@@ -65,6 +76,19 @@ const useStyles = makeStyles(theme => ({
   },
   total: {
     fontVariantNumeric: 'tabular-nums',
+  },
+  addRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr) auto',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    marginTop: theme.spacing(2),
+    padding: theme.spacing(1.5),
+    border: `1px dashed ${theme.palette.primary.main}`,
+    borderRadius: 8,
+    [theme.breakpoints.down('xs')]: {
+      gridTemplateColumns: 'minmax(0, 1fr)',
+    },
   },
 }));
 
@@ -83,8 +107,16 @@ export interface TrafficEditorDialogProps {
   backends: EndpointBackendWeight[];
   environments: EndpointEnvironment[];
   releases: EndpointReleaseSummary[];
+  /**
+   * Components of the Endpoint's project that can be added as a backend.
+   * A canary adds the new version here, at 0%, to the same Endpoint.
+   */
+  componentOptions?: string[];
   onClose: () => void;
-  /** Saves the weights; resolves to the release the controller cut. */
+  /**
+   * Saves the full set of backends and weights (added and removed backends
+   * included); resolves to the release the controller cut.
+   */
   onSave: (
     backends: EndpointBackendWeight[],
   ) => Promise<{ latestRelease?: string; changed: boolean }>;
@@ -108,6 +140,7 @@ export const TrafficEditorDialog = ({
   backends,
   environments,
   releases,
+  componentOptions = [],
   onClose,
   onSave,
   onRollOut,
@@ -115,9 +148,13 @@ export const TrafficEditorDialog = ({
   const classes = useStyles();
   const theme = useTheme();
   const [step, setStep] = useState<0 | 1>(0);
+  // The backends being edited: the saved ones plus any added in this dialog.
+  const [rows, setRows] = useState<EndpointBackendWeight[]>(backends);
   const [percents, setPercents] = useState<number[]>(() =>
     toPercents(backends),
   );
+  const [newComponent, setNewComponent] = useState('');
+  const [newEndpoint, setNewEndpoint] = useState('http');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedRelease, setSavedRelease] = useState<string | undefined>();
@@ -131,7 +168,10 @@ export const TrafficEditorDialog = ({
   useEffect(() => {
     if (!open) return;
     setStep(0);
+    setRows(backends);
     setPercents(toPercents(backends));
+    setNewComponent('');
+    setNewEndpoint('http');
     setBusy(false);
     setError(null);
     setSavedRelease(undefined);
@@ -141,11 +181,43 @@ export const TrafficEditorDialog = ({
 
   const current = useMemo(() => toPercents(backends), [backends]);
   const total = percents.reduce((sum, p) => sum + p, 0);
-  const unchanged = percents.every((p, i) => p === current[i]);
-  const draft: EndpointBackendWeight[] = backends.map((b, i) => ({
+  const unchanged =
+    rows.length === backends.length &&
+    rows.every((r, i) => backendKey(r) === backendKey(backends[i])) &&
+    percents.every((p, i) => p === current[i]);
+  const draft: EndpointBackendWeight[] = rows.map((b, i) => ({
     ...b,
     weight: percents[i] ?? 0,
   }));
+  const savedWeight = new Map(backends.map(b => [backendKey(b), b.weight]));
+  // A backend can be removed once it has no traffic in the saved split, so
+  // removing it never moves traffic by itself. Added rows can always go.
+  const canRemove = (b: EndpointBackendWeight) =>
+    rows.length > 1 && (savedWeight.get(backendKey(b)) ?? 0) === 0;
+  const newKey = backendKey({
+    componentName: newComponent,
+    endpoint: newEndpoint.trim(),
+  });
+  const canAdd =
+    newComponent !== '' &&
+    newEndpoint.trim() !== '' &&
+    !rows.some(r => backendKey(r) === newKey);
+
+  const addBackend = () => {
+    if (!canAdd) return;
+    setRows(prev => [
+      ...prev,
+      { componentName: newComponent, endpoint: newEndpoint.trim(), weight: 0 },
+    ]);
+    setPercents(prev => [...prev, 0]);
+    setNewComponent('');
+    setNewEndpoint('http');
+  };
+
+  const removeBackend = (index: number) => {
+    setRows(prev => prev.filter((_, i) => i !== index));
+    setPercents(prev => prev.filter((_, i) => i !== index));
+  };
 
   // With two backends, moving one adjusts the other so the total stays 100.
   const setPercent = (index: number, raw: number) => {
@@ -213,7 +285,7 @@ export const TrafficEditorDialog = ({
       return next;
     });
 
-  const twoBackends = backends.length === 2;
+  const twoBackends = rows.length === 2;
   let totalHint = '';
   if (twoBackends) totalHint = ' · moving one slider adjusts the other';
   else if (total !== 100) totalHint = ' · the weights must add up to 100';
@@ -265,7 +337,7 @@ export const TrafficEditorDialog = ({
             )}
 
             <Box display="flex" flexDirection="column" gridGap={12}>
-              {backends.map((b, i) => {
+              {rows.map((b, i) => {
                 const id = `traffic-weight-${b.componentName}-${b.endpoint}`;
                 const color = backendColor(theme, i);
                 return (
@@ -298,9 +370,61 @@ export const TrafficEditorDialog = ({
                       inputProps={{ min: 0, max: 100, step: 1 }}
                       InputProps={{ endAdornment: '%' }}
                     />
+                    {canRemove(b) ? (
+                      <IconButton
+                        size="small"
+                        onClick={() => removeBackend(i)}
+                        aria-label={`Remove ${b.componentName}`}
+                      >
+                        <RemoveCircleOutlineIcon fontSize="small" />
+                      </IconButton>
+                    ) : (
+                      <span />
+                    )}
                   </Box>
                 );
               })}
+            </Box>
+
+            <Box className={classes.addRow}>
+              <FormControl variant="outlined" size="small" fullWidth>
+                <InputLabel id="add-backend-component-label">
+                  Add backend
+                </InputLabel>
+                <Select
+                  labelId="add-backend-component-label"
+                  label="Add backend"
+                  value={newComponent}
+                  onChange={e => setNewComponent(e.target.value as string)}
+                  inputProps={{ 'aria-label': 'Component to add' }}
+                >
+                  {componentOptions.length === 0 && (
+                    <MenuItem value="" disabled>
+                      No other components in this project
+                    </MenuItem>
+                  )}
+                  {componentOptions.map(name => (
+                    <MenuItem key={name} value={name}>
+                      {name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                label="Workload endpoint"
+                size="small"
+                variant="outlined"
+                value={newEndpoint}
+                onChange={e => setNewEndpoint(e.target.value)}
+              />
+              <Button
+                variant="outlined"
+                color="primary"
+                onClick={addBackend}
+                disabled={!canAdd}
+              >
+                Add at 0%
+              </Button>
             </Box>
 
             <Box mt={1}>

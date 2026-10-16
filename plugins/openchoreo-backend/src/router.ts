@@ -1341,7 +1341,8 @@ export async function createRouter({
   });
 
   router.put('/update-endpoint-traffic', requireAuth, async (req, res) => {
-    const { endpointName, namespaceName, backends } = req.body;
+    const { endpointName, namespaceName, backends, replaceBackends } =
+      req.body;
 
     if (!endpointName || !namespaceName || !Array.isArray(backends)) {
       throw new InputError(
@@ -1369,6 +1370,7 @@ export async function createRouter({
           endpointName: endpointName as string,
           namespaceName: namespaceName as string,
           backends,
+          replaceBackends: replaceBackends === true,
         },
         userToken,
       ),

@@ -140,6 +140,12 @@ export interface UpdateEndpointTrafficRequest {
   namespaceName: string;
   endpointName: string;
   backends: EndpointBackendWeight[];
+  /**
+   * When true, `backends` is the Endpoint's full set: backends not listed are
+   * removed (only allowed at weight 0) and new ones are added. When false or
+   * omitted, only the weights of the listed existing backends change.
+   */
+  replaceBackends?: boolean;
 }
 
 /** Request body of PUT /update-endpoint-release-binding. */

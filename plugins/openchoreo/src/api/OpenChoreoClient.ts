@@ -640,7 +640,9 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
       extractEndpointEntityMetadata(entity);
     return this.apiFetch(API_ENDPOINTS.UPDATE_ENDPOINT_TRAFFIC, {
       method: 'PUT',
-      body: { endpointName, namespaceName, backends },
+      // The traffic editor sends the full set, so backends can be added
+      // (a canary) or removed (at 0%) in the same save.
+      body: { endpointName, namespaceName, backends, replaceBackends: true },
     });
   }
 

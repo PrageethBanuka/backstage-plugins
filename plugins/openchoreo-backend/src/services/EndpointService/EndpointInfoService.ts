@@ -26,6 +26,7 @@ import {
   getSourceEnvName,
 } from '../EnvironmentService/environmentOrder';
 import {
+  applyBackends,
   applyWeights,
   deriveEndpointStatus,
   toBackendStatuses,
@@ -579,10 +580,17 @@ export class EndpointInfoService {
     );
     const previous = endpoint.status?.latestRelease?.name;
     const refs = endpoint.spec?.backendRefs ?? [];
-    const updatedRefs = applyWeights(refs, request.backends);
-    const changed = updatedRefs.some(
-      (ref, i) => (ref.weight ?? 1) !== (refs[i].weight ?? 1),
-    );
+    const updatedRefs = request.replaceBackends
+      ? applyBackends(refs, request.backends)
+      : applyWeights(refs, request.backends);
+    const changed =
+      updatedRefs.length !== refs.length ||
+      updatedRefs.some(
+        (ref, i) =>
+          ref.componentName !== refs[i].componentName ||
+          ref.endpoint !== refs[i].endpoint ||
+          (ref.weight ?? 1) !== (refs[i].weight ?? 1),
+      );
     if (!changed) {
       return { latestRelease: previous, changed: false };
     }

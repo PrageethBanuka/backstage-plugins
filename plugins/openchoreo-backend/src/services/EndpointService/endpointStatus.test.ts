@@ -1,4 +1,5 @@
 import {
+  applyBackends,
   applyWeights,
   deriveEndpointStatus,
   toBackendWeights,
@@ -144,6 +145,54 @@ describe('applyWeights', () => {
   it('rejects a split that sends no traffic anywhere', () => {
     expect(() =>
       applyWeights(refs, [
+        { componentName: 'payments-v1', endpoint: 'http', weight: 0 },
+        { componentName: 'payments-v2', endpoint: 'http', weight: 0 },
+      ]),
+    ).toThrow(/above 0/);
+  });
+});
+
+describe('applyBackends', () => {
+  const refs = [
+    { componentName: 'payments-v1', endpoint: 'http', weight: 100 },
+    { componentName: 'payments-v2', endpoint: 'http', weight: 0 },
+  ];
+
+  it('adds a new backend after the existing ones', () => {
+    expect(
+      applyBackends(refs, [
+        { componentName: 'payments-v1', endpoint: 'http', weight: 100 },
+        { componentName: 'payments-v2', endpoint: 'http', weight: 0 },
+        { componentName: 'payments-v3', endpoint: 'http', weight: 0 },
+      ]),
+    ).toEqual([...refs, { componentName: 'payments-v3', endpoint: 'http', weight: 0 }]);
+  });
+
+  it('removes a backend whose saved weight is 0', () => {
+    expect(
+      applyBackends(refs, [
+        { componentName: 'payments-v1', endpoint: 'http', weight: 100 },
+      ]),
+    ).toEqual([refs[0]]);
+  });
+
+  it('refuses to remove a backend that still has traffic', () => {
+    expect(() =>
+      applyBackends(refs, [
+        { componentName: 'payments-v2', endpoint: 'http', weight: 100 },
+      ]),
+    ).toThrow(/Move payments-v1\/http to 0%/);
+  });
+
+  it('refuses duplicates and an all-zero split', () => {
+    expect(() =>
+      applyBackends(refs, [
+        { componentName: 'payments-v1', endpoint: 'http', weight: 50 },
+        { componentName: 'payments-v1', endpoint: 'http', weight: 50 },
+      ]),
+    ).toThrow(/listed twice/);
+    expect(() =>
+      applyBackends(refs, [
         { componentName: 'payments-v1', endpoint: 'http', weight: 0 },
         { componentName: 'payments-v2', endpoint: 'http', weight: 0 },
       ]),

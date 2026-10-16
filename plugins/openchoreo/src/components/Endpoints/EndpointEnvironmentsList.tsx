@@ -4,7 +4,7 @@ import { PageLoader } from '@openchoreo/backstage-design-system';
 import { Box } from '@material-ui/core';
 import { useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
-import { useEntity } from '@backstage/plugin-catalog-react';
+import { catalogApiRef, useEntity } from '@backstage/plugin-catalog-react';
 import { ForbiddenState } from '@openchoreo/backstage-plugin-react';
 import { CHOREO_ANNOTATIONS } from '@openchoreo/backstage-plugin-common';
 import type {
@@ -48,7 +48,38 @@ export const EndpointEnvironmentsList = () => {
     entity.metadata.annotations?.[CHOREO_ANNOTATIONS.ENDPOINT_CR] ??
     entity.metadata.name;
   const client = useApi(openChoreoClientApiRef);
+  const catalogApi = useApi(catalogApiRef);
   const notification = useNotification();
+  const projectName = entity.metadata.annotations?.[CHOREO_ANNOTATIONS.PROJECT];
+  const namespaceName =
+    entity.metadata.annotations?.[CHOREO_ANNOTATIONS.NAMESPACE];
+  const [projectComponents, setProjectComponents] = useState<string[]>([]);
+
+  // Components of the project, offered as backends to add in Change traffic.
+  useEffect(() => {
+    if (!projectName || !namespaceName) return undefined;
+    let cancelled = false;
+    catalogApi
+      .getEntities({
+        filter: {
+          kind: 'Component',
+          'spec.system': projectName,
+          'metadata.namespace': namespaceName,
+        },
+        fields: ['metadata.name'],
+      })
+      .then(res => {
+        if (!cancelled) {
+          setProjectComponents(res.items.map(e => e.metadata.name).sort());
+        }
+      })
+      .catch(() => {
+        // Non-critical: the editor still changes weights without the list.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogApi, projectName, namespaceName]);
 
   const [endpoint, setEndpoint] = useState<EndpointSummary | null>(null);
   const [envs, setEnvs] = useState<EndpointEnvironment[]>([]);
@@ -313,6 +344,7 @@ export const EndpointEnvironmentsList = () => {
         backends={contextValue.endpoint.backends}
         environments={envs}
         releases={releases}
+        componentOptions={projectComponents}
         onClose={() => setEditorOpen(false)}
         onSave={handleSaveTraffic}
         onRollOut={handleRollOutMany}

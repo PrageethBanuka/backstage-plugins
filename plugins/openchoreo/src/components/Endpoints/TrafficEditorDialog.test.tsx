@@ -86,6 +86,44 @@ describe('TrafficEditorDialog', () => {
     expect(screen.getByText(/Total 100%/)).toBeInTheDocument();
   });
 
+  it('adds a project component as a backend at 0% (a canary on the same Endpoint)', async () => {
+    const props = renderDialog({
+      backends: [{ componentName: 'payments-v1', endpoint: 'http', weight: 100 }],
+      componentOptions: ['payments-v1', 'payments-v2'],
+    });
+    const add = screen.getByRole('button', { name: 'Add at 0%' });
+    expect(add).toBeDisabled();
+
+    fireEvent.mouseDown(screen.getByLabelText('Component to add'));
+    fireEvent.click(await screen.findByRole('option', { name: 'payments-v2' }));
+    fireEvent.click(add);
+
+    expect(percentInput('payments-v2')).toHaveValue(0);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save as new release' }),
+    );
+    await waitFor(() => expect(props.onSave).toHaveBeenCalled());
+    expect((props.onSave as jest.Mock).mock.calls[0][0]).toEqual([
+      { componentName: 'payments-v1', endpoint: 'http', weight: 100 },
+      { componentName: 'payments-v2', endpoint: 'http', weight: 0 },
+    ]);
+  });
+
+  it('offers to remove only a backend with no traffic in the saved split', () => {
+    renderDialog({
+      backends: [
+        { componentName: 'payments-v1', endpoint: 'http', weight: 0 },
+        { componentName: 'payments-v2', endpoint: 'http', weight: 100 },
+      ],
+    });
+    expect(screen.queryByLabelText('Remove payments-v2')).toBeNull();
+    fireEvent.click(screen.getByLabelText('Remove payments-v1'));
+    expect(screen.queryByText('payments-v1')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Save as new release' }),
+    ).toBeEnabled();
+  });
+
   it('applies a preset', () => {
     renderDialog();
     fireEvent.click(screen.getByRole('button', { name: '50 / 50' }));
