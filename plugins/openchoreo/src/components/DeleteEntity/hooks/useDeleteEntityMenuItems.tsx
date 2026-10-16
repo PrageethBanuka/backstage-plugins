@@ -14,6 +14,7 @@ import {
   isDeletableEntityKind,
   performEntityDelete,
 } from './deleteEntityDispatch';
+import { useComponentDeleteGuard } from './useComponentDeleteGuard';
 
 interface ExtraContextMenuItem {
   title: string;
@@ -151,9 +152,13 @@ export function useDeleteEntityMenuItems(
     [entityKind],
   );
 
+  const guard = useComponentDeleteGuard(entity, dialogOpen);
+
   const DeleteConfirmationDialog: React.FC = useCallback(
     () => (
       <DeleteEntityDialog
+        blockedNote={guard.note}
+        checking={guard.checking}
         open={dialogOpen}
         entityDisplayType={entityDisplayType}
         entityName={entityName}
@@ -173,6 +178,7 @@ export function useDeleteEntityMenuItems(
       cascadeNote,
       error,
       deleting,
+      guard,
     ],
   );
 

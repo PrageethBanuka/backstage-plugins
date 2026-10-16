@@ -9,6 +9,7 @@ import {
   getEntityDisplayType,
   performEntityDelete,
 } from './deleteEntityDispatch';
+import { useComponentDeleteGuard } from './useComponentDeleteGuard';
 
 export interface UseDeleteEntityDialogOptions {
   /**
@@ -94,9 +95,13 @@ export function useDeleteEntityDialog(
     }
   }, [target, openChoreoClient, alertApi, onDeleted]);
 
+  const guard = useComponentDeleteGuard(target, target !== null);
+
   const DeleteDialog: React.FC = useCallback(
     () => (
       <DeleteEntityDialog
+        blockedNote={guard.note}
+        checking={guard.checking}
         open={target !== null}
         entityDisplayType={target ? getEntityDisplayType(target.kind) : ''}
         entityName={target?.metadata.name ?? ''}
@@ -109,7 +114,7 @@ export function useDeleteEntityDialog(
         onConfirm={handleConfirm}
       />
     ),
-    [target, deleting, error, handleClose, handleConfirm],
+    [target, deleting, error, handleClose, handleConfirm, guard],
   );
 
   return { requestDelete, DeleteDialog };

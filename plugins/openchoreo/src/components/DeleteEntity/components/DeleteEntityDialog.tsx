@@ -23,6 +23,13 @@ export interface DeleteEntityDialogProps {
   error: string | null;
   /** Optional cascade note (e.g. "all components will also be deleted"). */
   cascadeNote?: ReactNode;
+  /**
+   * Why the delete can't proceed yet (e.g. the component still receives
+   * traffic through an Endpoint). When set, Delete is disabled.
+   */
+  blockedNote?: ReactNode;
+  /** True while checking whether something blocks the delete. */
+  checking?: boolean;
   /** Called when the dialog is dismissed (Cancel / backdrop). */
   onClose: () => void;
   /** Called when the user confirms the deletion. */
@@ -44,6 +51,8 @@ export function DeleteEntityDialog({
   deleting,
   error,
   cascadeNote,
+  blockedNote,
+  checking = false,
   onClose,
   onConfirm,
 }: DeleteEntityDialogProps) {
@@ -75,6 +84,8 @@ export function DeleteEntityDialog({
 
         {cascadeNote}
 
+        {blockedNote}
+
         {error && (
           <Typography variant="body2" color="error">
             Error: {error}
@@ -90,7 +101,7 @@ export function DeleteEntityDialog({
           onClick={onConfirm}
           className={classes.deleteButton}
           variant="outlined"
-          disabled={deleting}
+          disabled={deleting || checking || Boolean(blockedNote)}
           startIcon={
             deleting ? <CircularProgress size={16} color="inherit" /> : null
           }

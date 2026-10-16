@@ -132,6 +132,63 @@ describe('useDeleteEntityDialog', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('blocks deleting a component an Endpoint still routes to, naming where', async () => {
+    const user = userEvent.setup();
+    mockClient.fetchComponentTraffic.mockResolvedValue([
+      {
+        endpointName: 'payments-api',
+        environment: 'production',
+        status: 'Routing',
+        weight: 10,
+        totalWeight: 100,
+        sharePercent: 10,
+        hasOtherBackends: true,
+      },
+      {
+        endpointName: 'payments-solo',
+        environment: 'production',
+        status: 'Routing',
+        weight: 100,
+        totalWeight: 100,
+        sharePercent: 100,
+        hasOtherBackends: false,
+      },
+    ]);
+
+    renderHarness([makeComponent('payments-v1')]);
+    await user.click(screen.getByTestId('open-payments-v1'));
+
+    expect(
+      await screen.findByText(/payments-v1 still receives traffic/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('payments-api')).toBeInTheDocument();
+    expect(screen.queryByText('payments-solo')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^delete$/i })).toBeDisabled();
+    expect(mockClient.deleteComponent).not.toHaveBeenCalled();
+  });
+
+  it('allows deleting a component at 0% everywhere', async () => {
+    const user = userEvent.setup();
+    mockClient.fetchComponentTraffic.mockResolvedValue([
+      {
+        endpointName: 'payments-api',
+        environment: 'production',
+        status: 'Routing',
+        weight: 0,
+        totalWeight: 100,
+        sharePercent: 0,
+        hasOtherBackends: true,
+      },
+    ]);
+
+    renderHarness([makeComponent('payments-v1')]);
+    await user.click(screen.getByTestId('open-payments-v1'));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^delete$/i })).toBeEnabled(),
+    );
+  });
+
   it('deletes a project (system) with the cascade note shown', async () => {
     const user = userEvent.setup();
     mockClient.deleteProject.mockResolvedValue(undefined);
