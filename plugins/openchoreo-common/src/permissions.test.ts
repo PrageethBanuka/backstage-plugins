@@ -1,4 +1,5 @@
 import {
+  openchoreoEndpointCreatePermission,
   openchoreoProjectTypeCreatePermission,
   openchoreoProjectTypeUpdatePermission,
   openchoreoProjectTypeDeletePermission,
@@ -170,6 +171,16 @@ describe('Endpoint permissions', () => {
       'endpointreleasebinding:delete',
     ],
   ] as const;
+
+  it('registers endpoint create as a non-resource permission mapped to endpoint:create', () => {
+    expect(openchoreoEndpointCreatePermission.type).toBe('basic');
+    expect(openchoreoPermissions.map(p => p.name)).toContain(
+      openchoreoEndpointCreatePermission.name,
+    );
+    expect(
+      OPENCHOREO_PERMISSION_TO_ACTION[openchoreoEndpointCreatePermission.name],
+    ).toBe('endpoint:create');
+  });
 
   it.each(endpointPermissions)(
     '%o is project-scoped, registered and maps to %s',

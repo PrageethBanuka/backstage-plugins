@@ -379,6 +379,10 @@ catalog:
       rules:
         - allow: [Template]
     - type: file
+      target: ../../templates/create-openchoreo-endpoint/template.yaml
+      rules:
+        - allow: [Template]
+    - type: file
       target: ../../templates/create-openchoreo-projecttype/template.yaml
       rules:
         - allow: [Template]

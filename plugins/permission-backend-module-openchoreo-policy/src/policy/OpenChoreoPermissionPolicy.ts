@@ -395,6 +395,7 @@ export class OpenChoreoPermissionPolicy implements PermissionPolicy {
         'componenttype:create',
         'resourcetype:create',
         'resource:create',
+        'endpoint:create',
         'clustercomponenttype:create',
         'clusterresourcetype:create',
         'workflow:create',

@@ -14,6 +14,7 @@ import {
   useClusterProjectTypePermission,
   useProjectTypePermission,
   useResourceCreatePermission,
+  useEndpointCreatePermission,
   useTraitCreatePermission,
   useClusterTraitCreatePermission,
   useWorkflowPermission,
@@ -48,6 +49,7 @@ export function useKindCreateConfig(): KindCreateConfig | null {
   const clusterProjectTypePerm = useClusterProjectTypePermission();
   const projectTypePerm = useProjectTypePermission();
   const resourcePerm = useResourceCreatePermission();
+  const endpointPerm = useEndpointCreatePermission();
   const traitPerm = useTraitCreatePermission();
   const clusterTraitPerm = useClusterTraitCreatePermission();
   const workflowPerm = useWorkflowPermission();
@@ -176,6 +178,17 @@ export function useKindCreateConfig(): KindCreateConfig | null {
         canCreate: resourcePerm.canCreate,
         loading: resourcePerm.loading,
         deniedTooltip: resourcePerm.createDeniedTooltip,
+      };
+    case 'endpoint':
+      return {
+        createPath: templateRoute({
+          namespace: 'default',
+          templateName: 'create-openchoreo-endpoint',
+        }),
+        buttonLabel: 'Create Endpoint',
+        canCreate: endpointPerm.canCreate,
+        loading: endpointPerm.loading,
+        deniedTooltip: endpointPerm.createDeniedTooltip,
       };
     case 'traittype':
       return {

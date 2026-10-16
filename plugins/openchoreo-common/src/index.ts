@@ -61,6 +61,7 @@ export {
   openchoreoResourceReleaseBindingUpdatePermission,
   openchoreoResourceReleaseBindingCreatePermission,
   openchoreoResourceReleaseBindingDeletePermission,
+  openchoreoEndpointCreatePermission,
   openchoreoEndpointUpdatePermission,
   openchoreoEndpointReleaseBindingCreatePermission,
   openchoreoEndpointReleaseBindingUpdatePermission,

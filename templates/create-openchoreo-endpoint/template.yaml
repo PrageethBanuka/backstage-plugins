@@ -1,0 +1,115 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: create-openchoreo-endpoint
+  title: Endpoint
+  description: >-
+    Create an Endpoint that routes a project's traffic to one or more
+    components with weights. It has its own lifecycle: deleting a component
+    never deletes it.
+spec:
+  owner: openchoreo-users
+  type: Endpoint
+  # Enable user token injection for user-based authorization at OpenChoreo API
+  EXPERIMENTAL_formDecorators:
+    - id: openchoreo:inject-user-token
+  parameters:
+    - title: Endpoint
+      required:
+        - project_namespace
+        - endpoint_name
+        - typeKind
+        - typeName
+      properties:
+        project_namespace:
+          title: Project & Namespace
+          type: object
+          ui:field: ProjectNamespaceField
+          properties:
+            project_name:
+              type: string
+            namespace_name:
+              type: string
+          required:
+            - project_name
+            - namespace_name
+        endpoint_name:
+          title: Name
+          type: string
+          description: Unique name for the Endpoint, for example payments-api
+          ui:field: ResourceNamePicker
+          ui:options:
+            catalogKind: Endpoint
+            resourceLabel: Endpoint
+            namespaceField: project_namespace.namespace_name
+        displayName:
+          title: Display Name
+          type: string
+        description:
+          title: Description
+          type: string
+        typeKind:
+          title: Endpoint type kind
+          type: string
+          enum: [ClusterEndpointType, EndpointType]
+          default: ClusterEndpointType
+        typeName:
+          title: Endpoint type
+          type: string
+          description: The (Cluster)EndpointType that renders the route, for example http-gateway
+    - title: Backends
+      required:
+        - backends
+      properties:
+        backends:
+          title: Backends
+          description: >-
+            Components in the project that receive traffic, and their relative
+            weights. One backend is enough to start; add more later to run a
+            canary.
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [componentName, endpoint, weight]
+            properties:
+              componentName:
+                title: Component
+                type: string
+              endpoint:
+                title: Workload endpoint
+                type: string
+                default: http
+              weight:
+                title: Weight
+                type: integer
+                minimum: 0
+                maximum: 1000000
+                default: 100
+        reclaimPolicy:
+          title: When no backend is left
+          type: string
+          enum: [Delete, Retain]
+          enumNames:
+            - Delete the Endpoint and its URL
+            - Keep the Endpoint (Orphaned) for a new backend
+          default: Delete
+  steps:
+    - id: create-endpoint
+      name: Create OpenChoreo Endpoint
+      action: openchoreo:endpoint:create
+      input:
+        namespaceName: ${{ parameters.project_namespace.namespace_name }}
+        projectName: ${{ parameters.project_namespace.project_name }}
+        endpointName: ${{ parameters.endpoint_name }}
+        displayName: ${{ parameters.displayName }}
+        description: ${{ parameters.description }}
+        typeKind: ${{ parameters.typeKind }}
+        typeName: ${{ parameters.typeName }}
+        backends: ${{ parameters.backends }}
+        reclaimPolicy: ${{ parameters.reclaimPolicy }}
+  output:
+    links:
+      - title: View Endpoint
+        icon: kind:endpoint
+        entityRef: ${{ steps['create-endpoint'].output.entityRef }}

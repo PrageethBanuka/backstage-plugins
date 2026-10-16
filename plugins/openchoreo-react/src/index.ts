@@ -556,6 +556,10 @@ export {
   type UseResourceCreatePermissionResult,
 } from './hooks/useResourceCreatePermission';
 export {
+  useEndpointCreatePermission,
+  type UseEndpointCreatePermissionResult,
+} from './hooks/useEndpointCreatePermission';
+export {
   useResourceDefinitionPermission,
   type UseResourceDefinitionPermissionResult,
 } from './hooks/useResourceDefinitionPermission';

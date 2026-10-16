@@ -55,6 +55,7 @@ import {
   useClusterProjectTypePermission,
   useProjectTypePermission,
   useResourceCreatePermission,
+  useEndpointCreatePermission,
   useComponentWorkflowPermission,
   useWorkflowPermission,
   useClusterWorkflowPermission,
@@ -76,9 +77,10 @@ import { useStyles } from './styles';
 
 // 'Project', 'Component' and 'Resource' are all presented as meta-cards on the
 // landing view; their per-type templates are listed under
-// /create?view=projects|components|resources. None of them appear as real
-// application-template cards, so APPLICATION_TYPES is empty.
-const APPLICATION_TYPES: string[] = [];
+// /create?view=projects|components|resources. Endpoint has one static
+// template (create-openchoreo-endpoint), so it is a real application-template
+// card shown after those meta-cards.
+const APPLICATION_TYPES: string[] = ['Endpoint'];
 // Order is significant — this list controls the on-screen order of the
 // Platform Resources cards (see platformTemplates sort below). Foundation-
 // first to mirror Application Resources (Project → Component → Resource),
@@ -181,6 +183,7 @@ const TemplateListContent = (props: TemplateListPageProps) => {
   const clusterProjectTypePerm = useClusterProjectTypePermission();
   const projectTypePerm = useProjectTypePermission();
   const resourcePerm = useResourceCreatePermission();
+  const endpointPerm = useEndpointCreatePermission();
   const componentWorkflowPerm = useComponentWorkflowPermission();
   const workflowPerm = useWorkflowPermission();
   const clusterWorkflowPerm = useClusterWorkflowPermission();
@@ -228,6 +231,8 @@ const TemplateListContent = (props: TemplateListPageProps) => {
           return !projectTypePerm.loading && !projectTypePerm.canCreate;
         case 'Resource':
           return !resourcePerm.loading && !resourcePerm.canCreate;
+        case 'Endpoint':
+          return !endpointPerm.loading && !endpointPerm.canCreate;
         case 'ComponentWorkflow':
           return (
             !componentWorkflowPerm.loading && !componentWorkflowPerm.canCreate
@@ -260,6 +265,7 @@ const TemplateListContent = (props: TemplateListPageProps) => {
       clusterProjectTypePerm,
       projectTypePerm,
       resourcePerm,
+      endpointPerm,
       componentWorkflowPerm,
       workflowPerm,
       clusterWorkflowPerm,
@@ -716,11 +722,6 @@ const TemplateListContent = (props: TemplateListPageProps) => {
           Application Resources
         </Typography>
         <Grid container spacing={3}>
-          {loading ? (
-            <TemplateCardSkeletons count={2} />
-          ) : (
-            renderTemplateCards(applicationTemplates)
-          )}
           {/* Project — navigation card, opens the per-type templates list */}
           <Grid item xs={12} sm={6} md={3}>
             {projectDisabled ? (
@@ -755,6 +756,12 @@ const TemplateListContent = (props: TemplateListPageProps) => {
               resourceCard
             )}
           </Grid>
+          {/* Endpoint — its single static template, after the meta-cards */}
+          {loading ? (
+            <TemplateCardSkeletons count={1} />
+          ) : (
+            renderTemplateCards(applicationTemplates)
+          )}
         </Grid>
 
         {/* Platform Resources */}

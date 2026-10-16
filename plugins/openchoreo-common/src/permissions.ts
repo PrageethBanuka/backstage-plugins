@@ -1119,6 +1119,16 @@ export const openchoreoAuditLogsViewPermission = createPermission({
 });
 
 /**
+ * Permission to create an Endpoint from the portal's Create page. Not
+ * resource-based, like Resource creation: the project is picked in the form
+ * and openchoreo-api enforces `endpoint:create` against it.
+ */
+export const openchoreoEndpointCreatePermission = createPermission({
+  name: 'openchoreo.endpoint.create',
+  attributes: { action: 'create' },
+});
+
+/**
  * Permission to change an Endpoint's traffic split (its backend weights).
  * Saving cuts a new EndpointRelease; no environment's traffic moves until a
  * binding is pinned to it. Project-scoped: an Endpoint routes across several
@@ -1196,6 +1206,7 @@ export const openchoreoPermissions = [
   openchoreoResourceReleaseBindingUpdatePermission,
   openchoreoResourceReleaseBindingCreatePermission,
   openchoreoResourceReleaseBindingDeletePermission,
+  openchoreoEndpointCreatePermission,
   openchoreoEndpointUpdatePermission,
   openchoreoEndpointReleaseBindingCreatePermission,
   openchoreoEndpointReleaseBindingUpdatePermission,
@@ -1328,6 +1339,7 @@ export const OPENCHOREO_PERMISSION_TO_ACTION: Record<string, string> = {
   'openchoreo.resourcereleasebinding.update': 'resourcereleasebinding:update',
   'openchoreo.resourcereleasebinding.create': 'resourcereleasebinding:create',
   'openchoreo.resourcereleasebinding.delete': 'resourcereleasebinding:delete',
+  'openchoreo.endpoint.create': 'endpoint:create',
   'openchoreo.endpoint.update': 'endpoint:update',
   'openchoreo.endpointreleasebinding.create': 'endpointreleasebinding:create',
   'openchoreo.endpointreleasebinding.update': 'endpointreleasebinding:update',
