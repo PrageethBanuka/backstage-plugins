@@ -224,6 +224,18 @@ const k8sClusterResourceType = {
   status: { conditions: [readyCondition] },
 };
 
+const k8sEndpointType = {
+  metadata: k8sMeta('internal-gateway'),
+  spec: { resources: [] },
+  status: {},
+};
+
+const k8sClusterEndpointType = {
+  metadata: k8sMeta('http-gateway'),
+  spec: { resources: [] },
+  status: {},
+};
+
 const k8sResourceType = {
   metadata: k8sMeta('postgres'),
   spec: {
@@ -481,6 +493,12 @@ describe('OpenChoreoEntityProvider', () => {
         '/api/v1/clusterresourcetypes': okData({
           items: [k8sClusterResourceType],
         }),
+        '/api/v1/namespaces/{namespaceName}/endpointtypes': okData({
+          items: [k8sEndpointType],
+        }),
+        '/api/v1/clusterendpointtypes': okData({
+          items: [k8sClusterEndpointType],
+        }),
         '/api/v1/namespaces/{namespaceName}/projecttypes': okData({
           items: [k8sProjectType],
         }),
@@ -512,6 +530,20 @@ describe('OpenChoreoEntityProvider', () => {
       expect(findEntities(entities, 'ClusterResourceType')).toHaveLength(1);
       expect(findEntities(entities, 'ResourceType')).toHaveLength(1);
       expect(findEntities(entities, 'Resource')).toHaveLength(1);
+    });
+
+    it('creates EndpointType and ClusterEndpointType entities', async () => {
+      const entities = await runProvider();
+      const ets = findEntities(entities, 'EndpointType');
+      expect(ets).toHaveLength(1);
+      expect(ets[0].metadata.name).toBe('internal-gateway');
+      expect(ets[0].metadata.namespace).toBe('test-ns');
+      expect((ets[0].spec as any).domain).toBe('default/test-ns');
+
+      const cets = findEntities(entities, 'ClusterEndpointType');
+      expect(cets).toHaveLength(1);
+      expect(cets[0].metadata.name).toBe('http-gateway');
+      expect(cets[0].metadata.namespace).toBe('openchoreo-cluster');
     });
 
     it('creates ClusterResourceType entity in the openchoreo-cluster namespace', async () => {

@@ -36,3 +36,5 @@ export type {
   NotificationWebhookHeaderValue,
   NotificationWebhookConfig,
 } from './ObservabilityAlertsNotificationChannelEntityV1alpha1';
+export type { EndpointTypeEntityV1alpha1 } from './EndpointTypeEntityV1alpha1';
+export type { ClusterEndpointTypeEntityV1alpha1 } from './ClusterEndpointTypeEntityV1alpha1';

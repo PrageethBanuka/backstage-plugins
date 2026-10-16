@@ -27,6 +27,8 @@ import {
 import { ClusterComponentTypeEntityProcessor } from './ClusterComponentTypeEntityProcessor';
 import { ClusterResourceTypeEntityProcessor } from './ClusterResourceTypeEntityProcessor';
 import { ResourceTypeEntityProcessor } from './ResourceTypeEntityProcessor';
+import { EndpointTypeEntityProcessor } from './EndpointTypeEntityProcessor';
+import { ClusterEndpointTypeEntityProcessor } from './ClusterEndpointTypeEntityProcessor';
 import { ClusterProjectTypeEntityProcessor } from './ClusterProjectTypeEntityProcessor';
 import { ProjectTypeEntityProcessor } from './ProjectTypeEntityProcessor';
 import { ClusterDataplaneEntityProcessor } from './ClusterDataplaneEntityProcessor';
@@ -1782,8 +1784,101 @@ describe('ResourceEntityProcessor', () => {
   });
 });
 
+describe('EndpointTypeEntityProcessor', () => {
+  const processor = new EndpointTypeEntityProcessor();
+
+  it('validates only the EndpointType kind', async () => {
+    expect(
+      await processor.validateEntityKind({ kind: 'EndpointType' } as any),
+    ).toBe(true);
+    expect(
+      await processor.validateEntityKind({
+        kind: 'ClusterEndpointType',
+      } as any),
+    ).toBe(false);
+  });
+
+  it('emits partOf domain relation', async () => {
+    const emit = jest.fn();
+    await processor.postProcessEntity(
+      {
+        kind: 'EndpointType',
+        metadata: { name: 'http-gateway', namespace: 'my-ns' },
+        spec: { domain: 'my-ns' },
+      } as any,
+      mockLocation,
+      emit,
+    );
+    expect(emit).toHaveBeenCalledWith(
+      processingResult.relation({
+        source: { kind: 'endpointtype', namespace: 'my-ns', name: 'http-gateway' },
+        target: { kind: 'domain', namespace: 'my-ns', name: 'my-ns' },
+        type: RELATION_PART_OF,
+      }),
+    );
+  });
+});
+
+describe('ClusterEndpointTypeEntityProcessor', () => {
+  const processor = new ClusterEndpointTypeEntityProcessor();
+
+  it('validates only the ClusterEndpointType kind', async () => {
+    expect(
+      await processor.validateEntityKind({
+        kind: 'ClusterEndpointType',
+      } as any),
+    ).toBe(true);
+    expect(
+      await processor.validateEntityKind({ kind: 'EndpointType' } as any),
+    ).toBe(false);
+  });
+});
+
 describe('EndpointEntityProcessor', () => {
   const processor = new EndpointEntityProcessor();
+
+  it.each([
+    ['ClusterEndpointType', 'clusterendpointtype', 'openchoreo-cluster'],
+    ['EndpointType', 'endpointtype', 'default'],
+  ])(
+    'emits instanceOf/hasInstance to its %s',
+    async (typeKind, refKind, refNamespace) => {
+      const emit = jest.fn();
+      await processor.postProcessEntity(
+        {
+          apiVersion: 'backstage.io/v1alpha1',
+          kind: 'Endpoint',
+          metadata: {
+            name: 'payments-api',
+            namespace: 'default',
+            annotations: {
+              'openchoreo.io/endpoint-cr-type': 'http-gateway',
+              'openchoreo.io/endpoint-cr-type-kind': typeKind,
+            },
+          },
+          spec: { backends: [] },
+        } as any,
+        mockLocation,
+        emit,
+      );
+      const ref = { kind: 'endpoint', namespace: 'default', name: 'payments-api' };
+      const typeRef = { kind: refKind, namespace: refNamespace, name: 'http-gateway' };
+      expect(emit).toHaveBeenCalledWith(
+        processingResult.relation({
+          source: ref,
+          target: typeRef,
+          type: RELATION_INSTANCE_OF,
+        }),
+      );
+      expect(emit).toHaveBeenCalledWith(
+        processingResult.relation({
+          source: typeRef,
+          target: ref,
+          type: RELATION_HAS_INSTANCE,
+        }),
+      );
+    },
+  );
   const endpoint = (spec: any, namespace = 'default') =>
     ({
       apiVersion: 'backstage.io/v1alpha1',

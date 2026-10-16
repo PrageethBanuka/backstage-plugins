@@ -40,6 +40,8 @@ import type {
   ObservabilityAlertsNotificationChannelEntityV1alpha1,
   NotificationEmailConfig,
   NotificationWebhookConfig,
+  EndpointTypeEntityV1alpha1,
+  ClusterEndpointTypeEntityV1alpha1,
 } from '../kinds';
 import { normalizeObservabilityPlaneRef, resolveProjectOwner } from './helpers';
 
@@ -77,6 +79,9 @@ type NewClusterProjectType =
 type NewProjectType = OpenChoreoComponents['schemas']['ProjectType'];
 type NewResource = OpenChoreoComponents['schemas']['ResourceInstance'];
 type NewEndpoint = OpenChoreoComponents['schemas']['Endpoint'];
+type NewEndpointType = OpenChoreoComponents['schemas']['EndpointType'];
+type NewClusterEndpointType =
+  OpenChoreoComponents['schemas']['ClusterEndpointType'];
 type NewNamespace = OpenChoreoComponents['schemas']['Namespace'];
 type NewAgentConnectionStatus =
   OpenChoreoComponents['schemas']['AgentConnectionStatus'];
@@ -763,6 +768,89 @@ export function translateResourceTypeToEntity(
         (rt.retainPolicy as 'Delete' | 'Retain' | undefined) ?? 'Delete',
     },
   } as ResourceTypeEntityV1alpha1;
+}
+
+/**
+ * Translates an OpenChoreo EndpointType to a Backstage EndpointType entity.
+ * Read-only in the portal: the API serves list and get only.
+ */
+export function translateEndpointTypeToEntity(
+  et: {
+    name: string;
+    displayName?: string;
+    description?: string;
+    createdAt?: string;
+    deletionTimestamp?: string;
+  },
+  namespaceName: string,
+  config: EntityTranslationConfig,
+): EndpointTypeEntityV1alpha1 {
+  return {
+    apiVersion: 'backstage.io/v1alpha1',
+    kind: 'EndpointType',
+    metadata: {
+      name: et.name,
+      namespace: namespaceName,
+      title: et.displayName || et.name,
+      description: et.description || `${et.name} endpoint type`,
+      tags: ['openchoreo', 'endpoint-type', 'platform-engineering'],
+      annotations: {
+        'backstage.io/managed-by-location': `provider:${config.locationKey}`,
+        'backstage.io/managed-by-origin-location': `provider:${config.locationKey}`,
+        [CHOREO_ANNOTATIONS.NAMESPACE]: namespaceName,
+        [CHOREO_ANNOTATIONS.CREATED_AT]: et.createdAt || '',
+        ...(et.deletionTimestamp && {
+          [CHOREO_ANNOTATIONS.DELETION_TIMESTAMP]: et.deletionTimestamp,
+        }),
+      },
+      labels: {
+        [CHOREO_LABELS.MANAGED]: 'true',
+      },
+    },
+    spec: {
+      domain: `default/${namespaceName}`,
+    },
+  };
+}
+
+/**
+ * Translates an OpenChoreo ClusterEndpointType to a Backstage
+ * ClusterEndpointType entity. Cluster-scoped: entity namespace is
+ * 'openchoreo-cluster', no domain.
+ */
+export function translateClusterEndpointTypeToEntity(
+  cet: {
+    name: string;
+    displayName?: string;
+    description?: string;
+    createdAt?: string;
+    deletionTimestamp?: string;
+  },
+  config: EntityTranslationConfig,
+): ClusterEndpointTypeEntityV1alpha1 {
+  return {
+    apiVersion: 'backstage.io/v1alpha1',
+    kind: 'ClusterEndpointType',
+    metadata: {
+      name: cet.name,
+      namespace: 'openchoreo-cluster',
+      title: cet.displayName || cet.name,
+      description: cet.description || `${cet.name} cluster endpoint type`,
+      tags: ['openchoreo', 'cluster-endpoint-type', 'platform-engineering'],
+      annotations: {
+        'backstage.io/managed-by-location': `provider:${config.locationKey}`,
+        'backstage.io/managed-by-origin-location': `provider:${config.locationKey}`,
+        [CHOREO_ANNOTATIONS.CREATED_AT]: cet.createdAt || '',
+        ...(cet.deletionTimestamp && {
+          [CHOREO_ANNOTATIONS.DELETION_TIMESTAMP]: cet.deletionTimestamp,
+        }),
+      },
+      labels: {
+        [CHOREO_LABELS.MANAGED]: 'true',
+      },
+    },
+    spec: {},
+  };
 }
 
 /**
@@ -1997,6 +2085,47 @@ export function translateNewResourceTypeToEntity(
       deletionTimestamp: getDeletionTimestamp(rt),
     },
     namespaceName,
+    { locationKey: ctx.providerName },
+  );
+}
+
+/**
+ * Translates a new-API EndpointType into a Backstage EndpointType entity.
+ */
+export function translateNewEndpointTypeToEntity(
+  et: NewEndpointType,
+  namespaceName: string,
+  ctx: NewApiTranslatorContext,
+): EndpointTypeEntityV1alpha1 {
+  return translateEndpointTypeToEntity(
+    {
+      name: getName(et)!,
+      displayName: getDisplayName(et),
+      description: getDescription(et),
+      createdAt: getCreatedAt(et),
+      deletionTimestamp: getDeletionTimestamp(et),
+    },
+    namespaceName,
+    { locationKey: ctx.providerName },
+  );
+}
+
+/**
+ * Translates a new-API ClusterEndpointType into a Backstage
+ * ClusterEndpointType entity.
+ */
+export function translateNewClusterEndpointTypeToEntity(
+  cet: NewClusterEndpointType,
+  ctx: NewApiTranslatorContext,
+): ClusterEndpointTypeEntityV1alpha1 {
+  return translateClusterEndpointTypeToEntity(
+    {
+      name: getName(cet)!,
+      displayName: getDisplayName(cet),
+      description: getDescription(cet),
+      createdAt: getCreatedAt(cet),
+      deletionTimestamp: getDeletionTimestamp(cet),
+    },
     { locationKey: ctx.providerName },
   );
 }

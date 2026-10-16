@@ -10,6 +10,11 @@ import {
   RELATION_HAS_PART,
   RELATION_PART_OF,
 } from '@backstage/catalog-model';
+import {
+  CHOREO_ANNOTATIONS,
+  RELATION_HAS_INSTANCE,
+  RELATION_INSTANCE_OF,
+} from '@openchoreo/backstage-plugin-common';
 import { LocationSpec } from '@backstage/plugin-catalog-common';
 import type { EndpointEntityV1alpha1 } from '../kinds/EndpointEntityV1alpha1';
 
@@ -71,6 +76,36 @@ export class EndpointEntityProcessor implements CatalogProcessor {
           source: systemRef,
           target: sourceRef,
           type: RELATION_HAS_PART,
+        }),
+      );
+    }
+
+    // instanceOf / hasInstance: the (Cluster)EndpointType the Endpoint
+    // renders its routes from, as a Resource relates to its ResourceType.
+    const typeName =
+      entity.metadata.annotations?.[CHOREO_ANNOTATIONS.ENDPOINT_CR_TYPE];
+    if (typeName) {
+      const isCluster =
+        entity.metadata.annotations?.[
+          CHOREO_ANNOTATIONS.ENDPOINT_CR_TYPE_KIND
+        ] === 'ClusterEndpointType';
+      const typeRef = {
+        kind: isCluster ? 'clusterendpointtype' : 'endpointtype',
+        namespace: isCluster ? 'openchoreo-cluster' : namespace,
+        name: typeName,
+      };
+      emit(
+        processingResult.relation({
+          source: sourceRef,
+          target: typeRef,
+          type: RELATION_INSTANCE_OF,
+        }),
+      );
+      emit(
+        processingResult.relation({
+          source: typeRef,
+          target: sourceRef,
+          type: RELATION_HAS_INSTANCE,
         }),
       );
     }

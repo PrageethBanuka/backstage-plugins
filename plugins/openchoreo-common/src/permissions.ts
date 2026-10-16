@@ -1490,6 +1490,8 @@ export const OPENCHOREO_MANAGED_ENTITY_KINDS = [
   'ClusterComponentType',
   'ClusterResourceType',
   'ClusterProjectType',
+  'EndpointType',
+  'ClusterEndpointType',
   'TraitType',
   'ClusterTraitType',
   'Workflow',
@@ -1570,6 +1572,12 @@ export const CATALOG_KIND_TO_ACTION: Record<string, Record<string, string>> = {
   },
   clusterresourcetype: {
     'catalog.entity.read': 'clusterresourcetype:view',
+  },
+  endpointtype: {
+    'catalog.entity.read': 'endpointtype:view',
+  },
+  clusterendpointtype: {
+    'catalog.entity.read': 'clusterendpointtype:view',
   },
   clusterprojecttype: {
     'catalog.entity.read': 'clusterprojecttype:view',

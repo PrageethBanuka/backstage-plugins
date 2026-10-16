@@ -15,6 +15,8 @@ import {
   translateProjectTypeToEntity,
   translateResourceToEntity,
   translateResourceTypeToEntity,
+  translateNewEndpointTypeToEntity,
+  translateNewClusterEndpointTypeToEntity,
 } from './entityTranslation';
 
 describe('translateClusterResourceTypeToEntity', () => {
@@ -1062,6 +1064,45 @@ describe('translateNewEndpointToEntity', () => {
     expect(annotations).not.toHaveProperty('openchoreo.io/endpoint-name');
     expect(annotations['openchoreo.io/endpoint-cr-type-kind']).toBe(
       'EndpointType',
+    );
+  });
+});
+
+describe('EndpointType translators', () => {
+  const ctx = { providerName: 'OpenChoreoEntityProvider' } as any;
+
+  it('translates an EndpointType into its namespace, under the Domain', () => {
+    const entity = translateNewEndpointTypeToEntity(
+      {
+        metadata: {
+          name: 'internal-gateway',
+          annotations: { 'openchoreo.dev/display-name': 'Internal gateway' },
+          creationTimestamp: '2026-10-01T00:00:00Z',
+        },
+        spec: { resources: [] },
+      } as any,
+      'shop-ns',
+      ctx,
+    );
+    expect(entity.kind).toBe('EndpointType');
+    expect(entity.metadata.namespace).toBe('shop-ns');
+    expect(entity.metadata.title).toBe('Internal gateway');
+    expect(entity.metadata.tags).toEqual(
+      expect.arrayContaining(['openchoreo', 'endpoint-type']),
+    );
+    expect(entity.metadata.labels).toEqual({ 'openchoreo.io/managed': 'true' });
+    expect(entity.spec.domain).toBe('default/shop-ns');
+  });
+
+  it('translates a ClusterEndpointType into openchoreo-cluster', () => {
+    const entity = translateNewClusterEndpointTypeToEntity(
+      { metadata: { name: 'http-gateway' }, spec: { resources: [] } } as any,
+      ctx,
+    );
+    expect(entity.kind).toBe('ClusterEndpointType');
+    expect(entity.metadata.namespace).toBe('openchoreo-cluster');
+    expect(entity.metadata.description).toBe(
+      'http-gateway cluster endpoint type',
     );
   });
 });
