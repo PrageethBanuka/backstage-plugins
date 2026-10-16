@@ -2560,7 +2560,13 @@ export interface paths {
     get: operations['getEndpointRelease'];
     put?: never;
     post?: never;
-    delete?: never;
+    /**
+     * Delete endpoint release
+     * @description Deletes an old endpoint release from the Endpoint's history. Refused with 409 while an
+     *     environment pins it or it is the Endpoint's latest release. Authorized as endpoint:update
+     *     on the owning Endpoint.
+     */
+    delete: operations['deleteEndpointRelease'];
     options?: never;
     head?: never;
     patch?: never;
@@ -14620,6 +14626,34 @@ export interface operations {
       401: components['responses']['Unauthorized'];
       403: components['responses']['Forbidden'];
       404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  deleteEndpointRelease: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint release name */
+        endpointReleaseName: components['parameters']['EndpointReleaseNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint release deleted successfully */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      409: components['responses']['Conflict'];
       500: components['responses']['InternalError'];
     };
   };

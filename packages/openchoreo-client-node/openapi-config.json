@@ -19,7 +19,7 @@
   ],
   "versionField": "openChoreoVersion",
   "versionFile": "src/version.ts",
-  "lastSyncCommit": "8ae2dde9",
-  "lastSyncDate": "2026-10-15T00:00:00+05:30",
-  "lastSyncDescription": "feat(api): refuse deleting a component an Endpoint still routes to (feature/endpoint-lifecycle)"
+  "lastSyncCommit": "d77dfc94",
+  "lastSyncDate": "2026-10-16T00:00:00+05:30",
+  "lastSyncDescription": "feat(api): delete old EndpointReleases (feature/endpoint-lifecycle)"
 }
