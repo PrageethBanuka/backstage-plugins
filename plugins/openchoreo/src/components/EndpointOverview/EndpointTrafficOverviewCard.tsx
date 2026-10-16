@@ -4,6 +4,7 @@ import { Card, Skeleton } from '@openchoreo/backstage-design-system';
 import { useOverviewCardStyles } from '../Environments/OverviewCard/styles';
 import { TrafficSplitBar } from '../Endpoints/TrafficSplitBar';
 import { useEndpointOverview } from './useEndpointOverview';
+import { EndpointLifecycle } from './EndpointLifecycle';
 
 /** Endpoint Overview card: the Endpoint's latest split and where it comes from. */
 export const EndpointTrafficOverviewCard = () => {
@@ -49,6 +50,7 @@ export const EndpointTrafficOverviewCard = () => {
             Type {endpoint.type.name}
             {endpoint.latestRelease ? ` · ${endpoint.latestRelease}` : ''}
           </Typography>
+          <EndpointLifecycle endpoint={endpoint} />
         </Box>
       )}
 

@@ -1341,8 +1341,7 @@ export async function createRouter({
   });
 
   router.put('/update-endpoint-traffic', requireAuth, async (req, res) => {
-    const { endpointName, namespaceName, backends, replaceBackends } =
-      req.body;
+    const { endpointName, namespaceName, backends, replaceBackends } = req.body;
 
     if (!endpointName || !namespaceName || !Array.isArray(backends)) {
       throw new InputError(
@@ -1376,6 +1375,34 @@ export async function createRouter({
       ),
     );
   });
+
+  router.put(
+    '/update-endpoint-reclaim-policy',
+    requireAuth,
+    async (req, res) => {
+      const { endpointName, namespaceName, reclaimPolicy } = req.body;
+      if (
+        !endpointName ||
+        !namespaceName ||
+        (reclaimPolicy !== 'Delete' && reclaimPolicy !== 'Retain')
+      ) {
+        throw new InputError(
+          'endpointName, namespaceName and reclaimPolicy (Delete or Retain) are required in request body',
+        );
+      }
+      const userToken = getUserTokenFromRequest(req);
+      res.json(
+        await endpointInfoService.updateEndpointReclaimPolicy(
+          {
+            endpointName: endpointName as string,
+            namespaceName: namespaceName as string,
+            reclaimPolicy,
+          },
+          userToken,
+        ),
+      );
+    },
+  );
 
   router.put(
     '/update-endpoint-release-binding',

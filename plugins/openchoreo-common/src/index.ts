@@ -273,6 +273,7 @@ export type {
   EndpointRoutingStatus,
   EndpointBackendWeight,
   EndpointBackendStatus,
+  EndpointReclaimPolicy,
   EndpointEnvironmentSummary,
   EndpointSummary,
   EndpointEnvironment,

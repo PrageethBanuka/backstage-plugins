@@ -7,6 +7,7 @@ import {
   type ReleaseBindingCondition,
   type ComponentTrafficEntry,
   type EndpointBackendWeight,
+  type EndpointReclaimPolicy,
   type EndpointEnvironment,
   type EndpointReleaseSummary,
   type EndpointSummary,
@@ -85,6 +86,7 @@ const API_ENDPOINTS = {
   ENDPOINT_ENVIRONMENT_INFO: '/endpoint-environment-info',
   ENDPOINT_RELEASES: '/endpoint-releases',
   UPDATE_ENDPOINT_TRAFFIC: '/update-endpoint-traffic',
+  UPDATE_ENDPOINT_RECLAIM_POLICY: '/update-endpoint-reclaim-policy',
   UPDATE_ENDPOINT_RELEASE_BINDING: '/update-endpoint-release-binding',
   DELETE_ENDPOINT_RELEASE_BINDING: '/delete-endpoint-release-binding',
   ENDPOINT_RESOURCE_TREE: '/endpoint-resourcetree',
@@ -643,6 +645,18 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
       // The traffic editor sends the full set, so backends can be added
       // (a canary) or removed (at 0%) in the same save.
       body: { endpointName, namespaceName, backends, replaceBackends: true },
+    });
+  }
+
+  async updateEndpointReclaimPolicy(
+    entity: Entity,
+    reclaimPolicy: EndpointReclaimPolicy,
+  ): Promise<{ reclaimPolicy: EndpointReclaimPolicy }> {
+    const { endpointName, namespaceName } =
+      extractEndpointEntityMetadata(entity);
+    return this.apiFetch(API_ENDPOINTS.UPDATE_ENDPOINT_RECLAIM_POLICY, {
+      method: 'PUT',
+      body: { endpointName, namespaceName, reclaimPolicy },
     });
   }
 

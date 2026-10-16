@@ -545,6 +545,30 @@ describe('EndpointInfoService', () => {
     });
   });
 
+  describe('updateEndpointReclaimPolicy', () => {
+    it('PUTs the Endpoint with the new policy and the same backends', async () => {
+      routeGET({
+        [`${NS}/endpoints/{endpointName}`]: () =>
+          createOkResponse(endpoint([90, 10])),
+      });
+      mockPUT.mockResolvedValue(createOkResponse({}));
+
+      const result = await service.updateEndpointReclaimPolicy(
+        {
+          namespaceName: 'default',
+          endpointName: 'payments-api',
+          reclaimPolicy: 'Retain',
+        },
+        'token',
+      );
+
+      expect(result).toEqual({ reclaimPolicy: 'Retain' });
+      const [, opts] = mockPUT.mock.calls[0];
+      expect(opts.body.spec.reclaimPolicy).toBe('Retain');
+      expect(opts.body.spec.backendRefs).toHaveLength(2);
+    });
+  });
+
   describe('deleteEndpointReleaseBinding', () => {
     it('fails clearly when the endpoint is not routed there', async () => {
       routeGET({ [`${NS}/endpointreleasebindings`]: () => list([]) });

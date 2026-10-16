@@ -165,7 +165,10 @@ describe('applyBackends', () => {
         { componentName: 'payments-v2', endpoint: 'http', weight: 0 },
         { componentName: 'payments-v3', endpoint: 'http', weight: 0 },
       ]),
-    ).toEqual([...refs, { componentName: 'payments-v3', endpoint: 'http', weight: 0 }]);
+    ).toEqual([
+      ...refs,
+      { componentName: 'payments-v3', endpoint: 'http', weight: 0 },
+    ]);
   });
 
   it('removes a backend whose saved weight is 0', () => {

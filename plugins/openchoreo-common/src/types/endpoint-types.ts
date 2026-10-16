@@ -67,6 +67,11 @@ export interface EndpointSummary {
   createdFrom?: string;
   /** True while the Endpoint has no backends and is kept (reclaimPolicy Retain). */
   orphaned: boolean;
+  /**
+   * Why the Endpoint is degraded and can't cut a release, e.g. a backend with
+   * traffic whose component no longer exists. Undefined when it is healthy.
+   */
+  problem?: string;
   /** Environments with a binding; unbound environments are omitted. */
   environments: EndpointEnvironmentSummary[];
 }

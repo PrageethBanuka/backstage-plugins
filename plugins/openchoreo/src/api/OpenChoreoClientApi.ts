@@ -6,6 +6,7 @@ import type {
   ReleaseBindingCondition,
   ComponentTrafficEntry,
   EndpointBackendWeight,
+  EndpointReclaimPolicy,
   EndpointEnvironment,
   EndpointReleaseSummary,
   EndpointSummary,
@@ -793,6 +794,12 @@ export interface OpenChoreoClientApi {
     entity: Entity,
     backends: EndpointBackendWeight[],
   ): Promise<{ latestRelease?: string; changed: boolean }>;
+
+  /** Set what happens to the Endpoint when no backend is left. */
+  updateEndpointReclaimPolicy(
+    entity: Entity,
+    reclaimPolicy: EndpointReclaimPolicy,
+  ): Promise<{ reclaimPolicy: EndpointReclaimPolicy }>;
 
   /** Pin an environment to a release: roll out, promote or roll back. */
   updateEndpointReleaseBinding(

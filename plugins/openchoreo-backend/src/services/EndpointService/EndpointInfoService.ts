@@ -11,6 +11,7 @@ import type {
   EndpointBackendWeight,
   EndpointEnvironment,
   EndpointEnvironmentSummary,
+  EndpointReclaimPolicy,
   EndpointReleaseSummary,
   EndpointSummary,
   EnvironmentResponse,
@@ -41,6 +42,19 @@ type ApiClient = ReturnType<typeof createOpenChoreoApiClient>;
 
 /** Records how an Endpoint was created: "portal" or "workload/<component>/<endpoint>". */
 const CREATED_FROM_ANNOTATION = 'openchoreo.dev/created-from';
+
+/**
+ * Why the Endpoint can't cut a release, from Ready=False (a missing type, or a
+ * backend with traffic whose component no longer exists). Orphaned has its
+ * own flag.
+ */
+const endpointProblem = (ep: Endpoint): string | undefined => {
+  const ready = (ep.status?.conditions ?? []).find(c => c.type === 'Ready');
+  if (!ready || ready.status !== 'False' || ready.reason === 'NoBackends') {
+    return undefined;
+  }
+  return ready.message || ready.reason;
+};
 
 /** An Endpoint with no backends left, kept because its reclaimPolicy is Retain. */
 const isOrphaned = (ep: Endpoint): boolean =>
@@ -192,6 +206,7 @@ export class EndpointInfoService {
         reclaimPolicy: ep.spec?.reclaimPolicy ?? 'Delete',
         createdFrom: ep.metadata.annotations?.[CREATED_FROM_ANNOTATION],
         orphaned: isOrphaned(ep),
+        problem: endpointProblem(ep),
         environments,
       };
     });
@@ -631,6 +646,44 @@ export class EndpointInfoService {
       `Endpoint ${request.endpointName}: no new release within ${RELEASE_WAIT_MS}ms`,
     );
     return { latestRelease: undefined, changed: true };
+  }
+
+  /**
+   * Sets what happens to an Endpoint when no backend is left: Delete removes
+   * it and hands its URL back, Retain keeps it as Orphaned for a new backend.
+   * It doesn't change the split, so no release is cut.
+   */
+  async updateEndpointReclaimPolicy(
+    request: {
+      namespaceName: string;
+      endpointName: string;
+      reclaimPolicy: EndpointReclaimPolicy;
+    },
+    token?: string,
+  ): Promise<{ reclaimPolicy: EndpointReclaimPolicy }> {
+    const client = this.client(token);
+    const endpoint = await this.getEndpoint(
+      client,
+      request.namespaceName,
+      request.endpointName,
+    );
+    const res = await client.PUT(
+      '/api/v1/namespaces/{namespaceName}/endpoints/{endpointName}',
+      {
+        params: {
+          path: {
+            namespaceName: request.namespaceName,
+            endpointName: request.endpointName,
+          },
+        },
+        body: {
+          metadata: endpoint.metadata,
+          spec: { ...endpoint.spec!, reclaimPolicy: request.reclaimPolicy },
+        },
+      },
+    );
+    assertApiResponse(res, 'update endpoint');
+    return { reclaimPolicy: request.reclaimPolicy };
   }
 
   /**
