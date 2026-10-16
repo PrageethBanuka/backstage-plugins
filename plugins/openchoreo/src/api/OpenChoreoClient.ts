@@ -89,6 +89,8 @@ const API_ENDPOINTS = {
   UPDATE_ENDPOINT_RECLAIM_POLICY: '/update-endpoint-reclaim-policy',
   UPDATE_ENDPOINT_RELEASE_BINDING: '/update-endpoint-release-binding',
   DELETE_ENDPOINT_RELEASE_BINDING: '/delete-endpoint-release-binding',
+  DELETE_ENDPOINT: '/delete-endpoint',
+  DELETE_ENDPOINT_RELEASE: '/delete-endpoint-release',
   ENDPOINT_RESOURCE_TREE: '/endpoint-resourcetree',
   ENDPOINT_RESOURCE_EVENTS: '/endpoint-resource-events',
   PROJECT_ENVIRONMENT_INFO: '/project-environment-info',
@@ -688,6 +690,26 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
     return this.apiFetch(API_ENDPOINTS.DELETE_ENDPOINT_RELEASE_BINDING, {
       method: 'DELETE',
       body: { endpointName, projectName, namespaceName, environment },
+    });
+  }
+
+  async deleteEndpoint(entity: Entity): Promise<void> {
+    const { endpointName, namespaceName } =
+      extractEndpointEntityMetadata(entity);
+    await this.apiFetch(API_ENDPOINTS.DELETE_ENDPOINT, {
+      method: 'DELETE',
+      body: { endpointName, namespaceName },
+    });
+  }
+
+  async deleteEndpointRelease(
+    entity: Entity,
+    releaseName: string,
+  ): Promise<void> {
+    const { namespaceName } = extractEndpointEntityMetadata(entity);
+    await this.apiFetch(API_ENDPOINTS.DELETE_ENDPOINT_RELEASE, {
+      method: 'DELETE',
+      body: { releaseName, namespaceName },
     });
   }
 

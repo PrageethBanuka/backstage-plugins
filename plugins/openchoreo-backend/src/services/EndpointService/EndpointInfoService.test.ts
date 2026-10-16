@@ -569,6 +569,45 @@ describe('EndpointInfoService', () => {
     });
   });
 
+  describe('deleteEndpoint and deleteEndpointRelease', () => {
+    it('DELETEs the Endpoint', async () => {
+      mockDELETE.mockResolvedValue(createOkResponse(undefined));
+      await expect(
+        service.deleteEndpoint(
+          { namespaceName: 'default', endpointName: 'payments-api' },
+          'token',
+        ),
+      ).resolves.toEqual({ endpointName: 'payments-api' });
+      expect(mockDELETE).toHaveBeenCalledWith(
+        `${NS}/endpoints/{endpointName}`,
+        expect.objectContaining({
+          params: {
+            path: { namespaceName: 'default', endpointName: 'payments-api' },
+          },
+        }),
+      );
+    });
+
+    it('DELETEs an EndpointRelease by name', async () => {
+      mockDELETE.mockResolvedValue(createOkResponse(undefined));
+      await service.deleteEndpointRelease(
+        { namespaceName: 'default', releaseName: 'payments-api-aaa' },
+        'token',
+      );
+      expect(mockDELETE).toHaveBeenCalledWith(
+        `${NS}/endpointreleases/{endpointReleaseName}`,
+        expect.objectContaining({
+          params: {
+            path: {
+              namespaceName: 'default',
+              endpointReleaseName: 'payments-api-aaa',
+            },
+          },
+        }),
+      );
+    });
+  });
+
   describe('deleteEndpointReleaseBinding', () => {
     it('fails clearly when the endpoint is not routed there', async () => {
       routeGET({ [`${NS}/endpointreleasebindings`]: () => list([]) });

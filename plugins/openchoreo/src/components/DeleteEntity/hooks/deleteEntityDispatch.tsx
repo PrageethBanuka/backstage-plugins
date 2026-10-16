@@ -15,6 +15,7 @@ import {
 const KIND_DISPLAY_NAMES: Record<string, string> = {
   component: 'Component',
   resource: 'Resource',
+  endpoint: 'Endpoint',
   system: 'Project',
   domain: 'Namespace',
   environment: 'Environment',
@@ -53,6 +54,7 @@ export function isDeletableEntityKind(kind: string): boolean {
   const kindLower = kind.toLowerCase();
   return (
     kindLower === 'component' ||
+    kindLower === 'endpoint' ||
     kindLower === 'system' ||
     kindLower === 'domain' ||
     isSupportedKind(kindLower)
@@ -78,6 +80,10 @@ export async function performEntityDelete(
   }
   if (entityKind === 'system') {
     await client.deleteProject(entity);
+    return;
+  }
+  if (entityKind === 'endpoint') {
+    await client.deleteEndpoint(entity);
     return;
   }
   if (entityKind === 'domain') {
@@ -109,6 +115,15 @@ export async function performEntityDelete(
  */
 export function getEntityDeleteCascadeNote(kind: string): ReactNode {
   const kindLower = kind.toLowerCase();
+  if (kindLower === 'endpoint') {
+    return (
+      <Typography variant="body2" color="error">
+        Note: Its routes in every environment are removed, and component routes
+        take each URL back where the component still declares it. Its releases
+        are deleted too.
+      </Typography>
+    );
+  }
   if (kindLower === 'system') {
     return (
       <Typography variant="body2" color="error">

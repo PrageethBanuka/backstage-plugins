@@ -230,6 +230,28 @@ export const EndpointEnvironmentsList = () => {
     }
   }, [client, entity, endpointName, notification, fetchAll, stopTarget]);
 
+  const handleDeleteRelease = useCallback(
+    async (releaseName: string) => {
+      await client.deleteEndpointRelease(entity, releaseName);
+      if (cancelledRef.current) return;
+      notification.showSuccess(`Deleted release ${releaseName}`);
+      await fetchAll();
+    },
+    [client, entity, notification, fetchAll],
+  );
+
+  // Releases an environment runs can't be deleted; the dialog names where.
+  const pinnedReleases = useMemo(() => {
+    const byRelease = new Map<string, string[]>();
+    for (const env of envs) {
+      if (!env.endpointRelease) continue;
+      const list = byRelease.get(env.endpointRelease) ?? [];
+      list.push(env.displayName);
+      byRelease.set(env.endpointRelease, list);
+    }
+    return byRelease;
+  }, [envs]);
+
   const handlePinFromReleases = useCallback(
     async (releaseName: string) => {
       if (!releasesEnv) return;
@@ -359,6 +381,8 @@ export const EndpointEnvironmentsList = () => {
         }
         onClose={() => setReleasesEnv(null)}
         onPin={handlePinFromReleases}
+        pinnedReleases={pinnedReleases}
+        onDelete={handleDeleteRelease}
       />
       <StopRoutingDialog
         open={stopTarget !== null}

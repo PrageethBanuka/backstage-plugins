@@ -1474,6 +1474,44 @@ export async function createRouter({
     },
   );
 
+  router.delete('/delete-endpoint', requireAuth, async (req, res) => {
+    const { endpointName, namespaceName } = req.body;
+    if (!endpointName || !namespaceName) {
+      throw new InputError(
+        'endpointName and namespaceName are required in request body',
+      );
+    }
+    const userToken = getUserTokenFromRequest(req);
+    res.json(
+      await endpointInfoService.deleteEndpoint(
+        {
+          endpointName: endpointName as string,
+          namespaceName: namespaceName as string,
+        },
+        userToken,
+      ),
+    );
+  });
+
+  router.delete('/delete-endpoint-release', requireAuth, async (req, res) => {
+    const { releaseName, namespaceName } = req.body;
+    if (!releaseName || !namespaceName) {
+      throw new InputError(
+        'releaseName and namespaceName are required in request body',
+      );
+    }
+    const userToken = getUserTokenFromRequest(req);
+    res.json(
+      await endpointInfoService.deleteEndpointRelease(
+        {
+          releaseName: releaseName as string,
+          namespaceName: namespaceName as string,
+        },
+        userToken,
+      ),
+    );
+  });
+
   router.get('/project-environment-info', async (req, res) => {
     const { projectName, namespaceName } = req.query;
 

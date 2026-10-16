@@ -16,7 +16,10 @@ import { makeStyles } from '@material-ui/core/styles';
 import {
   formatRelativeTime,
   useEndpointRolloutPermission,
+  useEndpointTrafficPermission,
 } from '@openchoreo/backstage-plugin-react';
+import { Alert } from '@material-ui/lab';
+import { getErrorMessage } from '../../utils/errorUtils';
 import type {
   EndpointEnvironment,
   EndpointReleaseSummary,
@@ -59,6 +62,13 @@ export interface EndpointReleasesDialogProps {
   isPinning: boolean;
   onClose: () => void;
   onPin: (releaseName: string) => void;
+  /**
+   * Environments (display names) each release is pinned in, across all
+   * environments. A pinned release can't be deleted.
+   */
+  pinnedReleases?: Map<string, string[]>;
+  /** Deletes an old release from the Endpoint's history. */
+  onDelete?: (releaseName: string) => Promise<void>;
 }
 
 /**
@@ -73,13 +83,24 @@ export const EndpointReleasesDialog = ({
   isPinning,
   onClose,
   onPin,
+  pinnedReleases,
+  onDelete,
 }: EndpointReleasesDialogProps) => {
   const classes = useStyles();
   const [selected, setSelected] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const trafficPerm = useEndpointTrafficPermission();
 
   useEffect(() => {
-    if (open)
-      setSelected(environment?.endpointRelease ?? releases[0]?.name ?? null);
+    if (open) {
+      setSelected(prev =>
+        prev && releases.some(r => r.name === prev)
+          ? prev
+          : environment?.endpointRelease ?? releases[0]?.name ?? null,
+      );
+      setDeleteError(null);
+    }
   }, [open, environment, releases]);
 
   const perm = useEndpointRolloutPermission(
@@ -98,6 +119,32 @@ export const EndpointReleasesDialog = ({
     environment && release
       ? missingBackends(environment, release.backends)
       : [];
+  const pinnedIn = release ? pinnedReleases?.get(release.name) ?? [] : [];
+  let deleteBlockedReason = '';
+  if (release?.name === latest) {
+    deleteBlockedReason =
+      "This is the Endpoint's latest release (its current split).";
+  } else if (pinnedIn.length > 0) {
+    deleteBlockedReason = `Pinned in ${pinnedIn.join(
+      ', ',
+    )}; roll those environments to another release first.`;
+  } else if (!trafficPerm.loading && !trafficPerm.canChangeTraffic) {
+    deleteBlockedReason = trafficPerm.deniedTooltip;
+  }
+
+  const handleDelete = async () => {
+    if (!release || !onDelete) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDelete(release.name);
+      setSelected(null);
+    } catch (err: unknown) {
+      setDeleteError(getErrorMessage(err));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <Dialog
@@ -170,10 +217,32 @@ export const EndpointReleasesDialog = ({
               Select a release.
             </Typography>
           )}
+          {deleteError && <Alert severity="error">{deleteError}</Alert>}
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={isPinning}>
+        {onDelete && release && (
+          <Tooltip
+            title={deleteBlockedReason}
+            disableHoverListener={!deleteBlockedReason}
+          >
+            <span style={{ marginRight: 'auto' }}>
+              <Button
+                color="secondary"
+                disabled={
+                  deleting ||
+                  isPinning ||
+                  trafficPerm.loading ||
+                  deleteBlockedReason !== ''
+                }
+                onClick={handleDelete}
+              >
+                {deleting ? 'Deleting...' : 'Delete release'}
+              </Button>
+            </span>
+          </Tooltip>
+        )}
+        <Button onClick={onClose} disabled={isPinning || deleting}>
           Close
         </Button>
         <Tooltip

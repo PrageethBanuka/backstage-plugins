@@ -784,4 +784,50 @@ export class EndpointInfoService {
     assertApiResponse(res, 'delete endpoint release binding');
     return { bindingName: existing.metadata.name };
   }
+
+  /**
+   * Deletes an Endpoint. Its finalizer hands each environment's URL back to
+   * the component routes, then removes its bindings and releases.
+   */
+  async deleteEndpoint(
+    request: { namespaceName: string; endpointName: string },
+    token?: string,
+  ): Promise<{ endpointName: string }> {
+    const res = await this.client(token).DELETE(
+      '/api/v1/namespaces/{namespaceName}/endpoints/{endpointName}',
+      {
+        params: {
+          path: {
+            namespaceName: request.namespaceName,
+            endpointName: request.endpointName,
+          },
+        },
+      },
+    );
+    assertApiResponse(res, 'delete endpoint');
+    return { endpointName: request.endpointName };
+  }
+
+  /**
+   * Deletes an old release from an Endpoint's history. openchoreo-api refuses
+   * (409) a release an environment pins or that is the latest release.
+   */
+  async deleteEndpointRelease(
+    request: { namespaceName: string; releaseName: string },
+    token?: string,
+  ): Promise<{ releaseName: string }> {
+    const res = await this.client(token).DELETE(
+      '/api/v1/namespaces/{namespaceName}/endpointreleases/{endpointReleaseName}',
+      {
+        params: {
+          path: {
+            namespaceName: request.namespaceName,
+            endpointReleaseName: request.releaseName,
+          },
+        },
+      },
+    );
+    assertApiResponse(res, 'delete endpoint release');
+    return { releaseName: request.releaseName };
+  }
 }

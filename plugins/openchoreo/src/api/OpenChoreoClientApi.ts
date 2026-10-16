@@ -795,6 +795,18 @@ export interface OpenChoreoClientApi {
     backends: EndpointBackendWeight[],
   ): Promise<{ latestRelease?: string; changed: boolean }>;
 
+  /**
+   * Delete the Endpoint. Its finalizer hands each environment's URL back,
+   * then removes its bindings and releases.
+   */
+  deleteEndpoint(entity: Entity): Promise<void>;
+
+  /**
+   * Delete an old release from the Endpoint's history. Refused (409) while an
+   * environment pins it or it is the latest release.
+   */
+  deleteEndpointRelease(entity: Entity, releaseName: string): Promise<void>;
+
   /** Set what happens to the Endpoint when no backend is left. */
   updateEndpointReclaimPolicy(
     entity: Entity,
