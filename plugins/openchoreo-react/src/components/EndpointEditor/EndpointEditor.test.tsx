@@ -110,4 +110,44 @@ describe('EndpointEditor', () => {
       ).toBeDisabled();
     });
   });
+
+  describe('serve through an Endpoint', () => {
+    it('shows the serving Endpoint in read-only mode', () => {
+      renderEditor({
+        endpoint: {
+          type: 'HTTP',
+          port: 8080,
+          endpointType: { kind: 'ClusterEndpointType', name: 'http-gateway' },
+          endpointName: 'payments-api',
+        },
+      });
+      expect(
+        screen.getByText(/served by Endpoint payments-api/),
+      ).toBeInTheDocument();
+    });
+
+    it('turns on with a ClusterEndpointType and off clearing both fields', () => {
+      const { onChange } = renderEditor({ isEditing: true });
+      fireEvent.click(screen.getByLabelText('Serve through an Endpoint'));
+      expect(onChange).toHaveBeenCalledWith('endpointType', {
+        kind: 'ClusterEndpointType',
+        name: '',
+      });
+    });
+
+    it('clears the type and name when switched off', () => {
+      const { onChange } = renderEditor({
+        isEditing: true,
+        endpoint: {
+          type: 'HTTP',
+          port: 8080,
+          endpointType: { kind: 'ClusterEndpointType', name: 'http-gateway' },
+        },
+      });
+      expect(screen.getByDisplayValue('http-gateway')).toBeInTheDocument();
+      fireEvent.click(screen.getByLabelText('Serve through an Endpoint'));
+      expect(onChange).toHaveBeenCalledWith('endpointType', undefined);
+      expect(onChange).toHaveBeenCalledWith('endpointName', undefined);
+    });
+  });
 });

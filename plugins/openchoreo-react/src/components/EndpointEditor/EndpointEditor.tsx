@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Switch,
 } from '@material-ui/core';
 import { makeStyles, Theme } from '@material-ui/core/styles';
 import EditIcon from '@material-ui/icons/Edit';
@@ -72,6 +73,17 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   nameField: {
     marginBottom: theme.spacing(1.5),
+  },
+  servedBy: {
+    fontSize: '0.8125rem',
+    color: theme.palette.primary.main,
+    marginLeft: theme.spacing(1),
+  },
+  endpointFieldset: {
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 4,
+    padding: theme.spacing(0.5, 1, 1),
+    margin: 0,
   },
   visibilityFieldset: {
     border: `1px solid ${theme.palette.divider}`,
@@ -227,6 +239,122 @@ const SchemaContentDialog: FC<{
   );
 };
 
+const ENDPOINT_TYPE_KINDS = ['ClusterEndpointType', 'EndpointType'] as const;
+
+/**
+ * "Serve through an Endpoint": names the EndpointType (and optionally the
+ * Endpoint) that serves this workload endpoint. Deploying the component
+ * creates the Endpoint if it is missing; it then has its own lifecycle and is
+ * edited on its own page. Off keeps the route the ComponentType renders.
+ */
+const ServeThroughEndpointFields: FC<{
+  endpointName: string;
+  endpoint: WorkloadEndpoint;
+  disabled: boolean;
+  onChange: (field: keyof WorkloadEndpoint, value: any) => void;
+  className: string;
+}> = ({ endpointName, endpoint, disabled, onChange, className }) => {
+  const enabled = !!endpoint.endpointType;
+  return (
+    <FormControl
+      component="fieldset"
+      size="small"
+      fullWidth
+      disabled={disabled}
+      className={className}
+    >
+      <FormControlLabel
+        control={
+          <Switch
+            checked={enabled}
+            color="primary"
+            size="small"
+            inputProps={{ 'aria-label': 'Serve through an Endpoint' }}
+            onChange={() => {
+              if (enabled) {
+                onChange('endpointType', undefined);
+                onChange('endpointName', undefined);
+              } else {
+                onChange('endpointType', {
+                  kind: 'ClusterEndpointType',
+                  name: '',
+                });
+              }
+            }}
+          />
+        }
+        label="Serve through an Endpoint"
+      />
+      {enabled && (
+        <Grid container spacing={1}>
+          <Grid item xs={4}>
+            <FormControl fullWidth variant="outlined" size="small">
+              <InputLabel>Type kind</InputLabel>
+              <Select
+                value={endpoint.endpointType?.kind ?? 'ClusterEndpointType'}
+                label="Type kind"
+                onChange={e =>
+                  onChange('endpointType', {
+                    name: endpoint.endpointType?.name ?? '',
+                    kind: e.target
+                      .value as (typeof ENDPOINT_TYPE_KINDS)[number],
+                  })
+                }
+              >
+                {ENDPOINT_TYPE_KINDS.map(kind => (
+                  <MenuItem key={kind} value={kind}>
+                    {kind}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={4}>
+            <TextField
+              label="Endpoint type"
+              value={endpoint.endpointType?.name ?? ''}
+              onChange={e =>
+                onChange('endpointType', {
+                  kind: endpoint.endpointType?.kind ?? 'ClusterEndpointType',
+                  name: e.target.value,
+                })
+              }
+              placeholder="http-gateway"
+              fullWidth
+              variant="outlined"
+              size="small"
+              required
+              error={!endpoint.endpointType?.name}
+            />
+          </Grid>
+          <Grid item xs={4}>
+            <TextField
+              label="Endpoint name"
+              value={endpoint.endpointName ?? ''}
+              onChange={e =>
+                onChange('endpointName', e.target.value || undefined)
+              }
+              placeholder={`<component>-${endpointName || 'endpoint'}`}
+              helperText="Optional"
+              fullWidth
+              variant="outlined"
+              size="small"
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="caption" color="textSecondary">
+              Deploying creates the Endpoint if it is missing, with this
+              component as its backend, and keeps the same URL. If it exists it
+              must already route to this component. Traffic is changed on the
+              Endpoint's page.
+            </Typography>
+          </Grid>
+        </Grid>
+      )}
+    </FormControl>
+  );
+};
+
 export interface EndpointEditorProps {
   /** The endpoint name */
   endpointName: string;
@@ -322,6 +450,12 @@ export const EndpointEditor: FC<EndpointEditorProps> = ({
               ) : null;
             })()}
           </Typography>
+          {endpoint.endpointType && (
+            <Typography className={classes.servedBy}>
+              &middot; served by Endpoint{' '}
+              {endpoint.endpointName || `<component>-${endpointName}`}
+            </Typography>
+          )}
         </Box>
         <EditRowActions
           isEditing={false}
@@ -436,6 +570,15 @@ export const EndpointEditor: FC<EndpointEditorProps> = ({
               })}
             </FormGroup>
           </FormControl>
+        </Grid>
+        <Grid item xs={12}>
+          <ServeThroughEndpointFields
+            endpointName={endpointName}
+            endpoint={endpoint}
+            disabled={disabled}
+            onChange={onChange}
+            className={classes.endpointFieldset}
+          />
         </Grid>
         <Grid item xs={12}>
           <Box className={classes.schemaContentField}>
