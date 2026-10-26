@@ -35,6 +35,7 @@ import { EndpointRolloutPane } from './EndpointRolloutPane';
 import { EndpointSetupCard } from './EndpointSetupCard';
 import { EndpointSetupPane } from './EndpointSetupPane';
 import { EnvironmentWeightsDialog } from './EnvironmentWeightsDialog';
+import { RulesEditorDialog } from './RulesEditorDialog';
 import { StopRoutingDialog } from './StopRoutingDialog';
 import {
   ConfirmTrafficDialog,
@@ -101,6 +102,7 @@ export const EndpointEnvironmentsList = ({
   const [selectedSetup, setSelectedSetup] = useState(false);
   const [releasesEnv, setReleasesEnv] = useState<string | null>(null);
   const [overridesEnv, setOverridesEnv] = useState<string | null>(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [stopTarget, setStopTarget] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<TrafficConfirmation | null>(
     null,
@@ -218,10 +220,13 @@ export const EndpointEnvironmentsList = ({
     async (environment: string, releaseName: string) => {
       const env = envs.find(e => e.name === environment);
       await run(environment, 'rollout', async () => {
+        // Outside a rollout an environment serves the release as it is:
+        // weights left from an earlier rollout are cleared.
         await client.updateEndpointReleaseBinding(
           entity,
           environment,
           releaseName,
+          endpoint?.rollout ? undefined : [],
         );
         return {
           ok: true,
@@ -231,7 +236,7 @@ export const EndpointEnvironmentsList = ({
         };
       });
     },
-    [client, entity, envs, run],
+    [client, endpoint, entity, envs, run],
   );
 
   const finish = useCallback(
@@ -578,6 +583,7 @@ export const EndpointEnvironmentsList = ({
         onStart={() => navigate('start')}
         changeBlocked={changeBlocked}
         onAbandon={() => finish('abandon')}
+        onEditRules={() => setRulesOpen(true)}
         onClose={handleClearSelection}
       />
     );
@@ -611,6 +617,23 @@ export const EndpointEnvironmentsList = ({
       <ConfirmTrafficDialog
         confirmation={confirmation}
         onClose={() => setConfirmation(null)}
+      />
+      <RulesEditorDialog
+        open={rulesOpen}
+        endpointName={endpoint.name}
+        backends={endpoint.backends}
+        rules={endpoint.rules}
+        onClose={() => setRulesOpen(false)}
+        onSave={async rules => {
+          const res = await client.updateEndpointRules(entity, rules);
+          if (res.changed) {
+            notification.showSuccess(
+              'Routing rules saved as a new version. Deploy it from the Deploy tab.',
+            );
+          }
+          await fetchAll();
+          return res;
+        }}
       />
       <EnvironmentWeightsDialog
         open={overridesEnvironment !== null}

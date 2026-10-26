@@ -140,4 +140,33 @@ describe('StartRolloutPage', () => {
       replaces: 'trips-legacy',
     });
   });
+
+  it('offers a version already on the Endpoint at 0%', async () => {
+    mockClient.fetchEndpoint.mockResolvedValue({
+      ...summary,
+      backends: [
+        ...summary.backends,
+        {
+          name: 'trips-go',
+          componentName: 'trips-go',
+          endpoint: 'http',
+          weight: 0,
+        },
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <StartRolloutPage />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('radio', { name: /trips-python · 70%/ });
+
+    fireEvent.mouseDown(screen.getByLabelText('Component'));
+    expect(
+      await screen.findByRole('option', { name: 'trips-go' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('option', { name: 'trips-python' }),
+    ).not.toBeInTheDocument();
+  });
 });

@@ -1,7 +1,11 @@
-import type {
-  EndpointEnvironment,
-  EndpointRollout,
-  EndpointSummary,
+import {
+  planRollout,
+  rolloutPosition,
+  rolloutWeights,
+  type EndpointBackendWeight,
+  type EndpointEnvironment,
+  type EndpointRollout,
+  type EndpointSummary,
 } from '@openchoreo/backstage-plugin-common';
 import {
   inRollout,
@@ -267,5 +271,81 @@ describe('the replaced and untouched versions on screen', () => {
     );
     expect(untouchedSummary(split)).toBe('trips-legacy 30%');
     expect(restoredSummary(split)).toBe('trips-python 70% · trips-legacy 30%');
+  });
+});
+
+describe('advancing a rollout step by step', () => {
+  // Plans a canary, then presses each environment's primary button and
+  // applies the weights it sets, as the backend does.
+  const walk = (backends: EndpointBackendWeight[]) => {
+    const plan = planRollout(backends, [], {
+      strategy: 'canary',
+      candidate: { componentName: 'trips-go', endpoint: 'http' },
+    });
+    const endpoint: EndpointSummary = {
+      ...summary(plan.rollout),
+      backends: plan.backends,
+    };
+    const names = plan.backends.map(b => b.name ?? b.componentName);
+    const at = (percent: number): EndpointEnvironment => {
+      const weights = rolloutWeights(plan.rollout, names, percent);
+      return {
+        ...env('development', percent),
+        backends: weights.map(w => ({
+          componentName: w.name,
+          endpoint: 'http',
+          name: w.name,
+          weight: w.weight,
+          resolved: true,
+        })),
+        rollout: rolloutPosition(
+          plan.rollout,
+          Object.fromEntries(weights.map(w => [w.name, w.weight])),
+        ),
+      };
+    };
+    const labels: string[] = [];
+    let percent = 0;
+    for (let i = 0; i < 10; i++) {
+      const dev = at(percent);
+      const action = rolloutAction(dev, endpoint, [dev]);
+      if (!action) break;
+      labels.push(action.label);
+      if (action.kind !== 'stage') break;
+      percent = action.percent;
+    }
+    return labels;
+  };
+
+  const steps = [
+    'Advance to 5%',
+    'Advance to 25%',
+    'Advance to 50%',
+    'Send all traffic to trips-go',
+    'Complete rollout',
+  ];
+
+  it('walks every step on a single-version Endpoint', () => {
+    expect(
+      walk([{ componentName: 'trips-python', endpoint: 'http', weight: 100 }]),
+    ).toEqual(steps);
+  });
+
+  it('walks every step next to a version the rollout leaves alone', () => {
+    expect(
+      walk([
+        { componentName: 'trips-python', endpoint: 'http', weight: 70 },
+        { componentName: 'trips-legacy', endpoint: 'http', weight: 30 },
+      ]),
+    ).toEqual(steps);
+  });
+
+  it('walks every step to a version already on the Endpoint at 0%', () => {
+    expect(
+      walk([
+        { componentName: 'trips-python', endpoint: 'http', weight: 100 },
+        { componentName: 'trips-go', endpoint: 'http', weight: 0 },
+      ]),
+    ).toEqual(steps);
   });
 });

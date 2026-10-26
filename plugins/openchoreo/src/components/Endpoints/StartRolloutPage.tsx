@@ -196,7 +196,12 @@ export const StartRolloutPage = () => {
     setUseHeader(strategy !== 'abTest');
   }, [strategy]);
 
-  const current = new Set(endpoint?.backends.map(b => b.componentName) ?? []);
+  // Any component but the versions serving now; one already on the
+  // Endpoint at 0% (left from an earlier rollout) can be rolled out.
+  const current = new Set(
+    endpoint?.backends.filter(b => b.weight > 0).map(b => b.componentName) ??
+      [],
+  );
   const options = components.filter(c => !current.has(c));
   // The new version replaces one serving version, by default the busiest;
   // the others keep their traffic, as on an Argo Rollouts or Flagger route.

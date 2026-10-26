@@ -32,6 +32,8 @@ interface EndpointRolloutPaneProps {
   changeBlocked: string;
   /** Asks to abandon the running rollout (opens the confirmation). */
   onAbandon: () => void;
+  /** Opens the routing rules editor. */
+  onEditRules: () => void;
   onClose: () => void;
 }
 
@@ -47,6 +49,7 @@ export const EndpointRolloutPane = ({
   onStart,
   changeBlocked,
   onAbandon,
+  onEditRules,
   onClose,
 }: EndpointRolloutPaneProps) => {
   const classes = useResourceEnvironmentDetailPanelStyles();
@@ -79,6 +82,30 @@ export const EndpointRolloutPane = ({
               </Typography>
             </Box>
           ))}
+          <Box>
+            <Typography variant="body2" style={{ fontWeight: 600 }}>
+              Advanced · Routing rules
+            </Typography>
+            <Typography variant="body2" color="textSecondary">
+              {endpoint.rules.length === 0
+                ? 'No rules: every request follows the split.'
+                : `${endpoint.rules.length} rule${
+                    endpoint.rules.length === 1 ? '' : 's'
+                  }, first match wins.`}
+            </Typography>
+            <Tooltip title={changeBlocked}>
+              <span>
+                <Button
+                  size="small"
+                  color="primary"
+                  disabled={Boolean(changeBlocked)}
+                  onClick={onEditRules}
+                >
+                  Edit routing rules
+                </Button>
+              </span>
+            </Tooltip>
+          </Box>
         </Box>
       </EndpointSetupPane>
     );
