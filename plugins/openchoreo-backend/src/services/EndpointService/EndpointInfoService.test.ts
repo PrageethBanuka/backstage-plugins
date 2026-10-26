@@ -956,6 +956,91 @@ describe('EndpointInfoService', () => {
       ).rejects.toThrow(/Send all traffic to payments-v2 in development/);
       expect(mockPUT).not.toHaveBeenCalled();
     });
+
+    it('abandoning puts back the split the rollout started from', async () => {
+      const threeWay = (latest: string) => {
+        const ep = endpoint([70, 0], latest);
+        return {
+          ...ep,
+          metadata: {
+            ...ep.metadata,
+            annotations: {
+              'openchoreo.dev/rollout': JSON.stringify({
+                strategy: 'canary',
+                stable: 'payments-v1',
+                candidate: 'payments-v2',
+                baseline: [
+                  { name: 'payments-v1', weight: 70 },
+                  { name: 'payments-legacy', weight: 30 },
+                ],
+                steps: [5, 25, 50, 100],
+              }),
+            },
+          },
+          spec: {
+            ...ep.spec,
+            backendRefs: [
+              ...ep.spec.backendRefs,
+              {
+                name: 'payments-legacy',
+                kind: 'Component',
+                component: { name: 'payments-legacy', endpoint: 'http' },
+                weight: 30,
+              },
+            ],
+          },
+        };
+      };
+      let reads = 0;
+      routeGET({
+        [`${NS}/endpoints/{endpointName}`]: () =>
+          createOkResponse(
+            threeWay(reads++ === 0 ? 'payments-api-aaa' : 'payments-api-bbb'),
+          ),
+        [`${NS}/endpointreleasebindings`]: () => list([]),
+      });
+      mockPUT.mockResolvedValue(createOkResponse({}));
+
+      await service.finishRollout(
+        {
+          namespaceName: 'default',
+          projectName: 'shop',
+          endpointName: 'payments-api',
+          outcome: 'abandon',
+        },
+        'token',
+      );
+
+      const body = mockPUT.mock.calls[0][1].body;
+      expect(
+        body.spec.backendRefs.map((r: any) => [r.name, r.weight]),
+      ).toEqual([
+        ['payments-v1', 70],
+        ['payments-legacy', 30],
+      ]);
+      expect(body.metadata.annotations?.['openchoreo.dev/rollout']).toBe(
+        undefined,
+      );
+    });
+
+    it('refuses to replace the versions while a rollout runs', async () => {
+      routeRollout();
+
+      await expect(
+        service.updateEndpointTraffic(
+          {
+            namespaceName: 'default',
+            endpointName: 'payments-api',
+            backends: [
+              { componentName: 'payments-v1', endpoint: 'http', weight: 100 },
+            ],
+            replaceBackends: true,
+          },
+          'token',
+        ),
+      ).rejects.toThrow(/Finish or abandon the rollout to payments-v2/);
+      expect(mockPUT).not.toHaveBeenCalled();
+    });
   });
 
   describe('deleteEndpointReleaseBinding', () => {

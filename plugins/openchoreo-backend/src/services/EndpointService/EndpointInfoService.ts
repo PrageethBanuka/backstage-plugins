@@ -9,11 +9,13 @@ import {
 import {
   currentRollout,
   finishStrategy,
+  parseRollout,
   planRollout,
   ROLLOUT_ANNOTATION,
   rolloutPosition,
   rolloutWeights,
   serializeRollout,
+  stableSplit,
 } from '@openchoreo/backstage-plugin-common';
 import type {
   ComponentTrafficEntry,
@@ -794,6 +796,7 @@ export class EndpointInfoService {
       request.namespaceName,
       request.endpointName,
     );
+    if (request.replaceBackends) assertNoRollout(endpoint);
     const previous = endpoint.status?.latestRelease?.name;
     const refs = endpoint.spec?.backendRefs ?? [];
     const updatedRefs = request.replaceBackends
@@ -906,6 +909,7 @@ export class EndpointInfoService {
       request.namespaceName,
       request.endpointName,
     );
+    if (request.backends) assertNoRollout(endpoint);
     const refs = endpoint.spec?.backendRefs ?? [];
     const backendRefs = request.backends
       ? applyBackends(refs, request.backends)
@@ -1421,16 +1425,21 @@ export class EndpointInfoService {
         );
       }
     }
+    // Complete keeps the new version alone; abandon puts back the split
+    // the Endpoint had when the rollout started.
     const keep =
-      request.outcome === 'complete' ? rollout.candidate : rollout.stable;
+      request.outcome === 'complete'
+        ? [{ name: rollout.candidate, weight: 100 }]
+        : stableSplit(rollout);
     const change = finishStrategy(
       toBackendWeights(endpoint.spec?.backendRefs),
       toRules(endpoint.spec?.rules),
       keep,
     );
+    const kept = new Set(keep.map(k => k.name));
     const backendRefs = applyBackends(
       (endpoint.spec?.backendRefs ?? []).map(r =>
-        r.name === keep ? r : { ...r, weight: 0 },
+        kept.has(r.name) ? r : { ...r, weight: 0 },
       ),
       change.backends,
     );
@@ -1606,5 +1615,20 @@ export class EndpointInfoService {
       parametersSchema: spec?.parameters?.openAPIV3Schema,
       environmentConfigsSchema: spec?.environmentConfigs?.openAPIV3Schema,
     };
+  }
+}
+
+/**
+ * Refuses changing an Endpoint's backends while the portal runs a rollout
+ * on it: the rollout's steps and its abandon depend on them.
+ */
+function assertNoRollout(endpoint: {
+  metadata: { annotations?: Record<string, string> };
+}) {
+  const rollout = parseRollout(endpoint.metadata.annotations);
+  if (rollout) {
+    throw new InputError(
+      `Finish or abandon the rollout to ${rollout.candidate} before changing the Endpoint's versions`,
+    );
   }
 }
