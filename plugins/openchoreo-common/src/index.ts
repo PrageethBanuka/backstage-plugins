@@ -171,6 +171,36 @@ export {
   type PageVariant,
   type ComponentTypeMapping,
 } from './utils/componentTypeUtils';
+export {
+  endpointRuleProblems,
+  detectEndpointStrategy,
+  buildCanary,
+  buildBlueGreen,
+  buildABTest,
+  finishStrategy,
+  MAX_ENDPOINT_RULES,
+  MOBILE_USER_AGENT,
+  STRATEGY_RULES,
+} from './utils/endpointRules';
+export type {
+  EndpointStrategy,
+  StrategyTarget,
+  StrategyChange,
+} from './utils/endpointRules';
+export {
+  ROLLOUT_ANNOTATION,
+  DEFAULT_CANARY_STEPS,
+  rolloutStages,
+  rolloutPosition,
+  nextRolloutStage,
+  rolloutWeights,
+  parseRollout,
+  serializeRollout,
+  currentRollout,
+  planRollout,
+  completionBlockers,
+} from './utils/endpointRollout';
+export type { RolloutStage } from './utils/endpointRollout';
 
 // Feature flags types
 export type { OpenChoreoFeatures, FeatureName } from './types/features';
@@ -274,7 +304,16 @@ export type {
   EndpointRoutingStatus,
   EndpointBackendWeight,
   EndpointBackendStatus,
-  EndpointReclaimPolicy,
+  EndpointCandidate,
+  EndpointVisibility,
+  EndpointHeaderMatch,
+  EndpointNameValueMatch,
+  EndpointMatch,
+  EndpointRuleBackend,
+  EndpointMirror,
+  EndpointRule,
+  EndpointWeightOverride,
+  EndpointTypeDetails,
   EndpointEnvironmentSummary,
   EndpointSummary,
   EndpointEnvironment,
@@ -282,6 +321,19 @@ export type {
   ComponentTrafficEntry,
   UpdateEndpointTrafficRequest,
   UpdateEndpointReleaseBindingRequest,
+  UpdateEndpointRulesRequest,
+  UpdateEndpointOverridesRequest,
+  UpdateEndpointSettingsRequest,
+  RolloutStrategy,
+  RolloutPreview,
+  EndpointRollout,
+  RolloutPosition,
+  RolloutPlan,
+  StartRolloutRequest,
+  SetRolloutStageRequest,
+  PromoteRolloutRequest,
+  FinishRolloutRequest,
+  RolloutActionResult,
 } from './types/endpoint-types';
 
 // Convenience aliases for backwards compatibility

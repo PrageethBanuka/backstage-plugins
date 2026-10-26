@@ -27,10 +27,140 @@ export type EndpointRoutingStatus =
 
 /** One backend of an Endpoint and its relative weight. */
 export interface EndpointBackendWeight {
+  /** The backend Component. */
   componentName: string;
   /** Workload endpoint name on the component. */
   endpoint: string;
   weight: number;
+  /** The backend's name in the Endpoint (Endpoint.spec.backendRefs[].name). */
+  name?: string;
+}
+
+/** Where an Endpoint is reachable from (Endpoint.spec.visibility). */
+export type EndpointVisibility = 'namespace' | 'internal' | 'external';
+
+/** A header condition of a rule match. */
+export interface EndpointHeaderMatch {
+  name: string;
+  type?: 'Exact' | 'RegularExpression';
+  value: string;
+}
+
+/** An exact cookie or query parameter condition of a rule match. */
+export interface EndpointNameValueMatch {
+  name: string;
+  value: string;
+}
+
+/**
+ * Request conditions, all of which must hold. A rule matches when any of its
+ * matches does.
+ */
+export interface EndpointMatch {
+  headers?: EndpointHeaderMatch[];
+  /** At most one cookie per match. */
+  cookies?: EndpointNameValueMatch[];
+  queryParams?: EndpointNameValueMatch[];
+}
+
+/** A backend of a rule, by its backendRefs name, with the rule's weight. */
+export interface EndpointRuleBackend {
+  name: string;
+  /** Defaults to 1. */
+  weight?: number;
+}
+
+/** Copies a share of a rule's requests to a backend. */
+export interface EndpointMirror {
+  backend: string;
+  percent: number;
+}
+
+/**
+ * Endpoint.spec.rules[]: routes the requests it matches to its backends.
+ * Rules are evaluated in order; a rule without matches is the catch-all and
+ * must be last. Without one, unmatched requests follow backendRefs.
+ */
+export interface EndpointRule {
+  name: string;
+  matches?: EndpointMatch[];
+  backends: EndpointRuleBackend[];
+  mirrors?: EndpointMirror[];
+}
+
+/** The strategies a rollout can run. */
+export type RolloutStrategy = 'canary' | 'blueGreen' | 'abTest';
+
+/** How a person reaches the new version before it gets traffic. */
+export interface RolloutPreview {
+  kind: 'header' | 'cookie';
+  name: string;
+  value: string;
+  /** A/B only: the cookie group must also be on a phone. */
+  mobileOnly?: boolean;
+}
+
+/**
+ * The rollout running on an Endpoint: moving traffic from `stable` to
+ * `candidate` (backend names) through `steps`, the candidate's share at each
+ * stage after the first. Recorded on the Endpoint as an annotation so the
+ * portal can show the stage and the next step after a reload.
+ */
+export interface EndpointRollout {
+  strategy: RolloutStrategy;
+  stable: string;
+  candidate: string;
+  /** The candidate's percent at each stage after the first (which is 0). */
+  steps: number[];
+  preview?: RolloutPreview;
+  startedAt?: string;
+  startedBy?: string;
+}
+
+/** Where an environment stands in a rollout. */
+export interface RolloutPosition {
+  /** Index into rolloutStages; -1 when the weights match no stage. */
+  index: number;
+  /** The candidate's share of traffic there, 0 to 100, rounded. */
+  percent: number;
+  /** True when the weights were set by hand and match no stage. */
+  manual: boolean;
+}
+
+/** What to start: the strategy, the new version and its preview. */
+export interface RolloutPlan {
+  strategy: RolloutStrategy;
+  candidate: { componentName: string; endpoint: string };
+  /** Canary only; defaults to 5, 25, 50, 100. */
+  steps?: number[];
+  preview?: RolloutPreview;
+}
+
+/** A per-environment weight on an EndpointReleaseBinding. */
+export interface EndpointWeightOverride {
+  /** The backend's name in the Endpoint. */
+  name: string;
+  weight: number;
+}
+
+/**
+ * A project component that can be picked when creating an Endpoint, with the
+ * workload endpoints it has deployed.
+ */
+export interface EndpointCandidate {
+  componentName: string;
+  endpoints: Array<{
+    /** Workload endpoint name. */
+    name: string;
+    /** Workload endpoint protocol, e.g. HTTP. */
+    protocol?: string;
+    /** Environments the component is deployed in with this endpoint. */
+    environments: string[];
+    /** External URL in the first of those environments, if exposed. */
+    externalURL?: string;
+    /** Endpoints that already route this workload endpoint, and where. */
+    routedBy?: Array<{ endpointName: string; visibility: EndpointVisibility[] }>;
+  }>;
 }
 
 /** A backend as resolved in one environment. */
@@ -55,18 +185,22 @@ export interface EndpointSummary {
   namespaceName: string;
   projectName: string;
   type: { kind: string; name: string };
+  /** Where the Endpoint is reachable from. */
+  visibility: EndpointVisibility[];
+  /** Whether each new release is bound to the pipeline's first environment. */
+  autoDeploy: boolean;
   /** The latest split (Endpoint.spec.backendRefs). */
   backends: EndpointBackendWeight[];
-  latestRelease?: string;
-  /** What happens when no backend is left: Delete, or Retain as Orphaned. */
-  reclaimPolicy: EndpointReclaimPolicy;
+  /** Header, cookie and query routing (Endpoint.spec.rules). */
+  rules: EndpointRule[];
+  /** The rollout running on the Endpoint, if any. */
+  rollout?: EndpointRollout;
   /**
-   * How the Endpoint was created: "portal", or "workload/<component>/<endpoint>"
-   * when a Workload endpoint declared it. History only.
+   * Where `rollout` comes from: recorded by the portal, detected from the
+   * backends and rules, or none running.
    */
-  createdFrom?: string;
-  /** True while the Endpoint has no backends and is kept (reclaimPolicy Retain). */
-  orphaned: boolean;
+  rolloutSource: 'annotation' | 'detected' | 'none';
+  latestRelease?: string;
   /**
    * Why the Endpoint is degraded and can't cut a release, e.g. a backend with
    * traffic whose component no longer exists. Undefined when it is healthy.
@@ -75,9 +209,6 @@ export interface EndpointSummary {
   /** Environments with a binding; unbound environments are omitted. */
   environments: EndpointEnvironmentSummary[];
 }
-
-/** Endpoint.spec.reclaimPolicy. */
-export type EndpointReclaimPolicy = 'Delete' | 'Retain';
 
 /**
  * Per-environment view of one Endpoint. One entry per environment of the
@@ -104,6 +235,12 @@ export interface EndpointEnvironment {
   invokeURL?: string;
   /** Backends of the pinned release as resolved in this environment. */
   backends: EndpointBackendStatus[];
+  /** The binding's per-environment weights (spec.backendOverrides). */
+  overrides: EndpointWeightOverride[];
+  /** Rules of the pinned release. */
+  rules: EndpointRule[];
+  /** Where this environment stands in the Endpoint's rollout, if any. */
+  rollout?: RolloutPosition;
   /**
    * The Endpoint's backends that are deployed in this environment, as
    * `component/endpoint` keys. A release can only route here when every
@@ -119,6 +256,7 @@ export interface EndpointReleaseSummary {
   name: string;
   createdAt?: string;
   backends: EndpointBackendWeight[];
+  rules: EndpointRule[];
 }
 
 /** One Endpoint routing to a component in one environment (Traffic card). */
@@ -138,6 +276,25 @@ export interface ComponentTrafficEntry {
    */
   hasOtherBackends: boolean;
   invokeURL?: string;
+}
+
+/** A (Cluster)EndpointType, for its catalog page. Read-only. */
+export interface EndpointTypeDetails {
+  kind: 'EndpointType' | 'ClusterEndpointType';
+  name: string;
+  /** The resources the type renders for each Endpoint, e.g. an HTTPRoute. */
+  resources: Array<{
+    id: string;
+    targetPlane: string;
+    /** Kind of the rendered resource template, e.g. HTTPRoute. */
+    templateKind?: string;
+    includeWhen?: string;
+    forEach?: string;
+  }>;
+  /** JSON Schema of the Endpoint's spec.parameters. */
+  parametersSchema?: Record<string, unknown>;
+  /** JSON Schema of per-environment configuration on the binding. */
+  environmentConfigsSchema?: Record<string, unknown>;
 }
 
 /** Request body of PUT /update-endpoint-traffic. */
@@ -160,4 +317,81 @@ export interface UpdateEndpointReleaseBindingRequest {
   endpointName: string;
   environment: string;
   releaseName: string;
+}
+
+/** Request body of PUT /update-endpoint-rules. Cuts a new release. */
+export interface UpdateEndpointRulesRequest {
+  namespaceName: string;
+  endpointName: string;
+  rules: EndpointRule[];
+  /**
+   * Optional full backend set, applied with the rules in the same update, so
+   * a strategy (a new backend and its rule) is one release.
+   */
+  backends?: EndpointBackendWeight[];
+}
+
+/**
+ * Request body of PUT /update-endpoint-overrides: per-environment weights on
+ * the environment's binding. No release is cut.
+ */
+export interface UpdateEndpointOverridesRequest {
+  namespaceName: string;
+  endpointName: string;
+  environment: string;
+  /** An empty list clears the overrides, so the release's weights apply. */
+  overrides: EndpointWeightOverride[];
+}
+
+/** Request body of PUT /update-endpoint-settings. Cuts a new release. */
+export interface UpdateEndpointSettingsRequest {
+  namespaceName: string;
+  endpointName: string;
+  visibility?: EndpointVisibility[];
+  autoDeploy?: boolean;
+}
+
+/** Request body of PUT /endpoint-rollout/start. */
+export interface StartRolloutRequest {
+  namespaceName: string;
+  projectName: string;
+  endpointName: string;
+  plan: RolloutPlan;
+  /** Environments the rollout starts in, at its first stage. */
+  environments: string[];
+}
+
+/** Request body of PUT /endpoint-rollout/stage. */
+export interface SetRolloutStageRequest {
+  namespaceName: string;
+  endpointName: string;
+  environment: string;
+  /** The candidate's share of traffic to set, 0 to 100. */
+  percent: number;
+}
+
+/** Request body of PUT /endpoint-rollout/promote. */
+export interface PromoteRolloutRequest {
+  namespaceName: string;
+  projectName: string;
+  endpointName: string;
+  /** Environment whose routing is copied. */
+  from: string;
+  /** Environment it goes to, at the rollout's first stage. */
+  to: string;
+}
+
+/** Request body of PUT /endpoint-rollout/finish. */
+export interface FinishRolloutRequest {
+  namespaceName: string;
+  projectName: string;
+  endpointName: string;
+  /** complete keeps the candidate; abandon keeps the stable version. */
+  outcome: 'complete' | 'abandon';
+}
+
+/** What a rollout action did in each environment it touched. */
+export interface RolloutActionResult {
+  latestRelease?: string;
+  environments: Array<{ name: string; ok: boolean; error?: string }>;
 }
