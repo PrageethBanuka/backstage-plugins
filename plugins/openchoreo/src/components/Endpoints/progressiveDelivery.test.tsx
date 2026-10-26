@@ -91,7 +91,7 @@ describe('weightPresets', () => {
 });
 
 describe('weightPresets during a rollout', () => {
-  it('offers the stages with the stable ratio kept', () => {
+  it('offers the stages and leaves the untouched backend alone', () => {
     const presets = weightPresets(
       [
         backend('trips-python', 70),
@@ -111,14 +111,14 @@ describe('weightPresets during a rollout', () => {
       },
     );
     expect(presets.map(p => p.label)).toEqual([
-      'Roll back to trips-python + trips-legacy',
+      'Roll back to trips-python',
       'Advance to 25%',
       'Send all traffic to trips-go',
     ]);
     expect(presets[1].weights).toEqual({
-      'trips-python': 53,
-      'trips-legacy': 22,
-      'trips-go': 25,
+      'trips-python': 5250,
+      'trips-legacy': 3000,
+      'trips-go': 1750,
     });
   });
 });

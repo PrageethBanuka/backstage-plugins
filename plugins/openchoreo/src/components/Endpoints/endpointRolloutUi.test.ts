@@ -8,9 +8,10 @@ import {
   previewCommand,
   rolloutAction,
   servedSplit,
+  restoredSummary,
   stableKeeps,
-  stableSummary,
   stageText,
+  untouchedSummary,
 } from './endpointRolloutUi';
 
 const canary: EndpointRollout = {
@@ -249,10 +250,11 @@ describe('previewCommand', () => {
   });
 });
 
-describe('the stable side on screen', () => {
-  it('is one name, or every stable version with its share', () => {
-    expect(stableSummary(canary)).toBe('trips-python');
+describe('the replaced and untouched versions on screen', () => {
+  it('names what is replaced, what stays and what abandoning restores', () => {
     expect(stableKeeps(canary, 25)).toBe('trips-python keeps 75%');
+    expect(untouchedSummary(canary)).toBe('');
+    expect(restoredSummary(canary)).toBe('trips-python');
     const split: EndpointRollout = {
       ...canary,
       baseline: [
@@ -260,9 +262,10 @@ describe('the stable side on screen', () => {
         { name: 'trips-legacy', weight: 30 },
       ],
     };
-    expect(stableSummary(split)).toBe('trips-python 70% · trips-legacy 30%');
     expect(stableKeeps(split, 25)).toBe(
-      'trips-python + trips-legacy share 75%',
+      'trips-python keeps 75% of its traffic',
     );
+    expect(untouchedSummary(split)).toBe('trips-legacy 30%');
+    expect(restoredSummary(split)).toBe('trips-python 70% · trips-legacy 30%');
   });
 });

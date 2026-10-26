@@ -43,8 +43,9 @@ import {
 import { backendKey } from './endpointUi';
 import {
   STRATEGY_COPY,
+  restoredSummary,
   stableKeeps,
-  stableSummary,
+  untouchedSummary,
   type RolloutAction,
 } from './endpointRolloutUi';
 
@@ -237,9 +238,15 @@ export const EndpointEnvironmentsList = ({
     (outcome: 'complete' | 'abandon', firstStep?: () => Promise<unknown>) => {
       const r = endpoint?.rollout;
       if (!endpoint || !r) return;
-      const keep = outcome === 'complete' ? r.candidate : stableSummary(r);
-      const drop = outcome === 'complete' ? stableLabel(r) : r.candidate;
+      const untouched = untouchedSummary(r);
       const touchesProduction = envs.some(e => e.bindingName && e.isProduction);
+      const where = `in every environment${
+        touchesProduction ? ', including production' : ''
+      }`;
+      let completeBody = `${r.candidate} becomes the only version of ${endpoint.name} ${where}. ${r.stable} stops getting traffic from ${endpoint.name}.`;
+      if (untouched) {
+        completeBody = `${r.candidate} replaces ${r.stable} ${where}. ${untouched} stays as it is.`;
+      }
       setConfirmation({
         title:
           outcome === 'complete'
@@ -247,12 +254,10 @@ export const EndpointEnvironmentsList = ({
             : `Abandon the rollout to ${r.candidate}?`,
         body:
           outcome === 'complete'
-            ? `${keep} becomes the only version of ${
-                endpoint.name
-              } in every environment${
-                touchesProduction ? ', including production' : ''
-              }. ${drop} stops getting traffic from ${endpoint.name}.`
-            : `All traffic goes back to ${keep} in every environment, and ${drop} leaves the Endpoint.`,
+            ? completeBody
+            : `All traffic goes back to ${restoredSummary(
+                r,
+              )} in every environment, and ${r.candidate} leaves the Endpoint.`,
         confirmLabel:
           outcome === 'complete' ? 'Complete rollout' : 'Abandon rollout',
         ...(outcome === 'complete' &&
@@ -262,8 +267,8 @@ export const EndpointEnvironmentsList = ({
             if (firstStep) await firstStep();
             return resultMessage(
               outcome === 'complete'
-                ? `Rollout complete: ${keep} serves all traffic`
-                : `Rollout abandoned: ${keep} serves all traffic`,
+                ? `Rollout complete: ${r.candidate} replaced ${r.stable}`
+                : `Rollout abandoned: ${restoredSummary(r)} restored`,
               await client.finishRollout(entity, outcome),
             );
           }),
@@ -281,11 +286,12 @@ export const EndpointEnvironmentsList = ({
         {
           title: `${label} in ${env.displayName}?`,
           body: `${r.candidate} gets ${percent}% of ${
-            env.displayName
-          } traffic and ${stableKeeps(
-            r,
-            percent,
-          )}. You can roll back from the panel at any time.`,
+            untouchedSummary(r)
+              ? `${r.stable}'s traffic in ${env.displayName}`
+              : `${env.displayName} traffic`
+          } and ${stableKeeps(r, percent)}.${
+            untouchedSummary(r) ? ` ${untouchedSummary(r)} is unchanged.` : ''
+          } You can roll back from the panel at any time.`,
           confirmLabel: label,
         },
         'stage',
@@ -315,7 +321,11 @@ export const EndpointEnvironmentsList = ({
               title: `Promote the rollout to ${env.displayName}?`,
               body: `${env.displayName} gets ${
                 r.candidate
-              } next to ${stableLabel(r)}, at 0%. No traffic moves until you advance ${env.displayName}.`,
+              } next to ${stableLabel(
+                r,
+              )}, at 0%. No traffic moves until you advance ${
+                env.displayName
+              }.`,
               confirmLabel: 'Promote',
             },
             'rollout',

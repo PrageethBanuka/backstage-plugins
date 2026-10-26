@@ -28,7 +28,7 @@ import { StatusBadge } from '@openchoreo/backstage-design-system';
 import { useEndpointRolloutPermission } from '@openchoreo/backstage-plugin-react';
 import {
   stableLabel,
-  stableSplit,
+  untouchedSplit,
   type EndpointEnvironment,
 } from '@openchoreo/backstage-plugin-common';
 import { useResourceMiniEnvironmentNodeStyles } from '../ResourceEnvironments/styles';
@@ -129,9 +129,9 @@ export const EndpointMiniEnvironmentNode = ({
 
   let rollBackBlock = '';
   if (rollout && (env.rollout?.percent ?? 0) === 0) {
-    rollBackBlock = `${stableLabel(rollout)} already ${
-      stableSplit(rollout).length > 1 ? 'get' : 'gets'
-    } all traffic here`;
+    rollBackBlock = `${stableLabel(rollout)} already gets all ${
+      untouchedSplit(rollout).length > 0 ? 'of its traffic' : 'traffic'
+    } here`;
   } else if (pendingAction?.env === env.name) {
     rollBackBlock = 'Wait for the current change to finish';
   }

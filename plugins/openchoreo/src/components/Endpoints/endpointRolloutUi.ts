@@ -1,8 +1,8 @@
 import {
   nextRolloutStage,
   rolloutStages,
-  stableLabel,
   stableSplit,
+  untouchedSplit,
   type EndpointBackendWeight,
   type EndpointEnvironment,
   type EndpointRollout,
@@ -46,23 +46,45 @@ export function inRollout(
   );
 }
 
-/**
- * The stable side with its shares when there is more than one backend,
- * e.g. "trips-python 70% · trips-legacy 30%"; otherwise just its name.
- */
-export function stableSummary(rollout: EndpointRollout): string {
+/** Backends with their share of the split the rollout started from. */
+function shares(rollout: EndpointRollout, names: string[]): string {
   const split = stableSplit(rollout);
-  if (split.length === 1) return split[0].name;
   const total = split.reduce((sum, b) => sum + b.weight, 0);
   return split
+    .filter(b => names.includes(b.name))
     .map(b => `${b.name} ${Math.round((b.weight / total) * 100)}%`)
     .join(' · ');
 }
 
-/** What the stable side does with the rest of the traffic at a stage. */
+/**
+ * The split abandoning restores, e.g. "trips-python 70% · trips-legacy
+ * 30%", or just the replaced version's name when it was alone.
+ */
+export function restoredSummary(rollout: EndpointRollout): string {
+  const split = stableSplit(rollout);
+  if (split.length === 1) return split[0].name;
+  return shares(
+    rollout,
+    split.map(b => b.name),
+  );
+}
+
+/**
+ * The backends the rollout leaves alone with their shares, e.g.
+ * "trips-legacy 30%"; empty when the replaced version was alone.
+ */
+export function untouchedSummary(rollout: EndpointRollout): string {
+  return shares(
+    rollout,
+    untouchedSplit(rollout).map(b => b.name),
+  );
+}
+
+/** What the replaced version keeps at a stage. */
 export function stableKeeps(rollout: EndpointRollout, percent: number): string {
-  const many = stableSplit(rollout).length > 1;
-  return `${stableLabel(rollout)} ${many ? 'share' : 'keeps'} ${100 - percent}%`;
+  return `${rollout.stable} keeps ${100 - percent}%${
+    untouchedSplit(rollout).length > 0 ? ' of its traffic' : ''
+  }`;
 }
 
 /** The stage shown on a tile, e.g. "Canary 25%" or "30% · set by hand". */

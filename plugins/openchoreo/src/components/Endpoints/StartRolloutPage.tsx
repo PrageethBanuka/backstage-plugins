@@ -6,6 +6,8 @@ import {
   CircularProgress,
   FormControlLabel,
   MenuItem,
+  Radio,
+  RadioGroup,
   TextField,
   Tooltip,
   Typography,
@@ -131,6 +133,7 @@ export const StartRolloutPage = () => {
   const [cookieValue, setCookieValue] = useState('b');
   const [mobileOnly, setMobileOnly] = useState(false);
   const [targets, setTargets] = useState<string[]>([]);
+  const [replaces, setReplaces] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -195,19 +198,17 @@ export const StartRolloutPage = () => {
 
   const current = new Set(endpoint?.backends.map(b => b.componentName) ?? []);
   const options = components.filter(c => !current.has(c));
-  // The new version takes its traffic from every version serving now, in
-  // their current ratio.
+  // The new version replaces one serving version, by default the busiest;
+  // the others keep their traffic, as on an Argo Rollouts or Flagger route.
   const serving = endpoint?.backends.filter(b => b.weight > 0) ?? [];
   const servingTotal = serving.reduce((sum, b) => sum + b.weight, 0);
-  let stable = serving[0]?.componentName ?? 'the current version';
-  if (serving.length > 1) {
-    stable = serving
-      .map(
-        b =>
-          `${b.componentName} (${Math.round((b.weight / servingTotal) * 100)}%)`,
-      )
-      .join(', ');
-  }
+  const nameOf = (b: { name?: string; componentName: string }) =>
+    b.name ?? b.componentName;
+  const busiest = [...serving].sort((a, b) => b.weight - a.weight)[0];
+  const replaced =
+    serving.find(b => nameOf(b) === replaces) ?? busiest ?? undefined;
+  const replacedName = replaced ? nameOf(replaced) : undefined;
+  const stable = replacedName ?? 'the current version';
   const parsedSteps = steps
     .split(/[,\s→>]+/)
     .map(Number)
@@ -221,6 +222,7 @@ export const StartRolloutPage = () => {
         ? {
             strategy,
             candidate,
+            ...(replacedName && { replaces: replacedName }),
             preview: {
               kind: 'cookie',
               name: cookieName,
@@ -235,6 +237,7 @@ export const StartRolloutPage = () => {
     return {
       strategy,
       candidate,
+      ...(replacedName && { replaces: replacedName }),
       ...(strategy === 'canary' && { steps: parsedSteps }),
       ...((strategy === 'blueGreen' || useHeader) &&
         headerName &&
@@ -257,6 +260,7 @@ export const StartRolloutPage = () => {
     headerValue,
     useHeader,
     parsedSteps,
+    replacedName,
   ]);
 
   const start = async () => {
@@ -397,9 +401,7 @@ export const StartRolloutPage = () => {
                 onChange={e => setComponent(e.target.value)}
                 helperText={`Components in ${
                   project ?? 'this project'
-                }. Starts next to ${stable}${
-                  serving.length > 1 ? ', and takes from them in that ratio' : ''
-                }.`}
+                }. Starts next to ${stable} at 0%.`}
               >
                 {options.length === 0 && (
                   <MenuItem value="" disabled>
@@ -441,6 +443,34 @@ export const StartRolloutPage = () => {
               </Box>
             )}
           </Box>
+
+          {serving.length > 1 && (
+            <Box className={classes.field}>
+              <Typography variant="body2" className={classes.label}>
+                Replaces
+              </Typography>
+              <RadioGroup
+                aria-label="Version to replace"
+                value={stable}
+                onChange={e => setReplaces(e.target.value)}
+              >
+                {serving.map(b => (
+                  <FormControlLabel
+                    key={nameOf(b)}
+                    value={nameOf(b)}
+                    control={<Radio color="primary" size="small" />}
+                    label={`${nameOf(b)} · ${Math.round(
+                      (b.weight / servingTotal) * 100,
+                    )}% of traffic`}
+                  />
+                ))}
+              </RadioGroup>
+              <Typography variant="caption" color="textSecondary">
+                The new version takes traffic only from this one. Other versions
+                keep their traffic and stay after the rollout completes.
+              </Typography>
+            </Box>
+          )}
 
           <Box className={classes.field}>
             <Typography variant="body2" className={classes.label}>
