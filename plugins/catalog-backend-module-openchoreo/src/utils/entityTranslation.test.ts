@@ -1005,11 +1005,27 @@ describe('translateNewEndpointToEntity', () => {
         } as any,
         spec: {
           owner: { projectName: 'shop' },
-          type: { kind: 'ClusterEndpointType', name: 'http-weighted' },
+          type: { kind: 'ClusterEndpointType', name: 'http' },
+          visibility: ['external'],
+          autoDeploy: true,
           backendRefs: [
-            { componentName: 'payments-v1', endpoint: 'http', weight: 90 },
-            { componentName: 'payments-v2', endpoint: 'http', weight: 10 },
-            { componentName: 'payments-v3', endpoint: 'http' },
+            {
+              name: 'payments-v1',
+              component: { name: 'payments-v1', endpoint: 'http' },
+              weight: 90,
+            },
+            {
+              name: 'payments-v2',
+              component: { name: 'payments-v2', endpoint: 'http' },
+              weight: 10,
+            },
+          ],
+          rules: [
+            {
+              name: 'testers',
+              matches: [{ headers: [{ name: 'x-canary', value: 'true' }] }],
+              backends: [{ name: 'payments-v2' }],
+            },
           ],
         } as any,
       } as any,
@@ -1024,15 +1040,18 @@ describe('translateNewEndpointToEntity', () => {
       'openchoreo.io/managed': 'true',
     });
     expect(entity.spec).toMatchObject({
-      type: 'http-weighted',
+      type: 'http',
       owner: 'group:default/openchoreo',
       system: 'shop',
+    });
+    expect(entity.spec).toMatchObject({
+      visibility: ['external'],
+      autoDeploy: true,
+      rules: ['testers'],
     });
     expect(entity.spec?.backends).toEqual([
       { component: 'payments-v1', endpoint: 'http', weight: 90 },
       { component: 'payments-v2', endpoint: 'http', weight: 10 },
-      // an omitted weight defaults to 1, like the CRD
-      { component: 'payments-v3', endpoint: 'http', weight: 1 },
     ]);
     expect(entity.metadata.annotations).toMatchObject({
       'backstage.io/managed-by-location': 'provider:openchoreo-provider',
@@ -1040,7 +1059,7 @@ describe('translateNewEndpointToEntity', () => {
       'openchoreo.io/project': 'shop',
       'openchoreo.io/endpoint-cr': 'payments-api',
       'openchoreo.io/endpoint-cr-uid': 'ep-uid-1',
-      'openchoreo.io/endpoint-cr-type': 'http-weighted',
+      'openchoreo.io/endpoint-cr-type': 'http',
       'openchoreo.io/endpoint-cr-type-kind': 'ClusterEndpointType',
     });
   });

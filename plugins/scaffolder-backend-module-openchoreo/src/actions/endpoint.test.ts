@@ -41,7 +41,8 @@ const buildCtx = (input: Record<string, any> = {}) => ({
     projectName: 'shop',
     endpointName: 'payments-api',
     typeKind: 'ClusterEndpointType' as const,
-    typeName: 'http-gateway',
+    typeName: 'http',
+    visibility: ['external'],
     backends: [{ componentName: 'payments-v1', endpoint: 'http', weight: 100 }],
     ...input,
   },
@@ -67,7 +68,7 @@ describe('createEndpointAction', () => {
     });
   });
 
-  it('POSTs an Endpoint with the type, backends and a default reclaim policy', async () => {
+  it('POSTs an Endpoint with its visibility, typed backends and autoDeploy on by default', async () => {
     const action = createEndpointAction(config, immediateCatalog as any);
     const ctx = buildCtx();
     await action.handler(ctx as any);
@@ -79,11 +80,17 @@ describe('createEndpointAction', () => {
       metadata: { name: 'payments-api' },
       spec: {
         owner: { projectName: 'shop' },
-        type: { kind: 'ClusterEndpointType', name: 'http-gateway' },
+        type: { kind: 'ClusterEndpointType', name: 'http' },
+        visibility: ['external'],
+        autoDeploy: true,
         backendRefs: [
-          { componentName: 'payments-v1', endpoint: 'http', weight: 100 },
+          {
+            name: 'payments-v1',
+            kind: 'Component',
+            component: { name: 'payments-v1', endpoint: 'http' },
+            weight: 100,
+          },
         ],
-        reclaimPolicy: 'Delete',
       },
     });
     expect(immediateCatalog.insertEntity).toHaveBeenCalledTimes(1);
@@ -93,20 +100,30 @@ describe('createEndpointAction', () => {
     );
   });
 
-  it('passes Retain and strips entity ref prefixes', async () => {
+  it('strips entity ref prefixes and passes autoDeploy', async () => {
     const action = createEndpointAction(config, immediateCatalog as any);
     await action.handler(
       buildCtx({
         namespaceName: 'domain:default/default',
         projectName: 'system:default/shop',
-        reclaimPolicy: 'Retain',
+        autoDeploy: false,
       }) as any,
     );
 
     const [, opts] = mockPOST.mock.calls[0];
     expect(opts.params.path.namespaceName).toBe('default');
     expect(opts.body.spec.owner.projectName).toBe('shop');
-    expect(opts.body.spec.reclaimPolicy).toBe('Retain');
+    expect(opts.body.spec.autoDeploy).toBe(false);
+  });
+
+  it('passes parameters, leaving out the ones the form left empty', async () => {
+    const action = createEndpointAction(config, immediateCatalog as any);
+    await action.handler(
+      buildCtx({ parameters: { pathPrefix: '/trips', hostname: '' } }) as any,
+    );
+
+    const [, opts] = mockPOST.mock.calls[0];
+    expect(opts.body.spec.parameters).toEqual({ pathPrefix: '/trips' });
   });
 
   it('still succeeds when the immediate catalog insert fails', async () => {

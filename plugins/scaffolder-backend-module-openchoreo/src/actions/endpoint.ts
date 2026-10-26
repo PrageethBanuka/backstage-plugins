@@ -71,22 +71,33 @@ export const createEndpointAction = (
         backends: z =>
           z
             .array(
-              z.object({
-                componentName: z.string(),
-                endpoint: z.string(),
-                weight: z.number().int().min(0).max(1000000),
-              }),
+              // passthrough: the form's backend rows carry display-only fields
+              // (e.g. whether the component is deployed yet).
+              z
+                .object({
+                  componentName: z.string(),
+                  endpoint: z.string(),
+                  weight: z.number().int().min(0).max(1000000),
+                })
+                .passthrough(),
               {
                 description:
                   'Component workload endpoints receiving traffic, with relative weights',
               },
             )
             .min(1, 'Add at least one backend'),
-        reclaimPolicy: z =>
+        visibility: z =>
           z
-            .enum(['Delete', 'Retain'], {
+            .array(z.enum(['namespace', 'internal', 'external']), {
               description:
-                'What happens when no backend is left: Delete removes the Endpoint, Retain keeps its URL',
+                'Where the Endpoint is reachable from; its type renders a route for each',
+            })
+            .min(1, 'Pick at least one visibility'),
+        autoDeploy: z =>
+          z
+            .boolean({
+              description:
+                "Deploy each release to the first environment of the project's pipeline",
             })
             .optional(),
         parameters: z =>
@@ -119,9 +130,16 @@ export const createEndpointAction = (
         typeKind,
         typeName,
         backends,
-        reclaimPolicy,
-        parameters,
+        visibility,
+        autoDeploy,
       } = ctx.input;
+      // Form fields left empty arrive as empty strings; leave them out so
+      // the type's schema defaults apply.
+      const parameters = Object.fromEntries(
+        Object.entries(ctx.input.parameters ?? {}).filter(
+          ([, v]) => v !== '' && v !== null && v !== undefined,
+        ),
+      );
 
       const baseUrl = config.getString('openchoreo.baseUrl');
       const authzEnabled =
@@ -144,7 +162,7 @@ export const createEndpointAction = (
       const annotations: Record<string, string> = {};
       if (displayName) annotations['openchoreo.dev/display-name'] = displayName;
       if (description) annotations['openchoreo.dev/description'] = description;
-      const hasParameters = parameters && Object.keys(parameters).length > 0;
+      const hasParameters = Object.keys(parameters).length > 0;
 
       const apiBody = {
         metadata: {
@@ -154,8 +172,14 @@ export const createEndpointAction = (
         spec: {
           owner: { projectName },
           type: { kind: typeKind, name: typeName },
-          backendRefs: backends,
-          reclaimPolicy: reclaimPolicy ?? 'Delete',
+          visibility,
+          autoDeploy: autoDeploy ?? true,
+          backendRefs: backends.map(({ componentName, endpoint, weight }) => ({
+            name: componentName,
+            kind: 'Component',
+            component: { name: componentName, endpoint },
+            weight,
+          })),
           ...(hasParameters && { parameters }),
         },
       };
@@ -184,6 +208,9 @@ export const createEndpointAction = (
             projectName,
             typeName,
             typeKind,
+            visibility,
+            autoDeploy: autoDeploy ?? true,
+            rules: [],
             backends: backends.map(b => ({
               component: b.componentName,
               endpoint: b.endpoint,

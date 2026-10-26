@@ -30,12 +30,18 @@ export interface EndpointEntityV1alpha1 extends Entity {
   apiVersion: 'backstage.io/v1alpha1';
   kind: 'Endpoint';
   spec: {
-    /** Name of the (Cluster)EndpointType, e.g. http-weighted. */
+    /** Name of the (Cluster)EndpointType, e.g. http. */
     type: string;
     /** Owner entity ref. */
     owner: string;
     /** The Project (System) this Endpoint belongs to. */
     system: string;
+    /** Where the Endpoint is reachable from: namespace, internal, external. */
+    visibility: string[];
+    /** Whether each new release is bound to the pipeline's first environment. */
+    autoDeploy: boolean;
+    /** Names of the Endpoint's routing rules, in evaluation order. */
+    rules: string[];
     /** Component endpoints receiving traffic, in spec order. */
     backends: EndpointBackend[];
     [key: string]: JsonValue | undefined;

@@ -953,7 +953,17 @@ export function translateEndpointToEntity(
     projectName: string;
     typeName: string;
     typeKind: 'EndpointType' | 'ClusterEndpointType';
-    backends: Array<{ component: string; endpoint: string; weight: number }>;
+    /** Where the Endpoint is reachable from. */
+    visibility?: string[];
+    /** Whether each new release is bound to the pipeline's first environment. */
+    autoDeploy?: boolean;
+    /** Names of the Endpoint's routing rules, in order. */
+    rules?: string[];
+    backends: Array<{
+      component: string;
+      endpoint: string;
+      weight: number;
+    }>;
     createdAt?: string;
     deletionTimestamp?: string;
   },
@@ -993,6 +1003,9 @@ export function translateEndpointToEntity(
       type: endpoint.typeName,
       owner: config.defaultOwner,
       system: endpoint.projectName,
+      visibility: endpoint.visibility ?? [],
+      autoDeploy: endpoint.autoDeploy ?? false,
+      rules: endpoint.rules ?? [],
       backends: endpoint.backends,
     },
   };
@@ -2224,9 +2237,12 @@ export function translateNewEndpointToEntity(
       projectName: spec?.owner?.projectName ?? '',
       typeName: spec?.type?.name ?? '',
       typeKind,
+      visibility: spec?.visibility,
+      autoDeploy: spec?.autoDeploy,
+      rules: (spec?.rules ?? []).map(r => r.name),
       backends: (spec?.backendRefs ?? []).map(ref => ({
-        component: ref.componentName,
-        endpoint: ref.endpoint,
+        component: ref.component?.name ?? ref.name,
+        endpoint: ref.component?.endpoint ?? '',
         weight: ref.weight ?? 1,
       })),
       createdAt: getCreatedAt(endpoint),

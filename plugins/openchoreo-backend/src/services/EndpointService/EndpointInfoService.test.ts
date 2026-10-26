@@ -30,10 +30,31 @@ const endpoint = (weights: [number, number], latest = 'payments-api-aaa') => ({
   metadata: { name: 'payments-api', namespace: 'default' },
   spec: {
     owner: { projectName: 'shop' },
-    type: { kind: 'ClusterEndpointType', name: 'http-weighted' },
+    type: { kind: 'ClusterEndpointType', name: 'http' },
+    visibility: ['external'],
+    autoDeploy: true,
     backendRefs: [
-      { componentName: 'payments-v1', endpoint: 'http', weight: weights[0] },
-      { componentName: 'payments-v2', endpoint: 'http', weight: weights[1] },
+      {
+        name: 'payments-v1',
+        kind: 'Component',
+        component: { name: 'payments-v1', endpoint: 'http' },
+        weight: weights[0],
+      },
+      {
+        name: 'payments-v2',
+        kind: 'Component',
+        component: { name: 'payments-v2', endpoint: 'http' },
+        weight: weights[1],
+      },
+    ],
+    rules: [
+      {
+        name: 'testers',
+        matches: [
+          { headers: [{ name: 'x-canary', type: 'Exact', value: 'true' }] },
+        ],
+        backends: [{ name: 'payments-v2', weight: 1 }],
+      },
     ],
   },
   status: { latestRelease: { name: latest, hash: latest.slice(-3) } },
@@ -136,53 +157,113 @@ describe('EndpointInfoService', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].backends).toEqual([
-        { componentName: 'payments-v1', endpoint: 'http', weight: 90 },
-        { componentName: 'payments-v2', endpoint: 'http', weight: 10 },
+        {
+          componentName: 'payments-v1',
+          endpoint: 'http',
+          weight: 90,
+          name: 'payments-v1',
+        },
+        {
+          componentName: 'payments-v2',
+          endpoint: 'http',
+          weight: 10,
+          name: 'payments-v2',
+        },
       ]);
       expect(result[0].environments.map(e => e.environment)).toEqual([
         'development',
         'staging',
       ]);
       expect(result[0].environments[0].status).toBe('Routing');
-      expect(result[0].reclaimPolicy).toBe('Delete');
-      expect(result[0].orphaned).toBe(false);
+      expect(result[0].visibility).toEqual(['external']);
+      expect(result[0].autoDeploy).toBe(true);
+      expect(result[0].rules.map(r => r.name)).toEqual(['testers']);
     });
+  });
 
-    it('reports how an Endpoint was created and whether it is orphaned', async () => {
-      const ep = {
-        ...endpoint([90, 10]),
-        metadata: {
-          name: 'payments-api',
-          namespace: 'default',
-          annotations: {
-            'openchoreo.dev/created-from': 'workload/payments-v1/http',
-          },
+  describe('listEndpointCandidates', () => {
+    it("lists each component's deployed endpoints and the Endpoints routing them", async () => {
+      const deployed = (
+        component: string,
+        env: string,
+        endpoints: unknown[],
+        state = 'Active',
+        project = 'shop',
+      ) => ({
+        spec: {
+          owner: { projectName: project, componentName: component },
+          environment: env,
+          state,
         },
-        spec: { ...endpoint([90, 10]).spec, reclaimPolicy: 'Retain' },
-        status: {
-          conditions: [
-            {
-              type: 'Orphaned',
-              status: 'True',
-              reason: 'NoBackends',
-              lastTransitionTime: '2026-10-12T00:00:00Z',
-            },
-          ],
-        },
-      };
+        status: { endpoints },
+      });
       routeGET({
-        [`${NS}/endpoints`]: () => list([ep]),
-        [`${NS}/endpointreleasebindings`]: () => list([]),
+        [`${NS}/components`]: opts => {
+          expect(opts.params.query.project).toBe('shop');
+          return list([
+            { metadata: { name: 'payments-v2' } },
+            { metadata: { name: 'payments-v1' } },
+          ]);
+        },
+        [`${NS}/endpoints`]: () =>
+          list([
+            {
+              metadata: { name: 'payments-api' },
+              spec: {
+                visibility: ['external'],
+                backendRefs: [
+                  {
+                    name: 'payments-v1',
+                    component: { name: 'payments-v1', endpoint: 'http' },
+                  },
+                ],
+              },
+            },
+          ]),
+        [`${NS}/releasebindings`]: opts =>
+          opts.params.query.component === 'payments-v1'
+            ? list([
+                deployed('payments-v1', 'staging', [
+                  { name: 'http', type: 'HTTP', invokeURL: 'http://stg/v1' },
+                ]),
+                deployed('payments-v1', 'development', [
+                  { name: 'http', type: 'HTTP', invokeURL: 'http://dev/v1' },
+                ]),
+                deployed(
+                  'payments-v1',
+                  'production',
+                  [{ name: 'http' }],
+                  'Undeploy',
+                ),
+              ])
+            : list([
+                deployed('payments-v2', 'development', [], 'Active', 'billing'),
+              ]),
       });
 
-      const [result] = await service.listProjectEndpoints(
+      const result = await service.listEndpointCandidates(
         { namespaceName: 'default', projectName: 'shop' },
         'token',
       );
 
-      expect(result.createdFrom).toBe('workload/payments-v1/http');
-      expect(result.reclaimPolicy).toBe('Retain');
-      expect(result.orphaned).toBe(true);
+      expect(result).toEqual([
+        {
+          componentName: 'payments-v1',
+          endpoints: [
+            {
+              name: 'http',
+              protocol: 'HTTP',
+              environments: ['development', 'staging'],
+              externalURL: 'http://stg/v1',
+              routedBy: [
+                { endpointName: 'payments-api', visibility: ['external'] },
+              ],
+            },
+          ],
+        },
+        // Deployed only in another project, so nothing to offer.
+        { componentName: 'payments-v2', endpoints: [] },
+      ]);
     });
   });
 
@@ -258,7 +339,20 @@ describe('EndpointInfoService', () => {
       routeGET({
         [`${NS}/endpoints/{endpointName}`]: () =>
           createOkResponse(endpoint([90, 10])),
-        [`${NS}/endpointreleasebindings`]: () => list([binding('development')]),
+        [`${NS}/endpointreleasebindings`]: () =>
+          list([
+            {
+              ...binding('development'),
+              spec: {
+                ...binding('development').spec,
+                backendOverrides: [{ name: 'payments-v2', weight: 50 }],
+              },
+            },
+          ]),
+        [`${NS}/endpointreleases/{endpointReleaseName}`]: opts => {
+          expect(opts.params.path.endpointReleaseName).toBe('payments-api-aaa');
+          return createOkResponse(endpoint([90, 10]));
+        },
         [`${NS}/releasebindings`]: opts =>
           list(
             opts.params.query.component === 'payments-v1'
@@ -319,6 +413,11 @@ describe('EndpointInfoService', () => {
           latestRelease: 'payments-api-aaa',
         }),
       );
+      expect(result[0].overrides).toEqual([
+        { name: 'payments-v2', weight: 50 },
+      ]);
+      expect(result[0].rules.map(r => r.name)).toEqual(['testers']);
+      expect(result[1].rules).toEqual([]);
       expect(result[2].isProduction).toBe(true);
       expect(result.map(e => e.promotionTargets)).toEqual([
         [{ name: 'staging' }],
@@ -545,27 +644,190 @@ describe('EndpointInfoService', () => {
     });
   });
 
-  describe('updateEndpointReclaimPolicy', () => {
-    it('PUTs the Endpoint with the new policy and the same backends', async () => {
+  describe('updateEndpointRules', () => {
+    it('adds a backend and its rule in one update, and returns the new release', async () => {
+      let reads = 0;
       routeGET({
         [`${NS}/endpoints/{endpointName}`]: () =>
-          createOkResponse(endpoint([90, 10])),
+          createOkResponse(
+            reads++ === 0
+              ? endpoint([100, 0])
+              : endpoint([100, 0], 'payments-api-bbb'),
+          ),
       });
       mockPUT.mockResolvedValue(createOkResponse({}));
 
-      const result = await service.updateEndpointReclaimPolicy(
+      const result = await service.updateEndpointRules(
         {
           namespaceName: 'default',
           endpointName: 'payments-api',
-          reclaimPolicy: 'Retain',
+          backends: [
+            { componentName: 'payments-v1', endpoint: 'http', weight: 100 },
+            { componentName: 'payments-v2', endpoint: 'http', weight: 0 },
+            { componentName: 'payments-v3', endpoint: 'http', weight: 0 },
+          ],
+          rules: [
+            {
+              name: 'preview',
+              matches: [{ headers: [{ name: 'x-preview', value: 'green' }] }],
+              backends: [{ name: 'payments-v3' }],
+            },
+          ],
         },
         'token',
       );
 
-      expect(result).toEqual({ reclaimPolicy: 'Retain' });
-      const [, opts] = mockPUT.mock.calls[0];
-      expect(opts.body.spec.reclaimPolicy).toBe('Retain');
-      expect(opts.body.spec.backendRefs).toHaveLength(2);
+      expect(result).toEqual({
+        latestRelease: 'payments-api-bbb',
+        changed: true,
+      });
+      const body = mockPUT.mock.calls[0][1].body;
+      expect(body.spec.backendRefs.map((r: any) => r.name)).toEqual([
+        'payments-v1',
+        'payments-v2',
+        'payments-v3',
+      ]);
+      expect(body.spec.rules).toEqual([
+        {
+          name: 'preview',
+          matches: [
+            { headers: [{ name: 'x-preview', type: 'Exact', value: 'green' }] },
+          ],
+          backends: [{ name: 'payments-v3', weight: 1 }],
+        },
+      ]);
+    });
+
+    it('refuses a rule naming an unknown backend, and a catch-all that is not last', async () => {
+      routeGET({
+        [`${NS}/endpoints/{endpointName}`]: () =>
+          createOkResponse(endpoint([90, 10])),
+      });
+      await expect(
+        service.updateEndpointRules(
+          {
+            namespaceName: 'default',
+            endpointName: 'payments-api',
+            rules: [
+              { name: 'everyone', backends: [{ name: 'payments-v1' }] },
+              {
+                name: 'testers',
+                matches: [{ headers: [{ name: 'x-canary', value: 'true' }] }],
+                backends: [{ name: 'payments-v9' }],
+              },
+            ],
+          },
+          'token',
+        ),
+      ).rejects.toThrow(
+        /only the last rule may have no matches.*unknown backend payments-v9/,
+      );
+      expect(mockPUT).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateEndpointOverrides', () => {
+    it("sets the environment binding's weights and waits until they apply", async () => {
+      const applied = {
+        ...binding('development'),
+        status: {
+          ...binding('development').status,
+          backends: [
+            { name: 'payments-v1', weight: 50, resolved: true },
+            { name: 'payments-v2', weight: 50, resolved: true },
+          ],
+          conditions: [
+            {
+              type: 'RoutesReady',
+              status: 'True',
+              reason: 'RoutesReady',
+              lastTransitionTime: '2026-10-12T00:00:00Z',
+            },
+          ],
+        },
+      };
+      let reads = 0;
+      routeGET({
+        [`${NS}/endpointreleasebindings`]: opts => {
+          expect(opts.params.query).toMatchObject({
+            endpoint: 'payments-api',
+            environment: 'development',
+          });
+          return list([reads++ === 0 ? binding('development') : applied]);
+        },
+      });
+      mockPUT.mockResolvedValue(createOkResponse({}));
+
+      const result = await service.updateEndpointOverrides(
+        {
+          namespaceName: 'default',
+          endpointName: 'payments-api',
+          environment: 'development',
+          overrides: [
+            { name: 'payments-v1', weight: 50 },
+            { name: 'payments-v2', weight: 50 },
+          ],
+        },
+        'token',
+      );
+
+      expect(result).toEqual({
+        bindingName: 'payments-api-development',
+        applied: true,
+      });
+      const [path, opts] = mockPUT.mock.calls[0];
+      expect(path).toBe(
+        `${NS}/endpointreleasebindings/{endpointReleaseBindingName}`,
+      );
+      expect(opts.body.spec.backendOverrides).toEqual([
+        { name: 'payments-v1', weight: 50 },
+        { name: 'payments-v2', weight: 50 },
+      ]);
+      expect(opts.body.spec.endpointRelease).toBe('payments-api-aaa');
+    });
+
+    it('fails clearly when the Endpoint is not deployed in the environment', async () => {
+      routeGET({ [`${NS}/endpointreleasebindings`]: () => list([]) });
+      await expect(
+        service.updateEndpointOverrides(
+          {
+            namespaceName: 'default',
+            endpointName: 'payments-api',
+            environment: 'production',
+            overrides: [],
+          },
+          'token',
+        ),
+      ).rejects.toThrow(/not deployed in production/);
+    });
+  });
+
+  describe('updateEndpointSettings', () => {
+    it('changes the visibility, which cuts a release', async () => {
+      let reads = 0;
+      routeGET({
+        [`${NS}/endpoints/{endpointName}`]: () =>
+          createOkResponse(
+            reads++ === 0
+              ? endpoint([90, 10])
+              : endpoint([90, 10], 'payments-api-ccc'),
+          ),
+      });
+      mockPUT.mockResolvedValue(createOkResponse({}));
+
+      const result = await service.updateEndpointSettings(
+        {
+          namespaceName: 'default',
+          endpointName: 'payments-api',
+          visibility: ['external', 'namespace'],
+        },
+        'token',
+      );
+
+      expect(result).toEqual({ latestRelease: 'payments-api-ccc' });
+      const body = mockPUT.mock.calls[0][1].body;
+      expect(body.spec.visibility).toEqual(['external', 'namespace']);
+      expect(body.spec.autoDeploy).toBe(true);
     });
   });
 
@@ -605,6 +867,94 @@ describe('EndpointInfoService', () => {
           },
         }),
       );
+    });
+  });
+
+  describe('rollouts', () => {
+    const rolloutAnnotation = JSON.stringify({
+      strategy: 'canary',
+      stable: 'payments-v1',
+      candidate: 'payments-v2',
+      steps: [5, 25, 50, 100],
+    });
+    const withRollout = () => {
+      const ep = endpoint([100, 0]);
+      return {
+        ...ep,
+        metadata: {
+          ...ep.metadata,
+          annotations: { 'openchoreo.dev/rollout': rolloutAnnotation },
+        },
+      };
+    };
+    const routeRollout = () =>
+      routeGET({
+        [`${NS}/endpoints/{endpointName}`]: () =>
+          createOkResponse(withRollout()),
+        [`${NS}/endpointreleasebindings`]: opts =>
+          list(
+            !opts.params.query.environment ||
+              opts.params.query.environment === 'development'
+              ? [binding('development')]
+              : [],
+          ),
+      });
+    const promote = () =>
+      service.promoteRollout(
+        {
+          namespaceName: 'default',
+          projectName: 'shop',
+          endpointName: 'payments-api',
+          from: 'development',
+          to: 'staging',
+        },
+        'token',
+      );
+
+    it('promotes with the new version at 0%, so no traffic moves', async () => {
+      routeRollout();
+      mockPOST.mockResolvedValue(createOkResponse({}));
+
+      const result = await promote();
+
+      expect(result).toEqual({
+        latestRelease: 'payments-api-aaa',
+        environments: [{ name: 'staging', ok: true }],
+      });
+      expect(mockPOST.mock.calls[0][1].body.spec).toMatchObject({
+        environment: 'staging',
+        endpointRelease: 'payments-api-aaa',
+        backendOverrides: [
+          { name: 'payments-v1', weight: 100 },
+          { name: 'payments-v2', weight: 0 },
+        ],
+      });
+    });
+
+    it('reports an environment that failed instead of throwing', async () => {
+      routeRollout();
+      mockPOST.mockRejectedValue(new Error('forbidden in staging'));
+
+      expect((await promote()).environments).toEqual([
+        { name: 'staging', ok: false, error: 'forbidden in staging' },
+      ]);
+    });
+
+    it('refuses to complete while an environment still sends traffic to the old version', async () => {
+      routeRollout();
+
+      await expect(
+        service.finishRollout(
+          {
+            namespaceName: 'default',
+            projectName: 'shop',
+            endpointName: 'payments-api',
+            outcome: 'complete',
+          },
+          'token',
+        ),
+      ).rejects.toThrow(/Send all traffic to payments-v2 in development/);
+      expect(mockPUT).not.toHaveBeenCalled();
     });
   });
 

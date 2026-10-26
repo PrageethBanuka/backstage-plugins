@@ -98,27 +98,39 @@ describe('toBackendWeights', () => {
   it('defaults a missing weight to 1, as the CRD does', () => {
     expect(
       toBackendWeights([
-        { componentName: 'payments-v1', endpoint: 'http' },
+        {
+          name: 'payments-v1',
+          component: { name: 'payments-v1', endpoint: 'http' },
+        },
       ] as any),
-    ).toEqual([{ componentName: 'payments-v1', endpoint: 'http', weight: 1 }]);
+    ).toEqual([
+      {
+        componentName: 'payments-v1',
+        endpoint: 'http',
+        weight: 1,
+        name: 'payments-v1',
+      },
+    ]);
   });
 });
 
+/** An API backendRef for a component's http endpoint. */
+const ref = (component: string, weight: number) => ({
+  name: component,
+  kind: 'Component' as const,
+  component: { name: component, endpoint: 'http' },
+  weight,
+});
+
 describe('applyWeights', () => {
-  const refs = [
-    { componentName: 'payments-v1', endpoint: 'http', weight: 90 },
-    { componentName: 'payments-v2', endpoint: 'http', weight: 10 },
-  ];
+  const refs = [ref('payments-v1', 90), ref('payments-v2', 10)];
 
   it('changes only the named backends', () => {
     expect(
       applyWeights(refs, [
         { componentName: 'payments-v2', endpoint: 'http', weight: 50 },
       ]),
-    ).toEqual([
-      { componentName: 'payments-v1', endpoint: 'http', weight: 90 },
-      { componentName: 'payments-v2', endpoint: 'http', weight: 50 },
-    ]);
+    ).toEqual([ref('payments-v1', 90), ref('payments-v2', 50)]);
   });
 
   it('rejects a backend the Endpoint does not have', () => {
@@ -153,10 +165,7 @@ describe('applyWeights', () => {
 });
 
 describe('applyBackends', () => {
-  const refs = [
-    { componentName: 'payments-v1', endpoint: 'http', weight: 100 },
-    { componentName: 'payments-v2', endpoint: 'http', weight: 0 },
-  ];
+  const refs = [ref('payments-v1', 100), ref('payments-v2', 0)];
 
   it('adds a new backend after the existing ones', () => {
     expect(
@@ -165,10 +174,7 @@ describe('applyBackends', () => {
         { componentName: 'payments-v2', endpoint: 'http', weight: 0 },
         { componentName: 'payments-v3', endpoint: 'http', weight: 0 },
       ]),
-    ).toEqual([
-      ...refs,
-      { componentName: 'payments-v3', endpoint: 'http', weight: 0 },
-    ]);
+    ).toEqual([...refs, ref('payments-v3', 0)]);
   });
 
   it('removes a backend whose saved weight is 0', () => {

@@ -72,6 +72,7 @@ const VALID_PLATFORM_RESOURCE_KINDS = [
   'resourcetypes',
   'projecttypes',
   'resources',
+  'endpoints',
   'traits',
   'workflows',
   'component-workflows',
@@ -1214,6 +1215,28 @@ export async function createRouter({
     );
   });
 
+  router.get('/endpoint-candidates', async (req, res) => {
+    const { projectName, namespaceName } = req.query;
+
+    if (!projectName || !namespaceName) {
+      throw new InputError(
+        'projectName and namespaceName are required query parameters',
+      );
+    }
+
+    const userToken = getUserTokenFromRequest(req);
+
+    res.json(
+      await endpointInfoService.listEndpointCandidates(
+        {
+          projectName: projectName as string,
+          namespaceName: namespaceName as string,
+        },
+        userToken,
+      ),
+    );
+  });
+
   router.get('/component-traffic', async (req, res) => {
     const { componentName, projectName, namespaceName } = req.query;
 
@@ -1276,6 +1299,28 @@ export async function createRouter({
         {
           endpointName: endpointName as string,
           namespaceName: namespaceName as string,
+        },
+        userToken,
+      ),
+    );
+  });
+
+  router.get('/endpoint-release-binding', async (req, res) => {
+    const { namespaceName, endpointReleaseBindingName } = req.query;
+
+    if (!namespaceName || !endpointReleaseBindingName) {
+      throw new InputError(
+        'namespaceName and endpointReleaseBindingName are required query parameters',
+      );
+    }
+
+    const userToken = getUserTokenFromRequest(req);
+
+    res.json(
+      await endpointInfoService.fetchEndpointReleaseBinding(
+        {
+          namespaceName: namespaceName as string,
+          endpointReleaseBindingName: endpointReleaseBindingName as string,
         },
         userToken,
       ),
@@ -1376,33 +1421,172 @@ export async function createRouter({
     );
   });
 
-  router.put(
-    '/update-endpoint-reclaim-policy',
-    requireAuth,
-    async (req, res) => {
-      const { endpointName, namespaceName, reclaimPolicy } = req.body;
-      if (
-        !endpointName ||
-        !namespaceName ||
-        (reclaimPolicy !== 'Delete' && reclaimPolicy !== 'Retain')
-      ) {
-        throw new InputError(
-          'endpointName, namespaceName and reclaimPolicy (Delete or Retain) are required in request body',
-        );
-      }
-      const userToken = getUserTokenFromRequest(req);
-      res.json(
-        await endpointInfoService.updateEndpointReclaimPolicy(
-          {
-            endpointName: endpointName as string,
-            namespaceName: namespaceName as string,
-            reclaimPolicy,
-          },
-          userToken,
-        ),
+  const isRule = (r: any): boolean =>
+    !!r &&
+    typeof r.name === 'string' &&
+    Array.isArray(r.backends) &&
+    r.backends.every((b: any) => b && typeof b.name === 'string') &&
+    (r.matches === undefined || Array.isArray(r.matches)) &&
+    (r.mirrors === undefined || Array.isArray(r.mirrors));
+
+  router.put('/update-endpoint-rules', requireAuth, async (req, res) => {
+    const { endpointName, namespaceName, rules, backends } = req.body;
+    if (
+      !endpointName ||
+      !namespaceName ||
+      !Array.isArray(rules) ||
+      !rules.every(isRule) ||
+      (backends !== undefined && !Array.isArray(backends))
+    ) {
+      throw new InputError(
+        'endpointName, namespaceName and rules (each with a name and backends) are required in request body',
       );
-    },
-  );
+    }
+    const userToken = getUserTokenFromRequest(req);
+    res.json(
+      await endpointInfoService.updateEndpointRules(
+        {
+          endpointName: endpointName as string,
+          namespaceName: namespaceName as string,
+          rules,
+          ...(backends && { backends }),
+        },
+        userToken,
+      ),
+    );
+  });
+
+  router.put('/update-endpoint-overrides', requireAuth, async (req, res) => {
+    const { endpointName, namespaceName, environment, overrides } = req.body;
+    if (
+      !endpointName ||
+      !namespaceName ||
+      !environment ||
+      !Array.isArray(overrides) ||
+      !overrides.every(
+        (o: any) =>
+          o && typeof o.name === 'string' && typeof o.weight === 'number',
+      )
+    ) {
+      throw new InputError(
+        'endpointName, namespaceName, environment and overrides (name and numeric weight) are required in request body',
+      );
+    }
+    const userToken = getUserTokenFromRequest(req);
+    res.json(
+      await endpointInfoService.updateEndpointOverrides(
+        {
+          endpointName: endpointName as string,
+          namespaceName: namespaceName as string,
+          environment: environment as string,
+          overrides,
+        },
+        userToken,
+      ),
+    );
+  });
+
+  const requireFields = (body: any, fields: string[]) => {
+    const missing = fields.filter(f => !body?.[f]);
+    if (missing.length > 0) {
+      throw new InputError(`${missing.join(', ')} required in request body`);
+    }
+  };
+
+  router.put('/endpoint-rollout/start', requireAuth, async (req, res) => {
+    requireFields(req.body, ['endpointName', 'namespaceName', 'projectName']);
+    const { plan, environments } = req.body;
+    if (
+      !plan ||
+      !['canary', 'blueGreen', 'abTest'].includes(plan.strategy) ||
+      typeof plan.candidate?.componentName !== 'string' ||
+      typeof plan.candidate?.endpoint !== 'string' ||
+      !Array.isArray(environments)
+    ) {
+      throw new InputError(
+        'plan (strategy canary, blueGreen or abTest, and a candidate component and endpoint) and environments are required',
+      );
+    }
+    res.json(
+      await endpointInfoService.startRollout(
+        req.body,
+        getUserTokenFromRequest(req),
+      ),
+    );
+  });
+
+  router.put('/endpoint-rollout/stage', requireAuth, async (req, res) => {
+    requireFields(req.body, ['endpointName', 'namespaceName', 'environment']);
+    if (typeof req.body.percent !== 'number') {
+      throw new InputError('percent is required in request body');
+    }
+    res.json(
+      await endpointInfoService.setRolloutStage(
+        req.body,
+        getUserTokenFromRequest(req),
+      ),
+    );
+  });
+
+  router.put('/endpoint-rollout/promote', requireAuth, async (req, res) => {
+    requireFields(req.body, [
+      'endpointName',
+      'namespaceName',
+      'projectName',
+      'from',
+      'to',
+    ]);
+    res.json(
+      await endpointInfoService.promoteRollout(
+        req.body,
+        getUserTokenFromRequest(req),
+      ),
+    );
+  });
+
+  router.put('/endpoint-rollout/finish', requireAuth, async (req, res) => {
+    requireFields(req.body, ['endpointName', 'namespaceName', 'projectName']);
+    if (!['complete', 'abandon'].includes(req.body.outcome)) {
+      throw new InputError('outcome must be complete or abandon');
+    }
+    res.json(
+      await endpointInfoService.finishRollout(
+        req.body,
+        getUserTokenFromRequest(req),
+      ),
+    );
+  });
+
+  router.put('/update-endpoint-settings', requireAuth, async (req, res) => {
+    const { endpointName, namespaceName, visibility, autoDeploy } = req.body;
+    const visibilities = ['namespace', 'internal', 'external'];
+    if (
+      !endpointName ||
+      !namespaceName ||
+      (visibility !== undefined &&
+        (!Array.isArray(visibility) ||
+          !visibility.every((v: unknown) =>
+            visibilities.includes(v as string),
+          ))) ||
+      (autoDeploy !== undefined && typeof autoDeploy !== 'boolean')
+    ) {
+      throw new InputError(
+        'endpointName and namespaceName are required; visibility is a list of namespace, internal and external, and autoDeploy a boolean',
+      );
+    }
+    const userToken = getUserTokenFromRequest(req);
+    res.json(
+      await endpointInfoService.updateEndpointSettings(
+        {
+          endpointName: endpointName as string,
+          namespaceName: namespaceName as string,
+          visibility,
+          autoDeploy,
+        },
+        userToken,
+      ),
+    );
+  });
 
   router.put(
     '/update-endpoint-release-binding',
@@ -1414,9 +1598,11 @@ export async function createRouter({
         namespaceName,
         environment,
         releaseName,
+        backendOverrides,
       } = req.body;
 
       if (
+        (backendOverrides !== undefined && !Array.isArray(backendOverrides)) ||
         !endpointName ||
         !projectName ||
         !namespaceName ||
@@ -1438,6 +1624,7 @@ export async function createRouter({
             namespaceName: namespaceName as string,
             environment: environment as string,
             releaseName: releaseName as string,
+            ...(backendOverrides && { backendOverrides }),
           },
           userToken,
         ),
@@ -1473,6 +1660,26 @@ export async function createRouter({
       );
     },
   );
+
+  router.get('/endpoint-type', async (req, res) => {
+    const { kind, name, namespaceName } = req.query;
+    if (!name || (kind !== 'EndpointType' && kind !== 'ClusterEndpointType')) {
+      throw new InputError(
+        'name and kind (EndpointType or ClusterEndpointType) are required query parameters',
+      );
+    }
+    const userToken = getUserTokenFromRequest(req);
+    res.json(
+      await endpointInfoService.fetchEndpointType(
+        {
+          kind,
+          name: name as string,
+          namespaceName: namespaceName as string | undefined,
+        },
+        userToken,
+      ),
+    );
+  });
 
   router.delete('/delete-endpoint', requireAuth, async (req, res) => {
     const { endpointName, namespaceName } = req.body;
