@@ -177,7 +177,7 @@ describe('applyBackends', () => {
     ).toEqual([...refs, ref('payments-v3', 0)]);
   });
 
-  it('removes a backend whose saved weight is 0', () => {
+  it('removes a backend at weight 0', () => {
     expect(
       applyBackends(refs, [
         { componentName: 'payments-v1', endpoint: 'http', weight: 100 },
@@ -185,12 +185,12 @@ describe('applyBackends', () => {
     ).toEqual([refs[0]]);
   });
 
-  it('refuses to remove a backend that still has traffic', () => {
-    expect(() =>
+  it('removes a backend that still has weight, as a version swap does', () => {
+    expect(
       applyBackends(refs, [
         { componentName: 'payments-v2', endpoint: 'http', weight: 100 },
       ]),
-    ).toThrow(/Move payments-v1\/http to 0%/);
+    ).toEqual([{ ...refs[1], weight: 100 }]);
   });
 
   it('refuses duplicates and an all-zero split', () => {

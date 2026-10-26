@@ -235,8 +235,7 @@ export function applyWeights(
  * Replaces an Endpoint's backends with the requested set, which is how a
  * canary starts: a new backend is added (usually at weight 0) to the same
  * Endpoint, so the URL never changes. Existing backends keep their order and
- * new ones are appended. A backend can only be removed once its saved weight
- * is 0, so removing one never moves traffic by itself.
+ * new ones are appended. A backend left out is removed, at any weight.
  */
 export function applyBackends(
   refs: EndpointBackendRef[],
@@ -257,17 +256,9 @@ export function applyBackends(
   if (duplicate) {
     throw new InputError(`Backend ${duplicate} is listed twice`);
   }
+  // A backend can be removed at any weight: the new release only moves an
+  // environment's traffic when that environment deploys it.
   const requested = new Map(backends.map(b => [key(b), b.weight]));
-  const removedWithTraffic = refs.filter(
-    ref => !requested.has(refKey(ref)) && (ref.weight ?? 1) > 0,
-  );
-  if (removedWithTraffic.length > 0) {
-    throw new InputError(
-      `Move ${removedWithTraffic
-        .map(refKey)
-        .join(', ')} to 0% and save before removing it`,
-    );
-  }
   const kept = refs
     .filter(ref => requested.has(refKey(ref)))
     .map(ref => ({ ...ref, weight: requested.get(refKey(ref))! }));
