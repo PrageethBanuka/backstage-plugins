@@ -195,9 +195,19 @@ export const StartRolloutPage = () => {
 
   const current = new Set(endpoint?.backends.map(b => b.componentName) ?? []);
   const options = components.filter(c => !current.has(c));
-  const stable =
-    endpoint?.backends.find(b => b.weight > 0)?.componentName ??
-    'the current version';
+  // The new version takes its traffic from every version serving now, in
+  // their current ratio.
+  const serving = endpoint?.backends.filter(b => b.weight > 0) ?? [];
+  const servingTotal = serving.reduce((sum, b) => sum + b.weight, 0);
+  let stable = serving[0]?.componentName ?? 'the current version';
+  if (serving.length > 1) {
+    stable = serving
+      .map(
+        b =>
+          `${b.componentName} (${Math.round((b.weight / servingTotal) * 100)}%)`,
+      )
+      .join(', ');
+  }
   const parsedSteps = steps
     .split(/[,\s→>]+/)
     .map(Number)
@@ -387,7 +397,9 @@ export const StartRolloutPage = () => {
                 onChange={e => setComponent(e.target.value)}
                 helperText={`Components in ${
                   project ?? 'this project'
-                }. Starts next to ${stable}.`}
+                }. Starts next to ${stable}${
+                  serving.length > 1 ? ', and takes from them in that ratio' : ''
+                }.`}
               >
                 {options.length === 0 && (
                   <MenuItem value="" disabled>

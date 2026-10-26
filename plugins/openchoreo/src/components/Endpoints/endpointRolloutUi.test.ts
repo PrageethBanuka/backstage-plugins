@@ -8,6 +8,8 @@ import {
   previewCommand,
   rolloutAction,
   servedSplit,
+  stableKeeps,
+  stableSummary,
   stageText,
 } from './endpointRolloutUi';
 
@@ -244,5 +246,23 @@ describe('previewCommand', () => {
         undefined,
       ),
     ).toBe("curl -H 'Cookie: exp=b' -A 'Mobile' <endpoint URL>");
+  });
+});
+
+describe('the stable side on screen', () => {
+  it('is one name, or every stable version with its share', () => {
+    expect(stableSummary(canary)).toBe('trips-python');
+    expect(stableKeeps(canary, 25)).toBe('trips-python keeps 75%');
+    const split: EndpointRollout = {
+      ...canary,
+      baseline: [
+        { name: 'trips-python', weight: 70 },
+        { name: 'trips-legacy', weight: 30 },
+      ],
+    };
+    expect(stableSummary(split)).toBe('trips-python 70% · trips-legacy 30%');
+    expect(stableKeeps(split, 25)).toBe(
+      'trips-python + trips-legacy share 75%',
+    );
   });
 });

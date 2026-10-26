@@ -15,6 +15,7 @@ import {
   type EndpointReleaseSummary,
   type EndpointSummary,
   type RolloutActionResult,
+  stableLabel,
 } from '@openchoreo/backstage-plugin-common';
 import { openChoreoClientApiRef } from '../../api/OpenChoreoClientApi';
 import { isForbiddenError, getErrorMessage } from '../../utils/errorUtils';
@@ -40,7 +41,12 @@ import {
   type TrafficConfirmation,
 } from './ConfirmTrafficDialog';
 import { backendKey } from './endpointUi';
-import { STRATEGY_COPY, type RolloutAction } from './endpointRolloutUi';
+import {
+  STRATEGY_COPY,
+  stableKeeps,
+  stableSummary,
+  type RolloutAction,
+} from './endpointRolloutUi';
 
 /** Poll fast while an environment is settling; the route lands in seconds. */
 const SETTLING_POLL_MS = 3000;
@@ -231,8 +237,8 @@ export const EndpointEnvironmentsList = ({
     (outcome: 'complete' | 'abandon', firstStep?: () => Promise<unknown>) => {
       const r = endpoint?.rollout;
       if (!endpoint || !r) return;
-      const keep = outcome === 'complete' ? r.candidate : r.stable;
-      const drop = outcome === 'complete' ? r.stable : r.candidate;
+      const keep = outcome === 'complete' ? r.candidate : stableSummary(r);
+      const drop = outcome === 'complete' ? stableLabel(r) : r.candidate;
       const touchesProduction = envs.some(e => e.bindingName && e.isProduction);
       setConfirmation({
         title:
@@ -276,9 +282,10 @@ export const EndpointEnvironmentsList = ({
           title: `${label} in ${env.displayName}?`,
           body: `${r.candidate} gets ${percent}% of ${
             env.displayName
-          } traffic and ${r.stable} keeps ${
-            100 - percent
-          }%. You can roll back from the panel at any time.`,
+          } traffic and ${stableKeeps(
+            r,
+            percent,
+          )}. You can roll back from the panel at any time.`,
           confirmLabel: label,
         },
         'stage',
@@ -306,7 +313,9 @@ export const EndpointEnvironmentsList = ({
             env,
             {
               title: `Promote the rollout to ${env.displayName}?`,
-              body: `${env.displayName} gets ${r.candidate} next to ${r.stable}, at 0%. No traffic moves until you advance ${env.displayName}.`,
+              body: `${env.displayName} gets ${
+                r.candidate
+              } next to ${stableLabel(r)}, at 0%. No traffic moves until you advance ${env.displayName}.`,
               confirmLabel: 'Promote',
             },
             'rollout',
@@ -341,7 +350,7 @@ export const EndpointEnvironmentsList = ({
     (environment: string) => {
       const env = envs.find(e => e.name === environment);
       const r = endpoint?.rollout;
-      if (env && r) setStage(env, 0, `Roll back to ${r.stable}`);
+      if (env && r) setStage(env, 0, `Roll back to ${stableLabel(r)}`);
     },
     [endpoint, envs, setStage],
   );
@@ -601,6 +610,7 @@ export const EndpointEnvironmentsList = ({
             ?.backends ?? endpoint.backends
         }
         rules={overridesEnvironment?.rules ?? []}
+        rollout={endpoint.rollout}
         onClose={() => setOverridesEnv(null)}
         onSave={async (environment, overrides) => {
           const res = await client.updateEndpointOverrides(

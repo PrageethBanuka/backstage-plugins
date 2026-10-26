@@ -28,6 +28,7 @@ import {
 } from '@openchoreo/backstage-plugin-react';
 import {
   rolloutStages,
+  stableLabel,
   type EndpointEnvironment,
 } from '@openchoreo/backstage-plugin-common';
 import { useResourceEnvironmentDetailPanelStyles } from '../ResourceEnvironments/styles';
@@ -547,7 +548,7 @@ function RolloutSections({ env }: { env: EndpointEnvironment }) {
                     }
                     onClick={() => onRollBack(env.name)}
                   >
-                    Roll back to {rollout.stable}
+                    Roll back to {stableLabel(rollout)}
                   </Button>
                 </span>
               </Tooltip>

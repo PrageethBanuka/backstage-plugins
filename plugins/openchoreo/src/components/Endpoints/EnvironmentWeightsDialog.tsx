@@ -15,8 +15,11 @@ import { makeStyles, useTheme } from '@material-ui/core/styles';
 import { Alert } from '@material-ui/lab';
 import {
   detectEndpointStrategy,
+  rolloutStages,
+  rolloutWeights,
   type EndpointBackendWeight,
   type EndpointEnvironment,
+  type EndpointRollout,
   type EndpointRule,
   type EndpointWeightOverride,
 } from '@openchoreo/backstage-plugin-common';
@@ -53,13 +56,28 @@ export interface WeightPreset {
 }
 
 /**
- * The steps that make sense for what the Endpoint is running: canary steps
- * and a rollback, the blue/green switch and switch-back, or plain splits.
+ * The steps that make sense for what the Endpoint is running: the running
+ * rollout's stages (the stable backends keep their ratio), or else canary
+ * steps and a rollback, the blue/green switch and switch-back, or plain
+ * splits.
  */
 export function weightPresets(
   backends: EndpointBackendWeight[],
   rules: EndpointRule[],
+  rollout?: EndpointRollout,
 ): WeightPreset[] {
+  if (rollout) {
+    const names = backends.map(nameOf);
+    return rolloutStages(rollout).map(stage => ({
+      label: stage.action,
+      weights: Object.fromEntries(
+        rolloutWeights(rollout, names, stage.percent).map(w => [
+          w.name,
+          w.weight,
+        ]),
+      ),
+    }));
+  }
   const strategy = detectEndpointStrategy(backends, rules);
   const split = (
     a: string,
@@ -121,6 +139,8 @@ export interface EnvironmentWeightsDialogProps {
   backends: EndpointBackendWeight[];
   /** Rules of the release this environment runs, for the presets. */
   rules: EndpointRule[];
+  /** The running rollout, whose stages become the presets. */
+  rollout?: EndpointRollout;
   onClose: () => void;
   /** Saves the environment's weights; an empty list clears them. */
   onSave: (
@@ -139,6 +159,7 @@ export const EnvironmentWeightsDialog = ({
   env,
   backends,
   rules,
+  rollout,
   onClose,
   onSave,
 }: EnvironmentWeightsDialogProps) => {
@@ -164,8 +185,8 @@ export const EnvironmentWeightsDialog = ({
   }, [open, current]);
 
   const presets = useMemo(
-    () => weightPresets(backends, rules),
-    [backends, rules],
+    () => weightPresets(backends, rules, rollout),
+    [backends, rules, rollout],
   );
   const total = percents.reduce((sum, p) => sum + p, 0);
   const two = backends.length === 2;

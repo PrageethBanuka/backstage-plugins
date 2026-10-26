@@ -26,7 +26,11 @@ import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
 import clsx from 'clsx';
 import { StatusBadge } from '@openchoreo/backstage-design-system';
 import { useEndpointRolloutPermission } from '@openchoreo/backstage-plugin-react';
-import type { EndpointEnvironment } from '@openchoreo/backstage-plugin-common';
+import {
+  stableLabel,
+  stableSplit,
+  type EndpointEnvironment,
+} from '@openchoreo/backstage-plugin-common';
 import { useResourceMiniEnvironmentNodeStyles } from '../ResourceEnvironments/styles';
 import {
   releaseBackends,
@@ -125,7 +129,9 @@ export const EndpointMiniEnvironmentNode = ({
 
   let rollBackBlock = '';
   if (rollout && (env.rollout?.percent ?? 0) === 0) {
-    rollBackBlock = `${rollout.stable} already gets all traffic here`;
+    rollBackBlock = `${stableLabel(rollout)} already ${
+      stableSplit(rollout).length > 1 ? 'get' : 'gets'
+    } all traffic here`;
   } else if (pendingAction?.env === env.name) {
     rollBackBlock = 'Wait for the current change to finish';
   }
@@ -278,7 +284,7 @@ export const EndpointMiniEnvironmentNode = ({
           rollout &&
           running &&
           menuItem(
-            `Roll back to ${rollout.stable}`,
+            `Roll back to ${stableLabel(rollout)}`,
             <UndoIcon fontSize="small" style={ICON_STYLE} />,
             () => onRollBack(env.name),
             rollBackBlock,

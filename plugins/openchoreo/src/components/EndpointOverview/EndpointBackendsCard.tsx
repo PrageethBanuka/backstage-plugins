@@ -3,6 +3,7 @@ import { Link } from '@backstage/core-components';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { Card, Skeleton } from '@openchoreo/backstage-design-system';
 import { useOverviewCardStyles } from '../Environments/OverviewCard/styles';
+import { stableLabel } from '@openchoreo/backstage-plugin-common';
 import { backendKey, sharePercents } from '../Endpoints/endpointUi';
 import {
   inRollout,
@@ -111,7 +112,7 @@ export const EndpointBackendsCard = () => {
                 />
               </Box>
               <Typography variant="caption" color="textSecondary">
-                {endpoint.rollout.stable} → {endpoint.rollout.candidate}
+                {stableLabel(endpoint.rollout)} → {endpoint.rollout.candidate}
                 {environments
                   .filter(e => inRollout(e, endpoint.rollout!))
                   .map(

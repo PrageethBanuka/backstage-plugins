@@ -18,6 +18,7 @@ import { EndpointSetupPane } from './EndpointSetupPane';
 import {
   completionEnvironment,
   inRollout,
+  stableSummary,
   stageText,
   STRATEGY_COPY,
 } from './endpointRolloutUi';
@@ -104,7 +105,7 @@ export const EndpointRolloutPane = ({
           )}
         </Box>
         <Box>
-          <Row label="From" value={rollout.stable} />
+          <Row label="From" value={stableSummary(rollout)} />
           <Row label="To" value={rollout.candidate} />
           {rollout.strategy === 'canary' && (
             <Row
@@ -161,8 +162,8 @@ export const EndpointRolloutPane = ({
           <AccordionDetails className={classes.dangerAccordionDetails}>
             <Box className={classes.dangerSubsection}>
               <Typography variant="caption" className={classes.dangerCaption}>
-                Send all traffic back to {rollout.stable} in every environment
-                and remove {rollout.candidate} from the Endpoint.
+                Send all traffic back to {stableSummary(rollout)} in every
+                environment and remove {rollout.candidate} from the Endpoint.
               </Typography>
               <Tooltip
                 title={changeBlocked}

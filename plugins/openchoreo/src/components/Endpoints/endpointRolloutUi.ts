@@ -1,6 +1,8 @@
 import {
   nextRolloutStage,
   rolloutStages,
+  stableLabel,
+  stableSplit,
   type EndpointBackendWeight,
   type EndpointEnvironment,
   type EndpointRollout,
@@ -42,6 +44,25 @@ export function inRollout(
     Boolean(env.bindingName) &&
     env.backends.some(b => nameOf(b) === rollout.candidate)
   );
+}
+
+/**
+ * The stable side with its shares when there is more than one backend,
+ * e.g. "trips-python 70% · trips-legacy 30%"; otherwise just its name.
+ */
+export function stableSummary(rollout: EndpointRollout): string {
+  const split = stableSplit(rollout);
+  if (split.length === 1) return split[0].name;
+  const total = split.reduce((sum, b) => sum + b.weight, 0);
+  return split
+    .map(b => `${b.name} ${Math.round((b.weight / total) * 100)}%`)
+    .join(' · ');
+}
+
+/** What the stable side does with the rest of the traffic at a stage. */
+export function stableKeeps(rollout: EndpointRollout, percent: number): string {
+  const many = stableSplit(rollout).length > 1;
+  return `${stableLabel(rollout)} ${many ? 'share' : 'keeps'} ${100 - percent}%`;
 }
 
 /** The stage shown on a tile, e.g. "Canary 25%" or "30% · set by hand". */
