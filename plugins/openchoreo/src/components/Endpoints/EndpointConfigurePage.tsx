@@ -5,13 +5,15 @@ import {
   Checkbox,
   CircularProgress,
   FormControlLabel,
+  MenuItem,
   Switch,
+  TextField,
   Tooltip,
   Typography,
 } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
 import { Alert } from '@material-ui/lab';
-import { useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { Skeleton } from '@openchoreo/backstage-design-system';
@@ -24,7 +26,6 @@ import {
   CHOREO_ANNOTATIONS,
   type EndpointBackendWeight,
   type EndpointEnvironment,
-  type EndpointRule,
   type EndpointSummary,
   type EndpointVisibility,
 } from '@openchoreo/backstage-plugin-common';
@@ -33,13 +34,10 @@ import { getErrorMessage, isForbiddenError } from '../../utils/errorUtils';
 import { AutoDeployConfirmationDialog } from '../Environments/components/AutoDeployConfirmationDialog';
 import {
   backendOptions,
-  backendRowErrors,
   backendRowKey,
-  EndpointBackendRows,
   type EndpointBackendOption,
-  type EndpointBackendRow,
 } from './EndpointBackendRows';
-import { RulesEditorDialog } from './RulesEditorDialog';
+import { TrafficSplitBar } from './TrafficSplitBar';
 
 const useStyles = makeStyles(theme => ({
   loadingContainer: {
@@ -63,7 +61,7 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(0.5),
   },
   label: { fontWeight: 600 },
-  rows: { maxWidth: 640 },
+  version: { maxWidth: 480 },
 }));
 
 const VISIBILITIES: {
@@ -91,23 +89,13 @@ const VISIBILITIES: {
 const sameSet = <T,>(a: T[], b: T[]) =>
   a.length === b.length && a.every(x => b.includes(x));
 
-const toRow = (b: EndpointBackendWeight): EndpointBackendRow => ({
-  componentName: b.componentName,
-  endpoint: b.endpoint,
-  weight: b.weight,
-  deployed: true,
-});
-
-const rowsKey = (rows: EndpointBackendRow[]) =>
-  JSON.stringify(rows.map(r => [backendRowKey(r), r.weight]));
-
 /**
- * The Endpoint's Configure & Deploy page, opened from the Set up tile. The
- * Configure Resource page's layout (DetailPageLayout): edit where the
- * Endpoint is reachable from, its versions and their weights, whether new
- * versions deploy on their own and, under Advanced, its routing rules.
- * Saving creates a new version of the routing and deploys it to the first
- * environment. Versions are locked while a rollout runs.
+ * The Endpoint's Configure & Deploy page, opened from the Deploy tab's Set
+ * up tile, on the Configure Resource page's layout (DetailPageLayout). It
+ * covers only what deploying needs: where the Endpoint is reachable from,
+ * the one version it serves and whether new versions deploy on their own.
+ * Splitting traffic across versions belongs to the Rollout tab. This is a
+ * placeholder until the Endpoint's deploy config is defined.
  */
 export const EndpointConfigurePage = () => {
   const classes = useStyles();
@@ -124,9 +112,7 @@ export const EndpointConfigurePage = () => {
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [visibility, setVisibility] = useState<EndpointVisibility[]>([]);
   const [autoDeploy, setAutoDeploy] = useState(false);
-  const [rows, setRows] = useState<EndpointBackendRow[]>([]);
-  const [rules, setRules] = useState<EndpointRule[]>([]);
-  const [rulesOpen, setRulesOpen] = useState(false);
+  const [version, setVersion] = useState('');
   const [autoDeployAsk, setAutoDeployAsk] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -149,8 +135,10 @@ export const EndpointConfigurePage = () => {
         if (summary) {
           setVisibility(summary.visibility);
           setAutoDeploy(summary.autoDeploy);
-          setRows(summary.backends.map(toRow));
-          setRules(summary.rules);
+          const busiest = [...summary.backends].sort(
+            (a, b) => b.weight - a.weight,
+          )[0];
+          setVersion(busiest ? backendRowKey(busiest) : '');
         }
       })
       .catch(err => !ignore && setLoadError(err));
@@ -174,66 +162,31 @@ export const EndpointConfigurePage = () => {
   }, [client, project, namespace]);
 
   const locked = Boolean(endpoint?.rollout);
+  const several = (endpoint?.backends.length ?? 0) > 1;
+  const current =
+    endpoint?.backends.length === 1 ? backendRowKey(endpoint.backends[0]) : '';
+  // Saving a version leaves the Endpoint serving only that one.
   const versionChanged =
-    Boolean(endpoint) &&
-    rowsKey(rows) !== rowsKey(endpoint!.backends.map(toRow));
+    Boolean(endpoint) && Boolean(version) && (several || version !== current);
 
-  // The backends as the API takes them; a kept one keeps its name.
   const newBackends = useMemo((): EndpointBackendWeight[] | undefined => {
     if (!endpoint || !versionChanged) return undefined;
-    const saved = new Map(endpoint.backends.map(b => [backendRowKey(b), b]));
-    return rows.map(r => ({
-      ...saved.get(backendRowKey(r)),
-      componentName: r.componentName,
-      endpoint: r.endpoint,
-      weight: r.weight,
-    }));
-  }, [endpoint, rows, versionChanged]);
-
-  // Rules lose the backends that were removed; a rule left with none goes.
-  const keptNames = new Set(
-    (newBackends ?? endpoint?.backends ?? []).map(
-      b => b.name ?? b.componentName,
-    ),
-  );
-  const effectiveRules = rules
-    .map(r => ({
-      ...r,
-      backends: r.backends.filter(b => keptNames.has(b.name)),
-      mirrors: r.mirrors?.filter(m => keptNames.has(m.backend)),
-    }))
-    .filter(r => r.backends.length > 0);
-  const prunedRules = rules
-    .filter(
-      r =>
-        JSON.stringify(r) !==
-        JSON.stringify(effectiveRules.find(e => e.name === r.name)),
-    )
-    .map(r => r.name);
+    const [componentName, ...rest] = version.split('/');
+    const kept = endpoint.backends.find(b => backendRowKey(b) === version);
+    return [{ ...kept, componentName, endpoint: rest.join('/'), weight: 100 }];
+  }, [endpoint, version, versionChanged]);
 
   const settingsChanged =
     Boolean(endpoint) &&
     (!sameSet(visibility, endpoint!.visibility) ||
       autoDeploy !== endpoint!.autoDeploy);
-  const rulesChanged =
-    Boolean(endpoint) &&
-    JSON.stringify(effectiveRules) !== JSON.stringify(endpoint!.rules);
-  const hasChanges = versionChanged || settingsChanged || rulesChanged;
-
-  // The server refuses removing a backend that still gets traffic in the
-  // saved version: it has to go to 0% first so environments can drain.
-  const removedWithTraffic = (endpoint?.backends ?? []).filter(
-    b => b.weight > 0 && !rows.some(r => backendRowKey(r) === backendRowKey(b)),
-  );
-  const rowErrors = versionChanged
-    ? [
-        ...backendRowErrors(rows),
-        ...removedWithTraffic.map(
-          b =>
-            `Set ${b.componentName} to 0 and save before removing it, so its traffic drains first`,
-        ),
-      ]
-    : [];
+  const hasChanges = versionChanged || settingsChanged;
+  const versionChoices = [
+    ...new Set([
+      ...(endpoint?.backends.map(backendRowKey) ?? []),
+      ...options.map(backendRowKey),
+    ]),
+  ];
 
   const save = async () => {
     if (!endpoint) return;
@@ -248,14 +201,7 @@ export const EndpointConfigurePage = () => {
         });
         latest = res.latestRelease ?? latest;
       }
-      if (rulesChanged) {
-        const res = await client.updateEndpointRules(
-          entity,
-          effectiveRules,
-          newBackends,
-        );
-        latest = res.latestRelease ?? latest;
-      } else if (versionChanged && newBackends) {
+      if (versionChanged && newBackends) {
         const res = await client.updateEndpointTraffic(entity, newBackends);
         latest = res.latestRelease ?? latest;
       }
@@ -287,7 +233,6 @@ export const EndpointConfigurePage = () => {
 
   const denied = !perm.loading && !perm.canChangeTraffic;
   let saveTooltip = hasChanges ? '' : 'Nothing changed';
-  if (rowErrors.length > 0) saveTooltip = rowErrors[0];
   if (denied) saveTooltip = perm.deniedTooltip;
   const actions = endpoint && (
     <Tooltip title={saveTooltip}>
@@ -295,13 +240,7 @@ export const EndpointConfigurePage = () => {
         <Button
           variant="contained"
           color="primary"
-          disabled={
-            saving ||
-            denied ||
-            !hasChanges ||
-            visibility.length === 0 ||
-            rowErrors.length > 0
-          }
+          disabled={saving || denied || !hasChanges || visibility.length === 0}
           startIcon={
             saving ? <CircularProgress size={20} color="inherit" /> : undefined
           }
@@ -316,9 +255,9 @@ export const EndpointConfigurePage = () => {
   return (
     <DetailPageLayout
       title="Configure Endpoint"
-      subtitle={`Change how ${
+      subtitle={`Change where ${
         endpoint?.name ?? 'the Endpoint'
-      } routes traffic. Saving creates a new version of the routing${
+      } is reachable and which version it serves. Saving creates a new version${
         firstEnv ? ` and deploys it to ${firstEnv.displayName}` : ''
       }.`}
       onBack={back}
@@ -387,38 +326,52 @@ export const EndpointConfigurePage = () => {
 
           <Box className={classes.field}>
             <Typography variant="body2" className={classes.label}>
-              {rows.length > 1 ? 'Versions and their weights' : 'Version'}
+              Version
             </Typography>
-            <Box className={classes.rows}>
-              <EndpointBackendRows
-                rows={rows}
-                options={options}
-                onChange={setRows}
+            {several && (
+              <Box className={classes.version} mb={1}>
+                <TrafficSplitBar backends={endpoint.backends} showLegend />
+              </Box>
+            )}
+            <Box className={classes.version}>
+              <TextField
+                id="endpoint-version"
+                select
+                fullWidth
+                size="small"
+                variant="outlined"
+                label="Component / endpoint"
+                value={version}
                 disabled={locked}
-              />
+                onChange={e => setVersion(e.target.value)}
+              >
+                {versionChoices.map(v => (
+                  <MenuItem key={v} value={v}>
+                    {v}
+                  </MenuItem>
+                ))}
+              </TextField>
             </Box>
-            {locked ? (
+            {locked && (
               <Typography variant="caption" color="textSecondary">
                 A rollout to {endpoint.rollout!.candidate} is running. Finish or
-                abandon it on the Rollout tab to change versions.
-              </Typography>
-            ) : (
-              <Typography variant="caption" color="textSecondary">
-                Environments get this split when they deploy the new version,
-                unless their weights were set by hand. To move traffic to a new
-                version step by step, use the Rollout tab.
+                abandon it on the{' '}
+                <RouterLink to="../../rollout" relative="path">
+                  Rollout tab
+                </RouterLink>{' '}
+                first.
               </Typography>
             )}
-            {rowErrors.map(e => (
-              <Typography key={e} variant="caption" color="error">
-                {e}
-              </Typography>
-            ))}
-            {versionChanged && prunedRules.length > 0 && (
+            {!locked && several && (
               <Typography variant="caption" color="textSecondary">
-                {prunedRules.join(', ')}{' '}
-                {prunedRules.length === 1 ? 'loses' : 'lose'} the removed
-                versions; a rule left with none is removed.
+                {endpoint.name} serves several versions. Saving keeps only this
+                version; the others leave the Endpoint.
+              </Typography>
+            )}
+            {!locked && !several && (
+              <Typography variant="caption" color="textSecondary">
+                This version gets all traffic. To move traffic to a new version
+                step by step, use the Rollout tab.
               </Typography>
             )}
           </Box>
@@ -438,47 +391,9 @@ export const EndpointConfigurePage = () => {
               label="Deploy each new version to the first environment"
             />
           </Box>
-
-          <Box className={classes.field}>
-            <Typography variant="body2" className={classes.label}>
-              Advanced · Routing rules
-            </Typography>
-            <Box display="flex" alignItems="center" gridGap={16}>
-              <Typography variant="body2" color="textSecondary">
-                {effectiveRules.length === 0
-                  ? 'No rules. Every request follows the split above.'
-                  : `${effectiveRules.length} rule${
-                      effectiveRules.length === 1 ? '' : 's'
-                    }, first match wins.`}
-              </Typography>
-              <Button
-                variant="outlined"
-                color="primary"
-                size="small"
-                onClick={() => setRulesOpen(true)}
-              >
-                Edit routing rules
-              </Button>
-            </Box>
-          </Box>
         </Box>
       )}
 
-      {endpoint && (
-        <RulesEditorDialog
-          open={rulesOpen}
-          endpointName={endpoint.name}
-          backends={newBackends ?? endpoint.backends}
-          rules={effectiveRules}
-          onClose={() => setRulesOpen(false)}
-          onSave={async next => {
-            // Kept on the page; Save & Deploy writes everything at once.
-            setRules(next);
-            setRulesOpen(false);
-            return { changed: true };
-          }}
-        />
-      )}
       <AutoDeployConfirmationDialog
         open={autoDeployAsk !== null}
         isEnabling={autoDeployAsk === true}

@@ -18,14 +18,10 @@ import HistoryIcon from '@material-ui/icons/History';
 import OpenInNewIcon from '@material-ui/icons/OpenInNew';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import ReportProblemOutlinedIcon from '@material-ui/icons/ReportProblemOutlined';
-import SettingsOutlinedIcon from '@material-ui/icons/SettingsOutlined';
 import TuneIcon from '@material-ui/icons/Tune';
 import UndoIcon from '@material-ui/icons/Undo';
 import { StatusBadge } from '@openchoreo/backstage-design-system';
-import {
-  useEndpointRolloutPermission,
-  useEndpointTrafficPermission,
-} from '@openchoreo/backstage-plugin-react';
+import { useEndpointRolloutPermission } from '@openchoreo/backstage-plugin-react';
 import {
   rolloutStages,
   stableLabel,
@@ -165,13 +161,11 @@ function DeploySections({ env }: { env: EndpointEnvironment }) {
     onStopRoutingRequest,
     onViewReleases,
     onViewArtifacts,
-    onConfigureOverrides,
     onOpenRollout,
     onCopy,
   } = useEndpointEnvironmentsContext();
   const hasBinding = Boolean(env.bindingName);
   const rolloutPerm = useEndpointRolloutPermission(env.name, hasBinding);
-  const trafficPerm = useEndpointTrafficPermission();
 
   const latest = env.latestRelease ?? endpoint.latestRelease;
   const latestBackends = releaseBackends(releases, latest) ?? endpoint.backends;
@@ -205,14 +199,6 @@ function DeploySections({ env }: { env: EndpointEnvironment }) {
     Boolean(env.endpointRelease) &&
     env.status === 'Routing' &&
     targetEnv?.endpointRelease !== env.endpointRelease;
-
-  let overridesTooltip = trafficPerm.deniedTooltip;
-  if (!overridesTooltip && !hasBinding) {
-    overridesTooltip = 'Deploy this environment first to configure overrides.';
-  } else if (!overridesTooltip && endpoint.backends.length < 2) {
-    overridesTooltip =
-      'The Endpoint has one version, so there is nothing to override.';
-  }
 
   return (
     <>
@@ -270,37 +256,16 @@ function DeploySections({ env }: { env: EndpointEnvironment }) {
             </Button>
           </Box>
           <TrafficSplitBar backends={split} showLegend height={12} />
+          {!running && (
+            <Typography variant="caption" color="textSecondary">
+              Serves several versions without a rollout. Start a rollout, or
+              reconfigure the Endpoint to one version and deploy it here.
+            </Typography>
+          )}
         </Box>
       )}
 
       <UnresolvedBackends env={env} />
-
-      <Box className={classes.section}>
-        <Box className={classes.sectionTitleRow}>
-          <Typography className={classes.sectionHeading}>
-            Configuration
-          </Typography>
-          <Tooltip
-            title={
-              overridesTooltip ||
-              'Set how this environment splits traffic between versions.'
-            }
-          >
-            <span>
-              <Button
-                variant="outlined"
-                color="primary"
-                size="small"
-                startIcon={<SettingsOutlinedIcon fontSize="small" />}
-                disabled={Boolean(overridesTooltip) || trafficPerm.loading}
-                onClick={() => onConfigureOverrides(env.name)}
-              >
-                Configure overrides
-              </Button>
-            </span>
-          </Tooltip>
-        </Box>
-      </Box>
 
       <Box className={classes.section}>
         <Typography className={classes.sectionHeading}>Actions</Typography>

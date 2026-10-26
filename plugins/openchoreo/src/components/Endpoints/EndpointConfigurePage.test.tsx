@@ -105,26 +105,26 @@ const renderPage = async (rollout?: EndpointRollout) => {
       <EndpointConfigurePage />
     </MemoryRouter>,
   );
-  await screen.findByText('Versions and their weights');
+  await screen.findByText('Version');
 };
 
-describe('EndpointConfigurePage versions', () => {
+describe('EndpointConfigurePage', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('adds a third version and saves all three', async () => {
+  it('keeps only the version picked when the Endpoint serves several', async () => {
     mockClient.updateEndpointTraffic.mockResolvedValue({
       latestRelease: 'rel-2',
       changed: true,
     });
     await renderPage();
 
-    fireEvent.click(screen.getByText('Split with another version'));
-    fireEvent.change(screen.getAllByLabelText('Component / endpoint')[2], {
-      target: { value: 'trips-legacy/http' },
-    });
-    fireEvent.change(screen.getAllByRole('spinbutton')[2], {
-      target: { value: '10' },
-    });
+    expect(
+      screen.getByText(/Saving keeps only this version/),
+    ).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByLabelText('Component / endpoint'));
+    fireEvent.click(
+      await screen.findByRole('option', { name: 'trips-legacy/http' }),
+    );
     fireEvent.click(screen.getByText('Save & Deploy'));
 
     await waitFor(() =>
@@ -133,27 +133,13 @@ describe('EndpointConfigurePage versions', () => {
     expect(
       mockClient.updateEndpointTraffic.mock.calls[0][1].map((b: any) => [
         b.componentName,
+        b.endpoint,
         b.weight,
       ]),
-    ).toEqual([
-      ['trips-python', 70],
-      ['trips-go', 30],
-      ['trips-legacy', 10],
-    ]);
+    ).toEqual([['trips-legacy', 'http', 100]]);
   });
 
-  it('asks to drain a version before removing it', async () => {
-    await renderPage();
-
-    fireEvent.click(screen.getByLabelText('Remove backend 2'));
-
-    expect(
-      screen.getByText(/Set trips-go to 0 and save before removing it/),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Save & Deploy').closest('button')).toBeDisabled();
-  });
-
-  it('locks the versions while a rollout runs', async () => {
+  it('locks the version while a rollout runs', async () => {
     await renderPage({
       strategy: 'canary',
       stable: 'trips-python',
@@ -164,8 +150,5 @@ describe('EndpointConfigurePage versions', () => {
     expect(
       screen.getByText(/A rollout to trips-go is running/),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('Split with another version').closest('button'),
-    ).toBeDisabled();
   });
 });
