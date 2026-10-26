@@ -7,6 +7,7 @@ import {
   type OpenChoreoComponents,
 } from '@openchoreo/openchoreo-client-node';
 import {
+  completeSplit,
   currentRollout,
   finishStrategy,
   parseRollout,
@@ -1425,11 +1426,12 @@ export class EndpointInfoService {
         );
       }
     }
-    // Complete keeps the new version alone; abandon puts back the split
-    // the Endpoint had when the rollout started.
+    // Complete swaps the replaced version for the new one and leaves the
+    // untouched backends as they are; abandon puts back the split the
+    // Endpoint had when the rollout started.
     const keep =
       request.outcome === 'complete'
-        ? [{ name: rollout.candidate, weight: 100 }]
+        ? completeSplit(rollout)
         : stableSplit(rollout);
     const change = finishStrategy(
       toBackendWeights(endpoint.spec?.backendRefs),

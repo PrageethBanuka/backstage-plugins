@@ -957,40 +957,41 @@ describe('EndpointInfoService', () => {
       expect(mockPUT).not.toHaveBeenCalled();
     });
 
-    it('abandoning puts back the split the rollout started from', async () => {
-      const threeWay = (latest: string) => {
-        const ep = endpoint([70, 0], latest);
-        return {
-          ...ep,
-          metadata: {
-            ...ep.metadata,
-            annotations: {
-              'openchoreo.dev/rollout': JSON.stringify({
-                strategy: 'canary',
-                stable: 'payments-v1',
-                candidate: 'payments-v2',
-                baseline: [
-                  { name: 'payments-v1', weight: 70 },
-                  { name: 'payments-legacy', weight: 30 },
-                ],
-                steps: [5, 25, 50, 100],
-              }),
+    const threeWay = (latest: string) => {
+      const ep = endpoint([70, 0], latest);
+      return {
+        ...ep,
+        metadata: {
+          ...ep.metadata,
+          annotations: {
+            'openchoreo.dev/rollout': JSON.stringify({
+              strategy: 'canary',
+              stable: 'payments-v1',
+              candidate: 'payments-v2',
+              baseline: [
+                { name: 'payments-v1', weight: 70 },
+                { name: 'payments-legacy', weight: 30 },
+              ],
+              steps: [5, 25, 50, 100],
+            }),
+          },
+        },
+        spec: {
+          ...ep.spec,
+          backendRefs: [
+            ...ep.spec.backendRefs,
+            {
+              name: 'payments-legacy',
+              kind: 'Component',
+              component: { name: 'payments-legacy', endpoint: 'http' },
+              weight: 30,
             },
-          },
-          spec: {
-            ...ep.spec,
-            backendRefs: [
-              ...ep.spec.backendRefs,
-              {
-                name: 'payments-legacy',
-                kind: 'Component',
-                component: { name: 'payments-legacy', endpoint: 'http' },
-                weight: 30,
-              },
-            ],
-          },
-        };
+          ],
+        },
       };
+    };
+
+    it('abandoning puts back the split the rollout started from', async () => {
       let reads = 0;
       routeGET({
         [`${NS}/endpoints/{endpointName}`]: () =>
@@ -1012,14 +1013,71 @@ describe('EndpointInfoService', () => {
       );
 
       const body = mockPUT.mock.calls[0][1].body;
-      expect(
-        body.spec.backendRefs.map((r: any) => [r.name, r.weight]),
-      ).toEqual([
-        ['payments-v1', 70],
-        ['payments-legacy', 30],
-      ]);
+      expect(body.spec.backendRefs.map((r: any) => [r.name, r.weight])).toEqual(
+        [
+          ['payments-v1', 70],
+          ['payments-legacy', 30],
+        ],
+      );
       expect(body.metadata.annotations?.['openchoreo.dev/rollout']).toBe(
         undefined,
+      );
+    });
+
+    it('completing swaps the replaced version and leaves the others', async () => {
+      const done = {
+        ...binding('development'),
+        status: {
+          ...binding('development').status,
+          backends: [
+            {
+              componentName: 'payments-v1',
+              endpoint: 'http',
+              name: 'payments-v1',
+              weight: 0,
+            },
+            {
+              componentName: 'payments-v2',
+              endpoint: 'http',
+              name: 'payments-v2',
+              weight: 7000,
+            },
+            {
+              componentName: 'payments-legacy',
+              endpoint: 'http',
+              name: 'payments-legacy',
+              weight: 3000,
+            },
+          ],
+        },
+      };
+      let reads = 0;
+      routeGET({
+        [`${NS}/endpoints/{endpointName}`]: () =>
+          createOkResponse(
+            threeWay(reads++ === 0 ? 'payments-api-aaa' : 'payments-api-bbb'),
+          ),
+        [`${NS}/endpointreleasebindings`]: () => list([done]),
+      });
+      mockPUT.mockResolvedValue(createOkResponse({}));
+      mockPOST.mockResolvedValue(createOkResponse({}));
+
+      await service.finishRollout(
+        {
+          namespaceName: 'default',
+          projectName: 'shop',
+          endpointName: 'payments-api',
+          outcome: 'complete',
+        },
+        'token',
+      );
+
+      const body = mockPUT.mock.calls[0][1].body;
+      expect(body.spec.backendRefs.map((r: any) => [r.name, r.weight])).toEqual(
+        [
+          ['payments-v2', 70],
+          ['payments-legacy', 30],
+        ],
       );
     });
 
