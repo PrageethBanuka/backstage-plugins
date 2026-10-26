@@ -71,6 +71,39 @@ describe('weightPresets', () => {
   });
 });
 
+describe('weightPresets during a rollout', () => {
+  it('offers the stages with the stable ratio kept', () => {
+    const presets = weightPresets(
+      [
+        backend('trips-python', 70),
+        backend('trips-legacy', 30),
+        backend('trips-go', 0),
+      ],
+      [],
+      {
+        strategy: 'canary',
+        stable: 'trips-python',
+        candidate: 'trips-go',
+        baseline: [
+          { name: 'trips-python', weight: 70 },
+          { name: 'trips-legacy', weight: 30 },
+        ],
+        steps: [25, 100],
+      },
+    );
+    expect(presets.map(p => p.label)).toEqual([
+      'Roll back to trips-python + trips-legacy',
+      'Advance to 25%',
+      'Send all traffic to trips-go',
+    ]);
+    expect(presets[1].weights).toEqual({
+      'trips-python': 53,
+      'trips-legacy': 22,
+      'trips-go': 25,
+    });
+  });
+});
+
 describe('describeRule', () => {
   it('reads a rule as a sentence', () => {
     expect(describeRule(preview)).toBe(

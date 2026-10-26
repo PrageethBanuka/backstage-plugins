@@ -3,33 +3,26 @@ import { FieldExtensionComponentProps } from '@backstage/plugin-scaffolder-react
 import type { FieldValidation } from '@rjsf/utils';
 import {
   Box,
-  Button,
   Checkbox,
   CircularProgress,
   FormControlLabel,
-  IconButton,
-  ListItemText,
-  TextField,
   Typography,
 } from '@material-ui/core';
-import Autocomplete from '@material-ui/lab/Autocomplete';
-import AddIcon from '@material-ui/icons/Add';
-import RemoveCircleOutlineIcon from '@material-ui/icons/RemoveCircleOutline';
 import { useApi } from '@backstage/core-plugin-api';
 import type {
   EndpointCandidate,
   EndpointVisibility,
 } from '@openchoreo/backstage-plugin-common';
 import { openChoreoClientApiRef } from '../../api/OpenChoreoClientApi';
+import {
+  backendOptions,
+  backendRowErrors,
+  backendRowKey as keyOf,
+  EndpointBackendRows,
+  type EndpointBackendRow,
+} from '../../components/Endpoints/EndpointBackendRows';
 
-/** One backend row of the form. */
-export interface EndpointBackendRow {
-  componentName: string;
-  endpoint: string;
-  weight: number;
-  /** False for a backend typed in that is not deployed anywhere yet. */
-  deployed: boolean;
-}
+export type { EndpointBackendRow };
 
 /**
  * The field's value: where the Endpoint is reachable from and its backends.
@@ -79,25 +72,6 @@ const VISIBILITIES: { value: EndpointVisibility; label: string }[] = [
   { value: 'internal', label: 'Internal (internal gateway)' },
   { value: 'namespace', label: 'Namespace (in-cluster callers)' },
 ];
-
-/** A deployed component workload endpoint, as offered in the dropdowns. */
-interface Option {
-  componentName: string;
-  endpoint: string;
-  protocol?: string;
-  environments: string[];
-  externalURL?: string;
-  routedBy?: EndpointCandidate['endpoints'][number]['routedBy'];
-}
-
-const keyOf = (o: { componentName: string; endpoint: string }) =>
-  `${o.componentName}/${o.endpoint}`;
-
-/** Parses typed text "component/endpoint", defaulting the endpoint to http. */
-const parseTyped = (text: string) => {
-  const [componentName, endpoint] = text.trim().split('/', 2);
-  return { componentName: componentName ?? '', endpoint: endpoint || 'http' };
-};
 
 const lastSegment = (value: unknown) =>
   typeof value === 'string' ? value.split('/').pop() ?? '' : '';
@@ -155,20 +129,7 @@ export const EndpointBackendsField = ({
     };
   }, [client, namespaceName, projectName]);
 
-  const options: Option[] = useMemo(
-    () =>
-      candidates.flatMap(c =>
-        c.endpoints.map(e => ({
-          componentName: c.componentName,
-          endpoint: e.name,
-          protocol: e.protocol,
-          environments: e.environments,
-          externalURL: e.externalURL,
-          routedBy: e.routedBy,
-        })),
-      ),
-    [candidates],
-  );
+  const options = useMemo(() => backendOptions(candidates), [candidates]);
   const byKey = useMemo(
     () => new Map(options.map(o => [keyOf(o), o])),
     [options],
@@ -217,35 +178,6 @@ export const EndpointBackendsField = ({
         : [...visibility, v],
     });
 
-  const setRow = (index: number, row: Partial<EndpointBackendRow>) =>
-    update({
-      backends: rows.map((r, i) => (i === index ? { ...r, ...row } : r)),
-    });
-
-  const pickBackend = (index: number, picked: Option | string | null) => {
-    if (picked === null) return;
-    const target = typeof picked === 'string' ? parseTyped(picked) : picked;
-    if (!target.componentName) return;
-    setRow(index, {
-      componentName: target.componentName,
-      endpoint: target.endpoint,
-      deployed: byKey.has(keyOf(target)),
-    });
-  };
-
-  const addRow = () =>
-    update({
-      backends: [
-        ...rows,
-        { componentName: '', endpoint: 'http', weight: 0, deployed: true },
-      ],
-    });
-
-  const removeRow = (index: number) =>
-    update({ backends: rows.filter((_, i) => i !== index) });
-
-  const total = rows.reduce((sum, r) => sum + (r.weight || 0), 0);
-
   if (!namespaceName || !projectName) {
     return (
       <Typography variant="body2" color="textSecondary">
@@ -289,96 +221,11 @@ export const EndpointBackendsField = ({
         <Typography variant="subtitle2">
           {rows.length > 1 ? 'Versions and their weights' : 'Serves'}
         </Typography>
-        {rows.map((row, i) => (
-          <Box key={i} display="flex" alignItems="flex-start" gridGap={8}>
-            <Autocomplete<Option, false, false, true>
-              freeSolo
-              fullWidth
-              options={options}
-              value={
-                row.componentName ? byKey.get(keyOf(row)) ?? keyOf(row) : null
-              }
-              getOptionLabel={o => (typeof o === 'string' ? o : keyOf(o))}
-              renderOption={o => (
-                <ListItemText
-                  primary={`${o.componentName} / ${o.endpoint}`}
-                  secondary={[
-                    o.environments.join(', '),
-                    ...(o.routedBy ?? []).map(
-                      e =>
-                        `routed by ${e.endpointName} (${e.visibility.join(
-                          ', ',
-                        )})`,
-                    ),
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                />
-              )}
-              onChange={(_e, picked) => pickBackend(i, picked)}
-              onInputChange={(_e, text, reason) => {
-                if (reason === 'input' && text.includes('/'))
-                  pickBackend(i, text);
-              }}
-              renderInput={params => (
-                <TextField
-                  {...params}
-                  variant="outlined"
-                  size="small"
-                  label="Component / endpoint"
-                  helperText={
-                    row.componentName && !row.deployed
-                      ? 'Not deployed yet; keep it at 0% until it is deployed'
-                      : undefined
-                  }
-                />
-              )}
-            />
-            {rows.length > 1 && (
-              <TextField
-                type="number"
-                variant="outlined"
-                size="small"
-                label="Weight"
-                value={row.weight}
-                onChange={e =>
-                  setRow(i, {
-                    weight: Math.max(0, Number(e.target.value) || 0),
-                  })
-                }
-                inputProps={{ min: 0, max: 1000000, step: 1 }}
-                style={{ width: 120 }}
-              />
-            )}
-            <IconButton
-              size="small"
-              aria-label={`Remove backend ${i + 1}`}
-              onClick={() => removeRow(i)}
-              disabled={rows.length <= 1}
-            >
-              <RemoveCircleOutlineIcon fontSize="small" />
-            </IconButton>
-          </Box>
-        ))}
-        <Box display="flex" alignItems="center" justifyContent="space-between">
-          <Button
-            size="small"
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={addRow}
-          >
-            Split with another version
-          </Button>
-          {rows.length > 1 && (
-            <Typography variant="caption" color="textSecondary">
-              Weights are relative; total {total}
-            </Typography>
-          )}
-        </Box>
-        <Typography variant="caption" color="textSecondary">
-          Pick a deployed component, or type <code>component/endpoint</code> for
-          one that is not deployed yet.
-        </Typography>
+        <EndpointBackendRows
+          rows={rows}
+          options={options}
+          onChange={backends => update({ backends })}
+        />
       </Box>
     </Box>
   );
@@ -396,30 +243,7 @@ export const endpointBackendsFieldValidation = (
       `${c}; add the backend to that Endpoint, or pick another visibility`,
     );
   }
-  const rows = value?.backends ?? [];
-  if (rows.some(r => !r.componentName)) {
-    validation.addError(
-      'Pick a component for every backend, or remove the empty row',
-    );
-    return;
-  }
-  if (rows.length === 0) {
-    validation.addError('Add at least one backend');
-    return;
-  }
-  const seen = new Set<string>();
-  for (const r of rows) {
-    if (seen.has(keyOf(r))) {
-      validation.addError(`${keyOf(r)} is listed twice`);
-    }
-    seen.add(keyOf(r));
-    if (!r.deployed && r.weight > 0) {
-      validation.addError(
-        `${keyOf(r)} is not deployed yet; keep it at 0% until it is deployed`,
-      );
-    }
-  }
-  if (!rows.some(r => r.weight > 0)) {
-    validation.addError('At least one backend needs a weight above 0');
+  for (const e of backendRowErrors(value?.backends ?? [])) {
+    validation.addError(e);
   }
 };

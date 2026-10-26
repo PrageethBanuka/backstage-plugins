@@ -5,9 +5,7 @@ import {
   Checkbox,
   CircularProgress,
   FormControlLabel,
-  MenuItem,
   Switch,
-  TextField,
   Tooltip,
   Typography,
 } from '@material-ui/core';
@@ -15,7 +13,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import { Alert } from '@material-ui/lab';
 import { useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
-import { catalogApiRef, useEntity } from '@backstage/plugin-catalog-react';
+import { useEntity } from '@backstage/plugin-catalog-react';
 import { Skeleton } from '@openchoreo/backstage-design-system';
 import {
   DetailPageLayout,
@@ -24,6 +22,7 @@ import {
 } from '@openchoreo/backstage-plugin-react';
 import {
   CHOREO_ANNOTATIONS,
+  type EndpointBackendWeight,
   type EndpointEnvironment,
   type EndpointRule,
   type EndpointSummary,
@@ -32,8 +31,15 @@ import {
 import { openChoreoClientApiRef } from '../../api/OpenChoreoClientApi';
 import { getErrorMessage, isForbiddenError } from '../../utils/errorUtils';
 import { AutoDeployConfirmationDialog } from '../Environments/components/AutoDeployConfirmationDialog';
+import {
+  backendOptions,
+  backendRowErrors,
+  backendRowKey,
+  EndpointBackendRows,
+  type EndpointBackendOption,
+  type EndpointBackendRow,
+} from './EndpointBackendRows';
 import { RulesEditorDialog } from './RulesEditorDialog';
-import { TrafficSplitBar } from './TrafficSplitBar';
 
 const useStyles = makeStyles(theme => ({
   loadingContainer: {
@@ -57,13 +63,7 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(0.5),
   },
   label: { fontWeight: 600 },
-  pair: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)',
-    gap: theme.spacing(2),
-    maxWidth: 640,
-    [theme.breakpoints.down('xs')]: { gridTemplateColumns: 'minmax(0, 1fr)' },
-  },
+  rows: { maxWidth: 640 },
 }));
 
 const VISIBILITIES: {
@@ -91,31 +91,40 @@ const VISIBILITIES: {
 const sameSet = <T,>(a: T[], b: T[]) =>
   a.length === b.length && a.every(x => b.includes(x));
 
+const toRow = (b: EndpointBackendWeight): EndpointBackendRow => ({
+  componentName: b.componentName,
+  endpoint: b.endpoint,
+  weight: b.weight,
+  deployed: true,
+});
+
+const rowsKey = (rows: EndpointBackendRow[]) =>
+  JSON.stringify(rows.map(r => [backendRowKey(r), r.weight]));
+
 /**
  * The Endpoint's Configure & Deploy page, opened from the Set up tile. The
  * Configure Resource page's layout (DetailPageLayout): edit where the
- * Endpoint is reachable from, its version, whether new versions deploy on
- * their own and, under Advanced, its routing rules. Saving creates a new
- * version of the routing and deploys it to the first environment.
+ * Endpoint is reachable from, its versions and their weights, whether new
+ * versions deploy on their own and, under Advanced, its routing rules.
+ * Saving creates a new version of the routing and deploys it to the first
+ * environment. Versions are locked while a rollout runs.
  */
 export const EndpointConfigurePage = () => {
   const classes = useStyles();
   const navigate = useNavigate();
   const { entity } = useEntity();
   const client = useApi(openChoreoClientApiRef);
-  const catalogApi = useApi(catalogApiRef);
   const perm = useEndpointTrafficPermission();
   const project = entity.metadata.annotations?.[CHOREO_ANNOTATIONS.PROJECT];
   const namespace = entity.metadata.annotations?.[CHOREO_ANNOTATIONS.NAMESPACE];
 
   const [endpoint, setEndpoint] = useState<EndpointSummary | null>(null);
   const [firstEnv, setFirstEnv] = useState<EndpointEnvironment | null>(null);
-  const [components, setComponents] = useState<string[]>([]);
+  const [options, setOptions] = useState<EndpointBackendOption[]>([]);
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [visibility, setVisibility] = useState<EndpointVisibility[]>([]);
   const [autoDeploy, setAutoDeploy] = useState(false);
-  const [component, setComponent] = useState('');
-  const [endpointKey, setEndpointKey] = useState('');
+  const [rows, setRows] = useState<EndpointBackendRow[]>([]);
   const [rules, setRules] = useState<EndpointRule[]>([]);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [autoDeployAsk, setAutoDeployAsk] = useState<boolean | null>(null);
@@ -140,8 +149,7 @@ export const EndpointConfigurePage = () => {
         if (summary) {
           setVisibility(summary.visibility);
           setAutoDeploy(summary.autoDeploy);
-          setComponent(summary.backends[0]?.componentName ?? '');
-          setEndpointKey(summary.backends[0]?.endpoint ?? '');
+          setRows(summary.backends.map(toRow));
           setRules(summary.rules);
         }
       })
@@ -154,53 +162,78 @@ export const EndpointConfigurePage = () => {
   useEffect(() => {
     if (!project || !namespace) return undefined;
     let ignore = false;
-    catalogApi
-      .getEntities({
-        filter: {
-          kind: 'Component',
-          'spec.system': project,
-          'metadata.namespace': namespace,
-        },
-        fields: ['metadata.name'],
-      })
-      .then(res => {
-        if (!ignore) setComponents(res.items.map(e => e.metadata.name).sort());
+    client
+      .fetchEndpointCandidates(namespace, project)
+      .then(list => {
+        if (!ignore) setOptions(backendOptions(list));
       })
       .catch(() => undefined);
     return () => {
       ignore = true;
     };
-  }, [catalogApi, project, namespace]);
+  }, [client, project, namespace]);
 
-  const single = (endpoint?.backends.length ?? 0) <= 1;
+  const locked = Boolean(endpoint?.rollout);
   const versionChanged =
-    single &&
     Boolean(endpoint) &&
-    (component !== (endpoint!.backends[0]?.componentName ?? '') ||
-      endpointKey !== (endpoint!.backends[0]?.endpoint ?? ''));
+    rowsKey(rows) !== rowsKey(endpoint!.backends.map(toRow));
+
+  // The backends as the API takes them; a kept one keeps its name.
+  const newBackends = useMemo((): EndpointBackendWeight[] | undefined => {
+    if (!endpoint || !versionChanged) return undefined;
+    const saved = new Map(endpoint.backends.map(b => [backendRowKey(b), b]));
+    return rows.map(r => ({
+      ...saved.get(backendRowKey(r)),
+      componentName: r.componentName,
+      endpoint: r.endpoint,
+      weight: r.weight,
+    }));
+  }, [endpoint, rows, versionChanged]);
+
+  // Rules lose the backends that were removed; a rule left with none goes.
+  const keptNames = new Set(
+    (newBackends ?? endpoint?.backends ?? []).map(
+      b => b.name ?? b.componentName,
+    ),
+  );
+  const effectiveRules = rules
+    .map(r => ({
+      ...r,
+      backends: r.backends.filter(b => keptNames.has(b.name)),
+      mirrors: r.mirrors?.filter(m => keptNames.has(m.backend)),
+    }))
+    .filter(r => r.backends.length > 0);
+  const prunedRules = rules
+    .filter(
+      r =>
+        JSON.stringify(r) !==
+        JSON.stringify(effectiveRules.find(e => e.name === r.name)),
+    )
+    .map(r => r.name);
+
   const settingsChanged =
     Boolean(endpoint) &&
     (!sameSet(visibility, endpoint!.visibility) ||
       autoDeploy !== endpoint!.autoDeploy);
   const rulesChanged =
     Boolean(endpoint) &&
-    JSON.stringify(rules) !== JSON.stringify(endpoint!.rules);
+    JSON.stringify(effectiveRules) !== JSON.stringify(endpoint!.rules);
   const hasChanges = versionChanged || settingsChanged || rulesChanged;
 
-  const newBackends = useMemo(
-    () =>
-      endpoint && single && component && endpointKey
-        ? [
-            {
-              ...endpoint.backends[0],
-              componentName: component,
-              endpoint: endpointKey,
-              weight: 100,
-            },
-          ]
-        : undefined,
-    [endpoint, single, component, endpointKey],
+  // The server refuses removing a backend that still gets traffic in the
+  // saved version: it has to go to 0% first so environments can drain.
+  const removedWithTraffic = (endpoint?.backends ?? []).filter(
+    b => b.weight > 0 && !rows.some(r => backendRowKey(r) === backendRowKey(b)),
   );
+  const rowErrors = versionChanged
+    ? [
+        ...backendRowErrors(rows),
+        ...removedWithTraffic.map(
+          b =>
+            `Set ${b.componentName} to 0 and save before removing it, so its traffic drains first`,
+        ),
+      ]
+    : [];
 
   const save = async () => {
     if (!endpoint) return;
@@ -218,8 +251,8 @@ export const EndpointConfigurePage = () => {
       if (rulesChanged) {
         const res = await client.updateEndpointRules(
           entity,
-          rules,
-          versionChanged ? newBackends : undefined,
+          effectiveRules,
+          newBackends,
         );
         latest = res.latestRelease ?? latest;
       } else if (versionChanged && newBackends) {
@@ -254,6 +287,7 @@ export const EndpointConfigurePage = () => {
 
   const denied = !perm.loading && !perm.canChangeTraffic;
   let saveTooltip = hasChanges ? '' : 'Nothing changed';
+  if (rowErrors.length > 0) saveTooltip = rowErrors[0];
   if (denied) saveTooltip = perm.deniedTooltip;
   const actions = endpoint && (
     <Tooltip title={saveTooltip}>
@@ -261,7 +295,13 @@ export const EndpointConfigurePage = () => {
         <Button
           variant="contained"
           color="primary"
-          disabled={saving || denied || !hasChanges || visibility.length === 0}
+          disabled={
+            saving ||
+            denied ||
+            !hasChanges ||
+            visibility.length === 0 ||
+            rowErrors.length > 0
+          }
           startIcon={
             saving ? <CircularProgress size={20} color="inherit" /> : undefined
           }
@@ -347,53 +387,39 @@ export const EndpointConfigurePage = () => {
 
           <Box className={classes.field}>
             <Typography variant="body2" className={classes.label}>
-              Version
+              {rows.length > 1 ? 'Versions and their weights' : 'Version'}
             </Typography>
-            {single ? (
-              <>
-                <Box className={classes.pair}>
-                  <TextField
-                    id="endpoint-version-component"
-                    select
-                    size="small"
-                    variant="outlined"
-                    label="Component"
-                    value={component}
-                    onChange={e => setComponent(e.target.value)}
-                  >
-                    {[...new Set([component, ...components])]
-                      .filter(Boolean)
-                      .map(c => (
-                        <MenuItem key={c} value={c}>
-                          {c}
-                        </MenuItem>
-                      ))}
-                  </TextField>
-                  <TextField
-                    id="endpoint-version-endpoint"
-                    size="small"
-                    variant="outlined"
-                    label="Its endpoint"
-                    value={endpointKey}
-                    onChange={e => setEndpointKey(e.target.value)}
-                  />
-                </Box>
-                <Typography variant="caption" color="textSecondary">
-                  This version gets all traffic. To move traffic to a new
-                  version step by step, use the Rollout tab.
-                </Typography>
-              </>
+            <Box className={classes.rows}>
+              <EndpointBackendRows
+                rows={rows}
+                options={options}
+                onChange={setRows}
+                disabled={locked}
+              />
+            </Box>
+            {locked ? (
+              <Typography variant="caption" color="textSecondary">
+                A rollout to {endpoint.rollout!.candidate} is running. Finish or
+                abandon it on the Rollout tab to change versions.
+              </Typography>
             ) : (
-              <>
-                <Box maxWidth={480}>
-                  <TrafficSplitBar backends={endpoint.backends} showLegend />
-                </Box>
-                <Typography variant="caption" color="textSecondary">
-                  This Endpoint splits traffic between{' '}
-                  {endpoint.backends.length} versions. Change the split from the
-                  Rollout tab.
-                </Typography>
-              </>
+              <Typography variant="caption" color="textSecondary">
+                Environments get this split when they deploy the new version,
+                unless their weights were set by hand. To move traffic to a new
+                version step by step, use the Rollout tab.
+              </Typography>
+            )}
+            {rowErrors.map(e => (
+              <Typography key={e} variant="caption" color="error">
+                {e}
+              </Typography>
+            ))}
+            {versionChanged && prunedRules.length > 0 && (
+              <Typography variant="caption" color="textSecondary">
+                {prunedRules.join(', ')}{' '}
+                {prunedRules.length === 1 ? 'loses' : 'lose'} the removed
+                versions; a rule left with none is removed.
+              </Typography>
             )}
           </Box>
 
@@ -419,10 +445,10 @@ export const EndpointConfigurePage = () => {
             </Typography>
             <Box display="flex" alignItems="center" gridGap={16}>
               <Typography variant="body2" color="textSecondary">
-                {rules.length === 0
-                  ? 'No rules. Every request goes to the version above.'
-                  : `${rules.length} rule${
-                      rules.length === 1 ? '' : 's'
+                {effectiveRules.length === 0
+                  ? 'No rules. Every request follows the split above.'
+                  : `${effectiveRules.length} rule${
+                      effectiveRules.length === 1 ? '' : 's'
                     }, first match wins.`}
               </Typography>
               <Button
@@ -443,7 +469,7 @@ export const EndpointConfigurePage = () => {
           open={rulesOpen}
           endpointName={endpoint.name}
           backends={newBackends ?? endpoint.backends}
-          rules={rules}
+          rules={effectiveRules}
           onClose={() => setRulesOpen(false)}
           onSave={async next => {
             // Kept on the page; Save & Deploy writes everything at once.
