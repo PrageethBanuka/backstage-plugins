@@ -28,6 +28,8 @@ const environment: EndpointEnvironment = {
   endpointRelease: 'rel-pinned',
   latestRelease: 'rel-latest',
   backends: [],
+  overrides: [],
+  rules: [],
   deployedBackends: ['payments-v1/http'],
   promotionTargets: [],
 };
@@ -36,6 +38,7 @@ const release = (name: string): EndpointReleaseSummary => ({
   name,
   createdAt: '2026-10-14T00:00:00Z',
   backends: [{ componentName: 'payments-v1', endpoint: 'http', weight: 100 }],
+  rules: [],
 });
 
 function renderDialog(onDelete = jest.fn().mockResolvedValue(undefined)) {
@@ -63,7 +66,7 @@ describe('EndpointReleasesDialog', () => {
   it('deletes an old release no environment uses', async () => {
     const onDelete = renderDialog();
     fireEvent.click(screen.getByText(/^rel-old/));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete release' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete version' }));
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith('rel-old'));
   });
 
@@ -71,18 +74,18 @@ describe('EndpointReleasesDialog', () => {
     renderDialog();
     // The pinned release is selected first.
     expect(
-      screen.getByRole('button', { name: 'Delete release' }),
+      screen.getByRole('button', { name: 'Delete version' }),
     ).toBeDisabled();
     fireEvent.click(screen.getByText(/^rel-latest/));
     expect(
-      screen.getByRole('button', { name: 'Delete release' }),
+      screen.getByRole('button', { name: 'Delete version' }),
     ).toBeDisabled();
   });
 
   it('shows why the API refused a delete', async () => {
     renderDialog(jest.fn().mockRejectedValue(new Error('release is in use')));
     fireEvent.click(screen.getByText(/^rel-old/));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete release' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete version' }));
     expect(await screen.findByText(/release is in use/)).toBeInTheDocument();
   });
 });

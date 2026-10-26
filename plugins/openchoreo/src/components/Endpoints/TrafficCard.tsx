@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Box, Button, Typography } from '@material-ui/core';
+import { Box, Button, Tooltip, Typography } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
 import { Link } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
@@ -8,6 +8,7 @@ import { Card, StatusBadge } from '@openchoreo/backstage-design-system';
 import type { ComponentTrafficEntry } from '@openchoreo/backstage-plugin-common';
 import { openChoreoClientApiRef } from '../../api/OpenChoreoClientApi';
 import { useOverviewCardStyles } from '../Environments/OverviewCard/styles';
+import { useEnvironmentDetailPanelStyles } from '../Environments/styles';
 import { deriveEndpointBadgeStatus, ENDPOINT_BADGE_LABEL } from './badgeStatus';
 
 const useStyles = makeStyles(theme => ({
@@ -44,9 +45,6 @@ const useStyles = makeStyles(theme => ({
     minWidth: 64,
     textAlign: 'right',
   },
-  url: {
-    wordBreak: 'break-all',
-  },
 }));
 
 /**
@@ -57,6 +55,7 @@ const useStyles = makeStyles(theme => ({
  */
 export const TrafficCard = () => {
   const classes = useStyles();
+  const urlClasses = useEnvironmentDetailPanelStyles();
   const cardClasses = useOverviewCardStyles();
   const { entity } = useEntity();
   const client = useApi(openChoreoClientApiRef);
@@ -137,13 +136,18 @@ export const TrafficCard = () => {
               </Typography>
             </Box>
             {entry.invokeURL && (
-              <Typography
-                variant="caption"
-                color="textSecondary"
-                className={classes.url}
-              >
-                {entry.invokeURL}
-              </Typography>
+              <Box className={urlClasses.inlineUrlRow}>
+                <Tooltip title={entry.invokeURL}>
+                  <a
+                    href={entry.invokeURL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={urlClasses.inlineUrl}
+                  >
+                    {entry.invokeURL}
+                  </a>
+                </Tooltip>
+              </Box>
             )}
           </Box>
         ))}

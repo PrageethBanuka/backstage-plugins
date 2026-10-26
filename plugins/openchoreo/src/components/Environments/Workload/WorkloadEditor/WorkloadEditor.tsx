@@ -61,12 +61,6 @@ interface WorkloadEditorProps {
   hasParameterChanges?: boolean;
   workloadChanges?: WorkloadChanges;
   parameterChangesCount?: number;
-  /**
-   * Why a workload endpoint can't be served through its Endpoint, from the
-   * Component's EndpointsExposed condition (ExposeConflict, TypeMismatch,
-   * EndpointTypeNotFound). Shown above the endpoints list.
-   */
-  endpointsExposedProblem?: string;
 }
 
 const WORKLOAD_SUB_TABS = new Set(['container', 'endpoints', 'dependencies']);
@@ -210,7 +204,6 @@ export function WorkloadEditor({
   onParametersChange,
   hasParameterChanges: _hasParameterChanges,
   workloadChanges,
-  endpointsExposedProblem,
   parameterChangesCount = 0,
 }: WorkloadEditorProps) {
   const classes = useStyles();
@@ -759,7 +752,6 @@ export function WorkloadEditor({
                   )}
                   {activeTab === 'endpoints' && (
                     <EndpointContent
-                      exposedProblem={endpointsExposedProblem}
                       disabled={isDeploying}
                       endpoints={formData.endpoints || {}}
                       onEndpointReplace={handleEndpointReplace}

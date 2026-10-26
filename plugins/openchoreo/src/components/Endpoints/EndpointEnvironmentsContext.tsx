@@ -4,10 +4,18 @@ import type {
   EndpointReleaseSummary,
   EndpointSummary,
 } from '@openchoreo/backstage-plugin-common';
+import type { RolloutAction } from './endpointRolloutUi';
 
-export type ActionKind = 'rollout' | 'stop';
+/**
+ * Which tab the pipeline canvas is on: Deploy (versions of the routing per
+ * environment, like a Resource) or Rollout (moving traffic to a new version).
+ */
+export type EndpointTabMode = 'deploy' | 'rollout';
+
+export type ActionKind = 'rollout' | 'stop' | 'stage';
 
 export interface EndpointEnvironmentsContextValue {
+  mode: EndpointTabMode;
   endpoint: EndpointSummary;
   environments: EndpointEnvironment[];
   /** The Endpoint's releases, newest first. */
@@ -17,16 +25,23 @@ export interface EndpointEnvironmentsContextValue {
 
   pendingAction: { env: string; kind: ActionKind } | null;
 
-  /** Pin `environment` to `releaseName`: roll out, promote or roll back. */
+  /** Pin `environment` to `releaseName`: deploy, promote or go back. */
   onRollOut: (environment: string, releaseName: string) => void | Promise<void>;
   /** Ask to stop routing in an environment (opens the confirmation). */
   onStopRoutingRequest: (environment: string) => void;
-  /** Open the traffic editor. */
-  onChangeTraffic: () => void;
-  /** Open the release history for an environment (rollback). */
+  /** Open the version history for an environment. */
   onViewReleases: (environment: string) => void;
   /** Open the K8s artifacts of an environment's binding. */
   onViewArtifacts: (environment: string) => void;
+  /** Set an environment's weights by hand. */
+  onConfigureOverrides: (environment: string) => void;
+  /** Run a tile's next rollout step. */
+  onRolloutAction: (environment: string, action: RolloutAction) => void;
+  /** Send all of an environment's traffic back to the stable version. */
+  onRollBack: (environment: string) => void;
+  /** Open the Rollout tab. */
+  onOpenRollout: () => void;
+  onCopy: (text: string, label: string) => void;
 }
 
 const EndpointEnvironmentsContext =

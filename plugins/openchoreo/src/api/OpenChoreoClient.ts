@@ -7,10 +7,16 @@ import {
   type ReleaseBindingCondition,
   type ComponentTrafficEntry,
   type EndpointBackendWeight,
-  type EndpointReclaimPolicy,
+  type EndpointRule,
+  type EndpointVisibility,
+  type EndpointWeightOverride,
+  type RolloutActionResult,
+  type RolloutPlan,
+  type EndpointTypeDetails,
   type EndpointEnvironment,
   type EndpointReleaseSummary,
   type EndpointSummary,
+  type EndpointCandidate,
 } from '@openchoreo/backstage-plugin-common';
 import { CLUSTER_SCOPED_RESOURCE_KINDS } from './OpenChoreoClientApi';
 import type {
@@ -82,15 +88,24 @@ const API_ENDPOINTS = {
   DELETE_RESOURCE_RELEASE_BINDING: '/delete-resource-release-binding',
   PROJECT_RELEASE_BINDINGS: '/project-release-bindings',
   ENDPOINTS: '/endpoints',
+  ENDPOINT_CANDIDATES: '/endpoint-candidates',
   COMPONENT_TRAFFIC: '/component-traffic',
   ENDPOINT_ENVIRONMENT_INFO: '/endpoint-environment-info',
   ENDPOINT_RELEASES: '/endpoint-releases',
   UPDATE_ENDPOINT_TRAFFIC: '/update-endpoint-traffic',
-  UPDATE_ENDPOINT_RECLAIM_POLICY: '/update-endpoint-reclaim-policy',
+  UPDATE_ENDPOINT_RULES: '/update-endpoint-rules',
+  UPDATE_ENDPOINT_OVERRIDES: '/update-endpoint-overrides',
+  UPDATE_ENDPOINT_SETTINGS: '/update-endpoint-settings',
+  ROLLOUT_START: '/endpoint-rollout/start',
+  ROLLOUT_STAGE: '/endpoint-rollout/stage',
+  ROLLOUT_PROMOTE: '/endpoint-rollout/promote',
+  ROLLOUT_FINISH: '/endpoint-rollout/finish',
   UPDATE_ENDPOINT_RELEASE_BINDING: '/update-endpoint-release-binding',
   DELETE_ENDPOINT_RELEASE_BINDING: '/delete-endpoint-release-binding',
   DELETE_ENDPOINT: '/delete-endpoint',
+  ENDPOINT_TYPE: '/endpoint-type',
   DELETE_ENDPOINT_RELEASE: '/delete-endpoint-release',
+  ENDPOINT_RELEASE_BINDING: '/endpoint-release-binding',
   ENDPOINT_RESOURCE_TREE: '/endpoint-resourcetree',
   ENDPOINT_RESOURCE_EVENTS: '/endpoint-resource-events',
   PROJECT_ENVIRONMENT_INFO: '/project-environment-info',
@@ -594,6 +609,16 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
     });
   }
 
+  async fetchEndpointCandidates(
+    namespaceName: string,
+    projectName: string,
+  ): Promise<EndpointCandidate[]> {
+    return this.apiFetch<EndpointCandidate[]>(
+      API_ENDPOINTS.ENDPOINT_CANDIDATES,
+      { params: { projectName, namespaceName } },
+    );
+  }
+
   async fetchComponentTraffic(
     entity: Entity,
   ): Promise<ComponentTrafficEntry[]> {
@@ -650,15 +675,89 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
     });
   }
 
-  async updateEndpointReclaimPolicy(
+  async updateEndpointRules(
     entity: Entity,
-    reclaimPolicy: EndpointReclaimPolicy,
-  ): Promise<{ reclaimPolicy: EndpointReclaimPolicy }> {
+    rules: EndpointRule[],
+    backends?: EndpointBackendWeight[],
+  ): Promise<{ latestRelease?: string; changed: boolean }> {
     const { endpointName, namespaceName } =
       extractEndpointEntityMetadata(entity);
-    return this.apiFetch(API_ENDPOINTS.UPDATE_ENDPOINT_RECLAIM_POLICY, {
+    return this.apiFetch(API_ENDPOINTS.UPDATE_ENDPOINT_RULES, {
       method: 'PUT',
-      body: { endpointName, namespaceName, reclaimPolicy },
+      body: {
+        endpointName,
+        namespaceName,
+        rules,
+        ...(backends && { backends }),
+      },
+    });
+  }
+
+  async updateEndpointOverrides(
+    entity: Entity,
+    environment: string,
+    overrides: EndpointWeightOverride[],
+  ): Promise<{ bindingName: string; applied: boolean }> {
+    const { endpointName, namespaceName } =
+      extractEndpointEntityMetadata(entity);
+    return this.apiFetch(API_ENDPOINTS.UPDATE_ENDPOINT_OVERRIDES, {
+      method: 'PUT',
+      body: { endpointName, namespaceName, environment, overrides },
+    });
+  }
+
+  async startRollout(
+    entity: Entity,
+    plan: RolloutPlan,
+    environments: string[],
+  ): Promise<RolloutActionResult> {
+    return this.apiFetch(API_ENDPOINTS.ROLLOUT_START, {
+      method: 'PUT',
+      body: { ...extractEndpointEntityMetadata(entity), plan, environments },
+    });
+  }
+
+  async setRolloutStage(
+    entity: Entity,
+    environment: string,
+    percent: number,
+  ): Promise<{ bindingName: string; applied: boolean }> {
+    return this.apiFetch(API_ENDPOINTS.ROLLOUT_STAGE, {
+      method: 'PUT',
+      body: { ...extractEndpointEntityMetadata(entity), environment, percent },
+    });
+  }
+
+  async promoteRollout(
+    entity: Entity,
+    from: string,
+    to: string,
+  ): Promise<RolloutActionResult> {
+    return this.apiFetch(API_ENDPOINTS.ROLLOUT_PROMOTE, {
+      method: 'PUT',
+      body: { ...extractEndpointEntityMetadata(entity), from, to },
+    });
+  }
+
+  async finishRollout(
+    entity: Entity,
+    outcome: 'complete' | 'abandon',
+  ): Promise<RolloutActionResult> {
+    return this.apiFetch(API_ENDPOINTS.ROLLOUT_FINISH, {
+      method: 'PUT',
+      body: { ...extractEndpointEntityMetadata(entity), outcome },
+    });
+  }
+
+  async updateEndpointSettings(
+    entity: Entity,
+    settings: { visibility?: EndpointVisibility[]; autoDeploy?: boolean },
+  ): Promise<{ latestRelease?: string }> {
+    const { endpointName, namespaceName } =
+      extractEndpointEntityMetadata(entity);
+    return this.apiFetch(API_ENDPOINTS.UPDATE_ENDPOINT_SETTINGS, {
+      method: 'PUT',
+      body: { endpointName, namespaceName, ...settings },
     });
   }
 
@@ -666,6 +765,7 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
     entity: Entity,
     environment: string,
     releaseName: string,
+    backendOverrides?: EndpointWeightOverride[],
   ): Promise<{ bindingName: string; created: boolean }> {
     const { endpointName, projectName, namespaceName } =
       extractEndpointEntityMetadata(entity);
@@ -677,6 +777,7 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
         namespaceName,
         environment,
         releaseName,
+        ...(backendOverrides && { backendOverrides }),
       },
     });
   }
@@ -690,6 +791,26 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
     return this.apiFetch(API_ENDPOINTS.DELETE_ENDPOINT_RELEASE_BINDING, {
       method: 'DELETE',
       body: { endpointName, projectName, namespaceName, environment },
+    });
+  }
+
+  async fetchEndpointType(entity: Entity): Promise<EndpointTypeDetails> {
+    const kind =
+      entity.kind === 'ClusterEndpointType'
+        ? 'ClusterEndpointType'
+        : 'EndpointType';
+    const params: Record<string, string> = {
+      kind,
+      name: entity.metadata.name,
+    };
+    if (kind === 'EndpointType') {
+      params.namespaceName =
+        entity.metadata.annotations?.[CHOREO_ANNOTATIONS.NAMESPACE] ??
+        entity.metadata.namespace ??
+        'default';
+    }
+    return this.apiFetch<EndpointTypeDetails>(API_ENDPOINTS.ENDPOINT_TYPE, {
+      params,
     });
   }
 
@@ -710,6 +831,16 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
     await this.apiFetch(API_ENDPOINTS.DELETE_ENDPOINT_RELEASE, {
       method: 'DELETE',
       body: { releaseName, namespaceName },
+    });
+  }
+
+  async fetchEndpointReleaseBinding(
+    entity: Entity,
+    endpointReleaseBindingName: string,
+  ): Promise<Record<string, unknown>> {
+    const { namespaceName } = extractEndpointEntityMetadata(entity);
+    return this.apiFetch(API_ENDPOINTS.ENDPOINT_RELEASE_BINDING, {
+      params: { namespaceName, endpointReleaseBindingName },
     });
   }
 

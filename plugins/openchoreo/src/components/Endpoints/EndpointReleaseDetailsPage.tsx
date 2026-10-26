@@ -74,6 +74,7 @@ export const EndpointReleaseDetailsPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [env, setEnv] = useState<EndpointEnvironment | null>(null);
   const [tree, setTree] = useState<any>(null);
+  const [binding, setBinding] = useState<Record<string, unknown> | null>(null);
 
   const load = useCallback(
     async (showLoadingState = true) => {
@@ -85,14 +86,16 @@ export const EndpointReleaseDetailsPage = () => {
         const envs = await client.fetchEndpointEnvironmentInfo(entity);
         const current = envs.find(e => e.name === envName) ?? null;
         let nextTree: any = { renderedReleases: [] };
+        let nextBinding: Record<string, unknown> | null = null;
         if (current?.bindingName) {
-          nextTree = await client.fetchEndpointResourceTree(
-            entity,
-            current.bindingName,
-          );
+          [nextTree, nextBinding] = await Promise.all([
+            client.fetchEndpointResourceTree(entity, current.bindingName),
+            client.fetchEndpointReleaseBinding(entity, current.bindingName),
+          ]);
         }
         setEnv(current);
         setTree(nextTree);
+        setBinding(nextBinding);
       } catch (err: unknown) {
         if (!showLoadingState) throw err;
         setError(
@@ -140,20 +143,23 @@ export const EndpointReleaseDetailsPage = () => {
     [client, entity, bindingName],
   );
 
-  const bindingData = useMemo<Record<string, unknown> | null>(
-    () =>
-      env?.bindingName
-        ? {
-            name: env.bindingName,
-            status: TREE_STATUS[env.status] ?? 'NotReady',
-            statusReason: env.statusReason,
-            statusMessage: env.statusMessage,
-            releaseName: env.endpointRelease,
-            environment: env.name,
-          }
-        : null,
-    [env],
-  );
+  // The binding as stored, so the Definition tab shows the whole resource
+  // (metadata, spec with backendOverrides, status with backends and
+  // conditions), as the Component page does. The tree reads its health
+  // from the Ready condition. Before the binding loads, a summary keeps
+  // the root node labelled.
+  const bindingData = useMemo<Record<string, unknown> | null>(() => {
+    if (!env?.bindingName) return null;
+    if (binding) return binding;
+    return {
+      name: env.bindingName,
+      status: TREE_STATUS[env.status] ?? 'NotReady',
+      statusReason: env.statusReason,
+      statusMessage: env.statusMessage,
+      releaseName: env.endpointRelease,
+      environment: env.name,
+    };
+  }, [env, binding]);
 
   const actions = error ? (
     <Button onClick={() => void load()} color="primary" variant="outlined">

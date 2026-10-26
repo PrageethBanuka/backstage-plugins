@@ -10,6 +10,8 @@ import {
 import type {
   EndpointBackendWeight,
   EndpointEnvironment,
+  EndpointRule,
+  EndpointStrategy,
 } from '@openchoreo/backstage-plugin-common';
 
 /**
@@ -96,4 +98,46 @@ export function missingBackends(
   return backends
     .filter(b => b.weight > 0 && !deployed.has(backendKey(b)))
     .map(b => b.componentName);
+}
+
+/** One line for a rule's conditions and where it sends, for summaries. */
+export function describeRule(rule: EndpointRule): string {
+  const when = (rule.matches ?? [])
+    .map(m =>
+      [
+        ...(m.headers ?? []).map(h =>
+          h.type === 'RegularExpression'
+            ? `${h.name} ~ ${h.value}`
+            : `${h.name}: ${h.value}`,
+        ),
+        ...(m.cookies ?? []).map(c => `cookie ${c.name}=${c.value}`),
+        ...(m.queryParams ?? []).map(q => `?${q.name}=${q.value}`),
+      ].join(' and '),
+    )
+    .join(' or ');
+  const to = rule.backends
+    .map(b =>
+      rule.backends.length > 1 ? `${b.name} (${b.weight ?? 1})` : b.name,
+    )
+    .join(', ');
+  const mirrors = (rule.mirrors ?? [])
+    .map(m => `, mirror ${m.percent}% to ${m.backend}`)
+    .join('');
+  return `${when ? `when ${when}` : 'every other request'} → ${to}${mirrors}`;
+}
+
+/** A sentence for the strategy an Endpoint's backends and rules show. */
+export function describeStrategy(strategy: EndpointStrategy): string {
+  switch (strategy.kind) {
+    case 'canary':
+      return `Canary: ${strategy.canary} next to ${strategy.stable}${
+        strategy.testerRule ? '; testers reach it by header' : ''
+      }. Step it up per environment with Adjust weights.`;
+    case 'blueGreen':
+      return `Blue/green: ${strategy.green} in preview behind rule ${strategy.previewRule}; ${strategy.blue} serves everyone. Switch per environment with Adjust weights.`;
+    case 'abTest':
+      return `A/B test: visitors with ${strategy.cookie} reach ${strategy.variant}; everyone else stays on ${strategy.control}.`;
+    default:
+      return 'None running. One backend serves all traffic.';
+  }
 }

@@ -22,9 +22,9 @@ function outputKindLabel(o: ResourceTypeOutput): string {
   return 'Value';
 }
 
-type SchemaProperty = { name: string; type: string };
+export type SchemaProperty = { name: string; type: string };
 
-function extractSchemaProperties(
+export function extractSchemaProperties(
   schema: Record<string, unknown> | undefined,
   prefix = '',
 ): SchemaProperty[] {

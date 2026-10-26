@@ -1,7 +1,6 @@
 import Grid from '@material-ui/core/Grid';
 import type { EntityContentLayoutProps } from '@backstage/plugin-catalog-react/alpha';
 import {
-  EndpointTrafficOverviewCard,
   EndpointDeploymentsCard,
   EndpointBackendsCard,
 } from '../../components/EndpointOverview';
@@ -11,8 +10,9 @@ import { ContainedCatalogGraphCard } from '../../components/ContainedCatalogGrap
 import { ForeignCardsSection } from './foreignCards';
 
 /**
- * Endpoint overview, laid out like the Resource overview: three summary
- * cards across the top, then the About card and the catalog graph.
+ * Endpoint overview, laid out like the Resource overview: where the Endpoint
+ * is deployed next to its versions (and the running rollout, if any), then
+ * the About card and the catalog graph.
  */
 export default function EndpointOverviewLayout({
   cards,
@@ -20,13 +20,10 @@ export default function EndpointOverviewLayout({
   return (
     <Grid container spacing={3} alignItems="stretch">
       <EntityWarningStrip />
-      <Grid item md={4} xs={12}>
-        <EndpointTrafficOverviewCard />
-      </Grid>
-      <Grid item md={4} xs={12}>
+      <Grid item md={6} xs={12}>
         <EndpointDeploymentsCard />
       </Grid>
-      <Grid item md={4} xs={12}>
+      <Grid item md={6} xs={12}>
         <EndpointBackendsCard />
       </Grid>
       <Grid item md={6} xs={12}>

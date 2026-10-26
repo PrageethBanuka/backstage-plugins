@@ -4,14 +4,17 @@ import { PageLoader } from '@openchoreo/backstage-design-system';
 import { Box } from '@material-ui/core';
 import { useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
-import { catalogApiRef, useEntity } from '@backstage/plugin-catalog-react';
-import { ForbiddenState } from '@openchoreo/backstage-plugin-react';
-import { CHOREO_ANNOTATIONS } from '@openchoreo/backstage-plugin-common';
-import type {
-  EndpointBackendWeight,
-  EndpointEnvironment,
-  EndpointReleaseSummary,
-  EndpointSummary,
+import { useEntity } from '@backstage/plugin-catalog-react';
+import {
+  ForbiddenState,
+  useEndpointTrafficPermission,
+} from '@openchoreo/backstage-plugin-react';
+import {
+  CHOREO_ANNOTATIONS,
+  type EndpointEnvironment,
+  type EndpointReleaseSummary,
+  type EndpointSummary,
+  type RolloutActionResult,
 } from '@openchoreo/backstage-plugin-common';
 import { openChoreoClientApiRef } from '../../api/OpenChoreoClientApi';
 import { isForbiddenError, getErrorMessage } from '../../utils/errorUtils';
@@ -21,26 +24,51 @@ import { NoEnvironmentsEmptyState } from '../Environments/components/NoEnvironme
 import { useResourceDeployFlowCanvasStyles } from '../ResourceEnvironments/styles';
 import { EndpointDeployFlowCanvas } from './EndpointDeployFlowCanvas';
 import { EndpointEnvironmentDetailPanel } from './EndpointEnvironmentDetailPanel';
-import { EndpointTrafficDetailPane } from './EndpointTrafficDetailPane';
 import {
   EndpointEnvironmentsProvider,
   type ActionKind,
+  type EndpointTabMode,
 } from './EndpointEnvironmentsContext';
 import { EndpointReleasesDialog } from './EndpointReleasesDialog';
+import { EndpointRolloutPane } from './EndpointRolloutPane';
+import { EndpointSetupCard } from './EndpointSetupCard';
+import { EndpointSetupPane } from './EndpointSetupPane';
+import { EnvironmentWeightsDialog } from './EnvironmentWeightsDialog';
 import { StopRoutingDialog } from './StopRoutingDialog';
-import { TrafficEditorDialog } from './TrafficEditorDialog';
+import {
+  ConfirmTrafficDialog,
+  type TrafficConfirmation,
+} from './ConfirmTrafficDialog';
 import { backendKey } from './endpointUi';
+import { STRATEGY_COPY, type RolloutAction } from './endpointRolloutUi';
 
 /** Poll fast while an environment is settling; the route lands in seconds. */
 const SETTLING_POLL_MS = 3000;
 
+/** Names the environments a multi-environment action failed in. */
+function resultMessage(what: string, result: RolloutActionResult) {
+  const failed = result.environments.filter(e => !e.ok);
+  if (failed.length === 0) return { ok: true, message: what };
+  return {
+    ok: false,
+    message: `${what}, but it failed in ${failed
+      .map(f => `${f.name} (${f.error})`)
+      .join(', ')}`,
+  };
+}
+
 /**
- * An Endpoint's Deploy tab, mounted at `/environments` on the Endpoint
- * entity page. Same layout and flow as ResourceEnvironmentsList: the
- * pipeline canvas with a leading Traffic tile on the left, the selected
- * tile's detail panel on the right, and the dialogs lifted up here.
+ * The pipeline canvas and detail panel of an Endpoint, mounted by both the
+ * Deploy tab (`mode="deploy"`) and the Rollout tab (`mode="rollout"`). Same
+ * layout and flow as ResourceEnvironmentsList: a leading tile, environment
+ * tiles, the selected tile's panel on the right, and the dialogs lifted up
+ * here.
  */
-export const EndpointEnvironmentsList = () => {
+export const EndpointEnvironmentsList = ({
+  mode,
+}: {
+  mode: EndpointTabMode;
+}) => {
   const canvasClasses = useResourceDeployFlowCanvasStyles();
   const { entity } = useEntity();
   const navigate = useNavigate();
@@ -48,38 +76,8 @@ export const EndpointEnvironmentsList = () => {
     entity.metadata.annotations?.[CHOREO_ANNOTATIONS.ENDPOINT_CR] ??
     entity.metadata.name;
   const client = useApi(openChoreoClientApiRef);
-  const catalogApi = useApi(catalogApiRef);
   const notification = useNotification();
-  const projectName = entity.metadata.annotations?.[CHOREO_ANNOTATIONS.PROJECT];
-  const namespaceName =
-    entity.metadata.annotations?.[CHOREO_ANNOTATIONS.NAMESPACE];
-  const [projectComponents, setProjectComponents] = useState<string[]>([]);
-
-  // Components of the project, offered as backends to add in Change traffic.
-  useEffect(() => {
-    if (!projectName || !namespaceName) return undefined;
-    let cancelled = false;
-    catalogApi
-      .getEntities({
-        filter: {
-          kind: 'Component',
-          'spec.system': projectName,
-          'metadata.namespace': namespaceName,
-        },
-        fields: ['metadata.name'],
-      })
-      .then(res => {
-        if (!cancelled) {
-          setProjectComponents(res.items.map(e => e.metadata.name).sort());
-        }
-      })
-      .catch(() => {
-        // Non-critical: the editor still changes weights without the list.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [catalogApi, projectName, namespaceName]);
+  const trafficPerm = useEndpointTrafficPermission();
 
   const [endpoint, setEndpoint] = useState<EndpointSummary | null>(null);
   const [envs, setEnvs] = useState<EndpointEnvironment[]>([]);
@@ -93,22 +91,25 @@ export const EndpointEnvironmentsList = () => {
   const [selectedEnvName, setSelectedEnvNameState] = useState<string | null>(
     null,
   );
-  const [selectedTraffic, setSelectedTraffic] = useState(false);
-  const [editorOpen, setEditorOpen] = useState(false);
+  const [selectedSetup, setSelectedSetup] = useState(false);
   const [releasesEnv, setReleasesEnv] = useState<string | null>(null);
+  const [overridesEnv, setOverridesEnv] = useState<string | null>(null);
   const [stopTarget, setStopTarget] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<TrafficConfirmation | null>(
+    null,
+  );
   const cancelledRef = useRef(false);
 
   const setSelectedEnvName = useCallback((name: string | null) => {
     setSelectedEnvNameState(name);
-    if (name !== null) setSelectedTraffic(false);
+    if (name !== null) setSelectedSetup(false);
   }, []);
-  const handleSelectTraffic = useCallback(() => {
-    setSelectedTraffic(true);
+  const handleSelectSetup = useCallback(() => {
+    setSelectedSetup(true);
     setSelectedEnvNameState(null);
   }, []);
   const handleClearSelection = useCallback(() => {
-    setSelectedTraffic(false);
+    setSelectedSetup(false);
     setSelectedEnvNameState(null);
   }, []);
 
@@ -147,88 +148,216 @@ export const EndpointEnvironmentsList = () => {
     fetchAll({ showProgress: true });
   }, [fetchAll]);
 
-  const isAnySettling = envs.some(
-    e => e.status === 'Applying' || e.status === 'Releasing',
-  );
+  // The Rollout tab opens on the Rollout tile, so its summary or the
+  // strategies are the first thing in the panel.
+  useEffect(() => {
+    if (mode === 'rollout') setSelectedSetup(true);
+  }, [mode]);
+
+  const isAnySettling =
+    pendingAction !== null ||
+    envs.some(e => e.status === 'Applying' || e.status === 'Releasing');
   useEffect(() => {
     if (!isAnySettling) return undefined;
     const id = setInterval(() => void fetchAll(), SETTLING_POLL_MS);
     return () => clearInterval(id);
   }, [isAnySettling, fetchAll]);
 
-  const handleRollOut = useCallback(
-    async (environment: string, releaseName: string) => {
-      setPendingAction({ env: environment, kind: 'rollout' });
+  /**
+   * Runs a change against one environment (or all, for '*'), reports it in
+   * the notification banner and refreshes.
+   */
+  const run = useCallback(
+    async (
+      env: string,
+      kind: ActionKind,
+      work: () => Promise<{ ok: boolean; message: string }>,
+    ) => {
+      setPendingAction({ env, kind });
       try {
-        await client.updateEndpointReleaseBinding(
-          entity,
-          environment,
-          releaseName,
-        );
+        const result = await work();
         if (cancelledRef.current) return;
-        notification.showSuccess(
-          `Rolling out ${releaseName} to ${environment}`,
-        );
-        await fetchAll();
+        if (result.ok) notification.showSuccess(result.message);
+        else notification.showError(result.message);
       } catch (err: unknown) {
         if (cancelledRef.current) return;
-        notification.showError(
-          `Failed to roll out to ${environment}: ${getErrorMessage(err)}`,
-        );
+        notification.showError(getErrorMessage(err));
       } finally {
+        await fetchAll();
         if (!cancelledRef.current) setPendingAction(null);
       }
     },
-    [client, entity, notification, fetchAll],
+    [fetchAll, notification],
   );
 
-  const handleSaveTraffic = useCallback(
-    async (backends: EndpointBackendWeight[]) => {
-      const res = await client.updateEndpointTraffic(entity, backends);
-      await fetchAll();
-      return res;
+  /** Production traffic changes ask first; the others run straight away. */
+  const guarded = useCallback(
+    (
+      env: EndpointEnvironment,
+      confirm: Omit<TrafficConfirmation, 'run'>,
+      kind: ActionKind,
+      work: () => Promise<{ ok: boolean; message: string }>,
+    ) => {
+      if (env.isProduction) {
+        setConfirmation({ ...confirm, run: () => run(env.name, kind, work) });
+      } else {
+        void run(env.name, kind, work);
+      }
     },
-    [client, entity, fetchAll],
+    [run],
   );
 
-  const handleRollOutMany = useCallback(
-    async (environments: string[], releaseName: string) => {
-      for (const environment of environments) {
+  const handleRollOut = useCallback(
+    async (environment: string, releaseName: string) => {
+      const env = envs.find(e => e.name === environment);
+      await run(environment, 'rollout', async () => {
         await client.updateEndpointReleaseBinding(
           entity,
           environment,
           releaseName,
         );
-      }
-      notification.showSuccess(
-        `Rolling out ${releaseName} to ${environments.join(', ')}`,
-      );
-      await fetchAll();
+        return {
+          ok: true,
+          message: `Deploying ${releaseName} to ${
+            env?.displayName ?? environment
+          }`,
+        };
+      });
     },
-    [client, entity, notification, fetchAll],
+    [client, entity, envs, run],
+  );
+
+  const finish = useCallback(
+    (outcome: 'complete' | 'abandon', firstStep?: () => Promise<unknown>) => {
+      const r = endpoint?.rollout;
+      if (!endpoint || !r) return;
+      const keep = outcome === 'complete' ? r.candidate : r.stable;
+      const drop = outcome === 'complete' ? r.stable : r.candidate;
+      const touchesProduction = envs.some(e => e.bindingName && e.isProduction);
+      setConfirmation({
+        title:
+          outcome === 'complete'
+            ? `Complete the rollout to ${r.candidate}?`
+            : `Abandon the rollout to ${r.candidate}?`,
+        body:
+          outcome === 'complete'
+            ? `${keep} becomes the only version of ${
+                endpoint.name
+              } in every environment${
+                touchesProduction ? ', including production' : ''
+              }. ${drop} stops getting traffic from ${endpoint.name}.`
+            : `All traffic goes back to ${keep} in every environment, and ${drop} leaves the Endpoint.`,
+        confirmLabel:
+          outcome === 'complete' ? 'Complete rollout' : 'Abandon rollout',
+        ...(outcome === 'complete' &&
+          touchesProduction && { typeToConfirm: endpoint.name }),
+        run: () =>
+          run('*', 'stage', async () => {
+            if (firstStep) await firstStep();
+            return resultMessage(
+              outcome === 'complete'
+                ? `Rollout complete: ${keep} serves all traffic`
+                : `Rollout abandoned: ${keep} serves all traffic`,
+              await client.finishRollout(entity, outcome),
+            );
+          }),
+      });
+    },
+    [client, endpoint, entity, envs, run],
+  );
+
+  const setStage = useCallback(
+    (env: EndpointEnvironment, percent: number, label: string) => {
+      const r = endpoint?.rollout;
+      if (!r) return;
+      guarded(
+        env,
+        {
+          title: `${label} in ${env.displayName}?`,
+          body: `${r.candidate} gets ${percent}% of ${
+            env.displayName
+          } traffic and ${r.stable} keeps ${
+            100 - percent
+          }%. You can roll back from the panel at any time.`,
+          confirmLabel: label,
+        },
+        'stage',
+        async () => {
+          await client.setRolloutStage(entity, env.name, percent);
+          return {
+            ok: true,
+            message: `${env.displayName}: ${r.candidate} now gets ${percent}% of traffic`,
+          };
+        },
+      );
+    },
+    [client, endpoint, entity, guarded],
+  );
+
+  const handleRolloutAction = useCallback(
+    (environment: string, action: RolloutAction) => {
+      const env = envs.find(e => e.name === environment);
+      const r = endpoint?.rollout;
+      if (!env || !r) return;
+      switch (action.kind) {
+        case 'promote': {
+          const from = envs.find(e => e.name === action.from);
+          guarded(
+            env,
+            {
+              title: `Promote the rollout to ${env.displayName}?`,
+              body: `${env.displayName} gets ${r.candidate} next to ${r.stable}, at 0%. No traffic moves until you advance ${env.displayName}.`,
+              confirmLabel: 'Promote',
+            },
+            'rollout',
+            async () =>
+              resultMessage(
+                `Promoted the rollout from ${
+                  from?.displayName ?? action.from
+                } to ${env.displayName}`,
+                await client.promoteRollout(entity, action.from, env.name),
+              ),
+          );
+          break;
+        }
+        case 'complete':
+          finish('complete');
+          break;
+        default:
+          if (action.completes) {
+            // The last environment's switch also ends the rollout.
+            finish('complete', () =>
+              client.setRolloutStage(entity, env.name, action.percent),
+            );
+          } else {
+            setStage(env, action.percent, action.label);
+          }
+      }
+    },
+    [client, endpoint, entity, envs, finish, guarded, setStage],
+  );
+
+  const handleRollBack = useCallback(
+    (environment: string) => {
+      const env = envs.find(e => e.name === environment);
+      const r = endpoint?.rollout;
+      if (env && r) setStage(env, 0, `Roll back to ${r.stable}`);
+    },
+    [endpoint, envs, setStage],
   );
 
   const handleStopConfirm = useCallback(async () => {
     if (!stopTarget) return;
     const environment = stopTarget;
-    setPendingAction({ env: environment, kind: 'stop' });
-    try {
+    await run(environment, 'stop', async () => {
       await client.deleteEndpointReleaseBinding(entity, environment);
-      if (cancelledRef.current) return;
-      setStopTarget(null);
-      notification.showSuccess(
-        `Stopping ${endpointName} in ${environment}; components take their traffic back first`,
-      );
-      await fetchAll();
-    } catch (err: unknown) {
-      if (cancelledRef.current) return;
-      notification.showError(
-        `Failed to stop routing in ${environment}: ${getErrorMessage(err)}`,
-      );
-    } finally {
-      if (!cancelledRef.current) setPendingAction(null);
-    }
-  }, [client, entity, endpointName, notification, fetchAll, stopTarget]);
+      return {
+        ok: true,
+        message: `Stopping ${endpointName} in ${environment}; components take their traffic back first`,
+      };
+    });
+    setStopTarget(null);
+  }, [client, entity, endpointName, run, stopTarget]);
 
   const handleDeleteRelease = useCallback(
     async (releaseName: string) => {
@@ -252,13 +381,48 @@ export const EndpointEnvironmentsList = () => {
     return byRelease;
   }, [envs]);
 
+  // Going back to an older version clears the environment's own weights,
+  // so it serves exactly what that version says.
   const handlePinFromReleases = useCallback(
-    async (releaseName: string) => {
-      if (!releasesEnv) return;
-      await handleRollOut(releasesEnv, releaseName);
+    (releaseName: string) => {
+      const env = envs.find(e => e.name === releasesEnv);
       setReleasesEnv(null);
+      if (!env) return;
+      guarded(
+        env,
+        {
+          title: `Go back to ${releaseName} in ${env.displayName}?`,
+          body: `${env.displayName} switches to that version of the routing and its own weights are cleared.`,
+          confirmLabel: 'Go back',
+        },
+        'rollout',
+        async () => {
+          await client.updateEndpointReleaseBinding(
+            entity,
+            env.name,
+            releaseName,
+            [],
+          );
+          return {
+            ok: true,
+            message: `${env.displayName} went back to ${releaseName}`,
+          };
+        },
+      );
     },
-    [handleRollOut, releasesEnv],
+    [client, entity, envs, guarded, releasesEnv],
+  );
+
+  const copy = useCallback(
+    async (text: string, label: string) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        notification.showSuccess(`Copied ${label}`);
+      } catch {
+        notification.showError('Failed to copy to clipboard');
+      }
+    },
+    [notification],
   );
 
   // Colours follow the Endpoint's backendRefs order everywhere on the page.
@@ -276,6 +440,7 @@ export const EndpointEnvironmentsList = () => {
     () =>
       endpoint
         ? {
+            mode,
             endpoint,
             environments: envs,
             releases,
@@ -284,13 +449,18 @@ export const EndpointEnvironmentsList = () => {
             pendingAction,
             onRollOut: handleRollOut,
             onStopRoutingRequest: setStopTarget,
-            onChangeTraffic: () => setEditorOpen(true),
             onViewReleases: setReleasesEnv,
             onViewArtifacts: (environment: string) =>
               navigate(`release/${encodeURIComponent(environment)}`),
+            onConfigureOverrides: setOverridesEnv,
+            onRolloutAction: handleRolloutAction,
+            onRollBack: handleRollBack,
+            onOpenRollout: () => navigate('../rollout', { relative: 'path' }),
+            onCopy: (text: string, label: string) => void copy(text, label),
           }
         : null,
     [
+      mode,
       endpoint,
       envs,
       releases,
@@ -298,6 +468,9 @@ export const EndpointEnvironmentsList = () => {
       fetchAll,
       pendingAction,
       handleRollOut,
+      handleRolloutAction,
+      handleRollBack,
+      copy,
       navigate,
     ],
   );
@@ -315,7 +488,7 @@ export const EndpointEnvironmentsList = () => {
     return <PageLoader />;
   }
 
-  if (error || !contextValue) {
+  if (error || !contextValue || !endpoint) {
     return (
       <EmptyState
         missing="data"
@@ -333,8 +506,62 @@ export const EndpointEnvironmentsList = () => {
     return <NoEnvironmentsEmptyState />;
   }
 
+  const rollout = endpoint.rollout;
   const selectedEnv = envs.find(e => e.name === selectedEnvName) ?? null;
   const releasesEnvironment = envs.find(e => e.name === releasesEnv) ?? null;
+  const overridesEnvironment = envs.find(e => e.name === overridesEnv) ?? null;
+  let changeBlocked = '';
+  if (!trafficPerm.loading && !trafficPerm.canChangeTraffic) {
+    changeBlocked =
+      trafficPerm.deniedTooltip || 'You cannot change this Endpoint';
+  } else if (pendingAction) {
+    changeBlocked = 'Wait for the current change to finish';
+  }
+
+  const setupTile =
+    mode === 'deploy' ? (
+      <EndpointSetupCard
+        selected={selectedSetup}
+        title="Set up"
+        hint="Endpoint configuration"
+      />
+    ) : (
+      <EndpointSetupCard
+        selected={selectedSetup}
+        title="Rollout"
+        hint={
+          rollout
+            ? `${STRATEGY_COPY[rollout.strategy].name} · ${rollout.candidate}`
+            : 'None running'
+        }
+      />
+    );
+
+  const setupPane =
+    mode === 'deploy' ? (
+      <EndpointSetupPane
+        title="Set up"
+        onClose={handleClearSelection}
+        action={{
+          label: 'Configure & Deploy',
+          onClick: () => navigate('configure'),
+          disabledReason:
+            !trafficPerm.loading && !trafficPerm.canChangeTraffic
+              ? trafficPerm.deniedTooltip
+              : '',
+        }}
+      >
+        Change how the Endpoint routes traffic and deploy a new version.
+      </EndpointSetupPane>
+    ) : (
+      <EndpointRolloutPane
+        startBlocked={changeBlocked}
+        onStart={() => navigate('start')}
+        changeBlocked={changeBlocked}
+        onAbandon={() => finish('abandon')}
+        onClose={handleClearSelection}
+      />
+    );
 
   return (
     <EndpointEnvironmentsProvider value={contextValue}>
@@ -343,14 +570,16 @@ export const EndpointEnvironmentsList = () => {
         <EndpointDeployFlowCanvas
           environments={envs}
           selectedEnvName={selectedEnvName}
-          selectedSetup={selectedTraffic}
+          selectedSetup={selectedSetup}
+          setupTile={setupTile}
+          setupLabel={mode === 'deploy' ? 'Select setup' : 'Select rollout'}
           onSelectEnv={setSelectedEnvName}
-          onSelectSetup={handleSelectTraffic}
+          onSelectSetup={handleSelectSetup}
           onClearSelection={handleClearSelection}
         />
         <Box className={canvasClasses.detailPanelFrame}>
-          {selectedTraffic ? (
-            <EndpointTrafficDetailPane onClose={handleClearSelection} />
+          {selectedSetup ? (
+            setupPane
           ) : (
             <EndpointEnvironmentDetailPanel
               env={selectedEnv}
@@ -360,16 +589,28 @@ export const EndpointEnvironmentsList = () => {
         </Box>
       </Box>
 
-      <TrafficEditorDialog
-        open={editorOpen}
-        endpointName={endpointName}
-        backends={contextValue.endpoint.backends}
-        environments={envs}
-        releases={releases}
-        componentOptions={projectComponents}
-        onClose={() => setEditorOpen(false)}
-        onSave={handleSaveTraffic}
-        onRollOut={handleRollOutMany}
+      <ConfirmTrafficDialog
+        confirmation={confirmation}
+        onClose={() => setConfirmation(null)}
+      />
+      <EnvironmentWeightsDialog
+        open={overridesEnvironment !== null}
+        env={overridesEnvironment}
+        backends={
+          releases.find(r => r.name === overridesEnvironment?.endpointRelease)
+            ?.backends ?? endpoint.backends
+        }
+        rules={overridesEnvironment?.rules ?? []}
+        onClose={() => setOverridesEnv(null)}
+        onSave={async (environment, overrides) => {
+          const res = await client.updateEndpointOverrides(
+            entity,
+            environment,
+            overrides,
+          );
+          await fetchAll();
+          return res;
+        }}
       />
       <EndpointReleasesDialog
         open={releasesEnvironment !== null}

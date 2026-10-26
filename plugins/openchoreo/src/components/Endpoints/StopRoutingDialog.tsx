@@ -46,7 +46,7 @@ export const StopRoutingDialog: FC<StopRoutingDialogProps> = ({
 
     <DialogContent dividers>
       <Typography variant="body2" color="textSecondary" paragraph>
-        This deletes the <strong>endpoint release binding</strong> for{' '}
+        {endpointName} stops routing traffic in{' '}
         <strong>{environmentName}</strong>. As a result:
       </Typography>
       <ul style={{ marginTop: 0, paddingLeft: 20 }}>

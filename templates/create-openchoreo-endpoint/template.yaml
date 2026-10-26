@@ -5,8 +5,8 @@ metadata:
   title: Endpoint
   description: >-
     Create an Endpoint that routes a project's traffic to one or more
-    components with weights. It has its own lifecycle: deleting a component
-    never deletes it.
+    components with weights, for gateway and in-cluster callers alike. Run a
+    canary, blue/green or A/B test on it later from its page.
 spec:
   owner: openchoreo-users
   type: Endpoint
@@ -48,52 +48,40 @@ spec:
         description:
           title: Description
           type: string
+        typeName:
+          title: Route type
+          type: string
+          description: How the platform serves this Endpoint. Keep http unless your platform team gave you another type.
+          default: http
         typeKind:
-          title: Endpoint type kind
+          title: Route type scope
           type: string
           enum: [ClusterEndpointType, EndpointType]
           default: ClusterEndpointType
-        typeName:
-          title: Endpoint type
-          type: string
-          description: The (Cluster)EndpointType that renders the route, for example http-gateway
-    - title: Backends
+          ui:widget: hidden
+    - title: Reach and version
       required:
-        - backends
+        - endpointRouting
       properties:
-        backends:
-          title: Backends
+        endpointRouting:
+          title: Reach and version
           description: >-
-            Components in the project that receive traffic, and their relative
-            weights. One backend is enough to start; add more later to run a
-            canary.
-          type: array
-          minItems: 1
-          items:
-            type: object
-            required: [componentName, endpoint, weight]
-            properties:
-              componentName:
-                title: Component
-                type: string
-              endpoint:
-                title: Workload endpoint
-                type: string
-                default: http
-              weight:
-                title: Weight
-                type: integer
-                minimum: 0
-                maximum: 1000000
-                default: 100
-        reclaimPolicy:
-          title: When no backend is left
+            Where the Endpoint is reachable from, and the component that
+            serves it. One is enough: a canary, blue/green or A/B test adds
+            the new version later from the Endpoint's Rollout tab.
+          type: object
+          ui:field: EndpointBackendsField
+          ui:options:
+            projectField: project_namespace
+        pathPrefix:
+          title: Path
           type: string
-          enum: [Delete, Retain]
-          enumNames:
-            - Delete the Endpoint and its URL
-            - Keep the Endpoint (Orphaned) for a new backend
-          default: Delete
+          description: Path clients call on the gateway, for example /payments. Defaults to /<name>.
+          pattern: '^/[a-z0-9]([-a-z0-9/._]*[a-z0-9])?$'
+        autoDeploy:
+          title: Deploy each release to the first environment
+          type: boolean
+          default: true
   steps:
     - id: create-endpoint
       name: Create OpenChoreo Endpoint
@@ -106,8 +94,11 @@ spec:
         description: ${{ parameters.description }}
         typeKind: ${{ parameters.typeKind }}
         typeName: ${{ parameters.typeName }}
-        backends: ${{ parameters.backends }}
-        reclaimPolicy: ${{ parameters.reclaimPolicy }}
+        backends: ${{ parameters.endpointRouting.backends }}
+        visibility: ${{ parameters.endpointRouting.visibility }}
+        autoDeploy: ${{ parameters.autoDeploy }}
+        parameters:
+          pathPrefix: ${{ parameters.pathPrefix }}
   output:
     links:
       - title: View Endpoint

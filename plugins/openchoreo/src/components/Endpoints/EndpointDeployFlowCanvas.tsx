@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from 'react';
 import { Box, useMediaQuery, useTheme } from '@material-ui/core';
 import { useChoreoTokens } from '@openchoreo/backstage-design-system';
@@ -21,7 +22,6 @@ import {
 import type { EndpointEnvironment } from '@openchoreo/backstage-plugin-common';
 import { useResourceDeployFlowCanvasStyles } from '../ResourceEnvironments/styles';
 import { EndpointMiniEnvironmentNode } from './EndpointMiniEnvironmentNode';
-import { EndpointTrafficCard } from './EndpointTrafficCard';
 
 const SETUP_NODE_ID = '__setup__';
 
@@ -29,21 +29,27 @@ interface EndpointDeployFlowCanvasProps {
   environments: EndpointEnvironment[];
   selectedEnvName: string | null;
   selectedSetup: boolean;
+  /** The leading tile (Set up on Deploy, Rollout on Rollout). */
+  setupTile: ReactNode;
+  /** Accessible name of the leading tile. */
+  setupLabel: string;
   onSelectEnv: (envName: string | null) => void;
   onSelectSetup: () => void;
   onClearSelection: () => void;
 }
 
 /**
- * Pipeline DAG for an Endpoint's environments. The Resource deploy canvas
- * (ResourceDeployFlowCanvas) with Endpoint tiles: the leading tile shows the
- * Endpoint's latest traffic split, and each environment tile shows the split
- * it is serving. Shares the dagre layout, pan/zoom and styles.
+ * Pipeline DAG for an Endpoint's environments: the Resource deploy canvas
+ * (ResourceDeployFlowCanvas) with Endpoint tiles. Both the Deploy and the
+ * Rollout tab use it; only the leading tile and the tile mode differ.
+ * Shares the dagre layout, pan/zoom and styles.
  */
 export const EndpointDeployFlowCanvas = ({
   environments,
   selectedEnvName,
   selectedSetup,
+  setupTile,
+  setupLabel,
   onSelectEnv,
   onSelectSetup,
   onClearSelection,
@@ -163,7 +169,7 @@ export const EndpointDeployFlowCanvas = ({
               role="button"
               tabIndex={0}
               aria-pressed={selectedSetup}
-              aria-label="Select traffic split"
+              aria-label={setupLabel}
               onClick={onSelectSetup}
               onKeyDown={e => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -178,7 +184,7 @@ export const EndpointDeployFlowCanvas = ({
                 height: setupNode.height,
               }}
             >
-              <EndpointTrafficCard selected={selectedSetup} />
+              {setupTile}
             </Box>
           )}
 

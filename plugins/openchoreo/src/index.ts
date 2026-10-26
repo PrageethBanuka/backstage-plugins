@@ -19,8 +19,9 @@ export type {
 export { ResourceEnvironments } from './components/ResourceEnvironments';
 export { ProjectEnvironments } from './components/ProjectEnvironments';
 export {
-  EndpointDeploy,
   ComponentEndpoints,
+  EndpointDeploy,
+  EndpointRollout,
   TrafficCard,
 } from './components/Endpoints';
 export { ApiTryOut } from './components/ApiTryOut';

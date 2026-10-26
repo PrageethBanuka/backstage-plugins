@@ -123,9 +123,6 @@ export const WorkloadConfigPage = ({
     string,
     unknown
   > | null>(null);
-  const [endpointsExposedProblem, setEndpointsExposedProblem] = useState<
-    string | undefined
-  >();
   const [componentParameters, setComponentParameters] = useState<
     Record<string, unknown>
   >({});
@@ -328,12 +325,6 @@ export const WorkloadConfigPage = ({
 
         try {
           const componentDetails = await client.getComponentDetails(entity);
-          const exposed = componentDetails?.conditions?.find(
-            c => c.type === 'EndpointsExposed',
-          );
-          setEndpointsExposedProblem(
-            exposed?.status === 'False' ? exposed.message : undefined,
-          );
           const params = componentDetails?.parameters;
           if (
             params &&
@@ -718,7 +709,6 @@ export const WorkloadConfigPage = ({
             hasParameterChanges={hasParameterChanges}
             workloadChanges={workloadChanges}
             parameterChangesCount={parameterChanges.length}
-            endpointsExposedProblem={endpointsExposedProblem}
           />
         </WorkloadProvider>
       )}

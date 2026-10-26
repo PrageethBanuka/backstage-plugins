@@ -1,5 +1,4 @@
 import { FC, useEffect } from 'react';
-import { Alert } from '@material-ui/lab';
 import { WorkloadEndpoint } from '@openchoreo/backstage-plugin-common';
 import {
   EndpointList,
@@ -17,8 +16,6 @@ interface EndpointContentProps {
   onAddEndpoint: () => string;
   onRemoveEndpoint: (endpointName: string) => void;
   disabled: boolean;
-  /** Why an endpoint can't be served through its Endpoint, if any. */
-  exposedProblem?: string;
 }
 
 export const EndpointContent: FC<EndpointContentProps> = ({
@@ -27,7 +24,6 @@ export const EndpointContent: FC<EndpointContentProps> = ({
   onAddEndpoint,
   onRemoveEndpoint,
   disabled,
-  exposedProblem,
 }) => {
   const { setEditingSection } = useWorkloadContext();
 
@@ -43,20 +39,12 @@ export const EndpointContent: FC<EndpointContentProps> = ({
   }, [editBuffer.isAnyRowEditing, setEditingSection]);
 
   return (
-    <>
-      {exposedProblem && (
-        <Alert severity="warning" style={{ marginBottom: 8 }}>
-          {exposedProblem}. The component's own route keeps serving until this
-          is fixed.
-        </Alert>
-      )}
-      <EndpointList
-        endpoints={endpoints}
-        disabled={disabled}
-        editBuffer={editBuffer}
-        onRemoveEndpoint={onRemoveEndpoint}
-        onAddEndpoint={onAddEndpoint}
-      />
-    </>
+    <EndpointList
+      endpoints={endpoints}
+      disabled={disabled}
+      editBuffer={editBuffer}
+      onRemoveEndpoint={onRemoveEndpoint}
+      onAddEndpoint={onAddEndpoint}
+    />
   );
 };

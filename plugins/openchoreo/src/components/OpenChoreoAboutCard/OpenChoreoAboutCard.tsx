@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { CHOREO_ANNOTATIONS } from '@openchoreo/backstage-plugin-common';
 
 import { makeStyles } from '@material-ui/core/styles';
 import Card from '@material-ui/core/Card';
@@ -243,6 +244,29 @@ function OpenChoreoAboutContent({ entity }: { entity: Entity }) {
           </AboutField>
         </Grid>
       )}
+      {entity.kind === 'Endpoint' &&
+        entity.metadata.annotations?.[CHOREO_ANNOTATIONS.ENDPOINT_CR_TYPE] && (
+          <Grid item xs={12} sm={6} lg={4}>
+            <AboutField label="Type">
+              {(() => {
+                const typeName =
+                  entity.metadata.annotations[
+                    CHOREO_ANNOTATIONS.ENDPOINT_CR_TYPE
+                  ];
+                const isCluster =
+                  entity.metadata.annotations[
+                    CHOREO_ANNOTATIONS.ENDPOINT_CR_TYPE_KIND
+                  ] === 'ClusterEndpointType';
+                const to = isCluster
+                  ? `/catalog/openchoreo-cluster/clusterendpointtype/${typeName}`
+                  : `/catalog/${
+                      entity.metadata.namespace ?? 'default'
+                    }/endpointtype/${typeName}`;
+                return <Link to={to}>{typeName}</Link>;
+              })()}
+            </AboutField>
+          </Grid>
+        )}
       {isSystem &&
         entity.metadata.annotations?.['openchoreo.io/project-type'] && (
           <Grid item xs={12} sm={6} lg={4}>

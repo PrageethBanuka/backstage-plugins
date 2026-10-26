@@ -23,6 +23,7 @@ import CloudOutlinedIcon from '@material-ui/icons/CloudOutlined';
 import ExtensionOutlinedIcon from '@material-ui/icons/ExtensionOutlined';
 import CategoryOutlinedIcon from '@material-ui/icons/CategoryOutlined';
 import LayersOutlinedIcon from '@material-ui/icons/LayersOutlined';
+import CallSplitIcon from '@material-ui/icons/CallSplit';
 import StorageOutlinedIcon from '@material-ui/icons/StorageOutlined';
 import SettingsApplicationsOutlinedIcon from '@material-ui/icons/SettingsApplicationsOutlined';
 import DescriptionOutlinedIcon from '@material-ui/icons/DescriptionOutlined';
@@ -49,6 +50,8 @@ const TEMPLATE_TYPE_ICONS: Record<string, React.ReactElement> = {
   ClusterComponentType: <CategoryOutlinedIcon />,
   ResourceType: <LayersOutlinedIcon />,
   ClusterResourceType: <LayersOutlinedIcon />,
+  EndpointType: <CallSplitIcon />,
+  ClusterEndpointType: <CallSplitIcon />,
   Resource: <StorageOutlinedIcon />,
   ComponentWorkflow: <SettingsApplicationsOutlinedIcon />,
   Namespace: <ApartmentOutlinedIcon />,

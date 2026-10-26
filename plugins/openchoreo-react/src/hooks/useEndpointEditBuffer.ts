@@ -73,7 +73,6 @@ function isEndpointValid(
     return false;
   if (endpoint.type === 'gRPC' && !endpoint.schema?.content?.trim())
     return false;
-  if (endpoint.endpointType && !endpoint.endpointType.name.trim()) return false;
   return true;
 }
 

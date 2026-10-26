@@ -7,7 +7,7 @@ import {
 } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
 import { useEntity } from '@backstage/plugin-catalog-react';
-import { Box, Button, Typography } from '@material-ui/core';
+import { Box, Button, Tooltip, Typography } from '@material-ui/core';
 import AddIcon from '@material-ui/icons/Add';
 import { Link as RouterLink } from 'react-router-dom';
 import { makeStyles } from '@material-ui/core/styles';
@@ -23,6 +23,7 @@ import {
 } from '@openchoreo/backstage-plugin-common';
 import { openChoreoClientApiRef } from '../../api/OpenChoreoClientApi';
 import { getErrorMessage, isForbiddenError } from '../../utils/errorUtils';
+import { useEnvironmentDetailPanelStyles } from '../Environments/styles';
 import { deriveEndpointBadgeStatus, ENDPOINT_BADGE_LABEL } from './badgeStatus';
 
 const useStyles = makeStyles(theme => ({
@@ -78,6 +79,7 @@ const CreateEndpointButton = () => {
  */
 export const ComponentEndpoints = () => {
   const classes = useStyles();
+  const urlClasses = useEnvironmentDetailPanelStyles();
   const { entity } = useEntity();
   const client = useApi(openChoreoClientApiRef);
   const [entries, setEntries] = useState<ComponentTrafficEntry[] | null>(null);
@@ -137,9 +139,11 @@ export const ComponentEndpoints = () => {
       title: 'Endpoint',
       field: 'endpointName',
       render: e => (
-        <Link to={`/catalog/${namespace}/endpoint/${e.endpointName}`}>
-          <strong>{e.endpointName}</strong>
-        </Link>
+        <Box>
+          <Link to={`/catalog/${namespace}/endpoint/${e.endpointName}`}>
+            <strong>{e.endpointName}</strong>
+          </Link>
+        </Box>
       ),
     },
     { title: 'Environment', field: 'environment' },
@@ -175,11 +179,25 @@ export const ComponentEndpoints = () => {
     {
       title: 'Invoke URL',
       field: 'invokeURL',
-      render: e => (
-        <Typography variant="caption" color="textSecondary">
-          {e.invokeURL ?? '—'}
-        </Typography>
-      ),
+      render: e =>
+        e.invokeURL ? (
+          <Box className={urlClasses.inlineUrlRow}>
+            <Tooltip title={e.invokeURL}>
+              <a
+                href={e.invokeURL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={urlClasses.inlineUrl}
+              >
+                {e.invokeURL}
+              </a>
+            </Tooltip>
+          </Box>
+        ) : (
+          <Typography variant="caption" color="textSecondary">
+            —
+          </Typography>
+        ),
     },
   ];
 

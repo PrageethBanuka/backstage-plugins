@@ -125,7 +125,7 @@ export const EndpointReleasesDialog = ({
     deleteBlockedReason =
       "This is the Endpoint's latest release (its current split).";
   } else if (pinnedIn.length > 0) {
-    deleteBlockedReason = `Pinned in ${pinnedIn.join(
+    deleteBlockedReason = `Running in ${pinnedIn.join(
       ', ',
     )}; roll those environments to another release first.`;
   } else if (!trafficPerm.loading && !trafficPerm.canChangeTraffic) {
@@ -157,7 +157,7 @@ export const EndpointReleasesDialog = ({
       aria-labelledby="endpoint-releases-dialog-title"
     >
       <DialogTitle id="endpoint-releases-dialog-title">
-        Releases · {environment?.displayName}
+        Version history · {environment?.displayName}
       </DialogTitle>
       <DialogContent dividers className={classes.content}>
         <Box className={classes.listPane}>
@@ -174,7 +174,7 @@ export const EndpointReleasesDialog = ({
                     <span className={classes.releaseName}>
                       {r.name}
                       {r.name === latest ? ' · latest' : ''}
-                      {r.name === pinned ? ' · pinned' : ''}
+                      {r.name === pinned ? ' · running here' : ''}
                     </span>
                   }
                   secondary={
@@ -190,8 +190,9 @@ export const EndpointReleasesDialog = ({
             component="p"
             style={{ padding: '8px 16px' }}
           >
-            Releases are named by their split, so saving a split again reuses
-            its release.
+            Each saved change to the Endpoint's routing is a version here. A
+            version is named by its contents, so saving the same routing again
+            reuses it.
           </Typography>
         </Box>
         <Box className={classes.detailPane}>
@@ -207,14 +208,14 @@ export const EndpointReleasesDialog = ({
               {missing.length > 0 && (
                 <Typography variant="body2" color="error">
                   {missing.join(', ')} {missing.length === 1 ? 'is' : 'are'} not
-                  deployed in {environment?.displayName}, so this release cannot
-                  route there.
+                  deployed in {environment?.displayName}, so this version can't
+                  run there.
                 </Typography>
               )}
             </>
           ) : (
             <Typography variant="body2" color="textSecondary">
-              Select a release.
+              Select a version.
             </Typography>
           )}
           {deleteError && <Alert severity="error">{deleteError}</Alert>}
@@ -237,7 +238,7 @@ export const EndpointReleasesDialog = ({
                 }
                 onClick={handleDelete}
               >
-                {deleting ? 'Deleting...' : 'Delete release'}
+                {deleting ? 'Deleting...' : 'Delete version'}
               </Button>
             </span>
           </Tooltip>
@@ -264,8 +265,10 @@ export const EndpointReleasesDialog = ({
               onClick={() => release && onPin(release.name)}
             >
               {isPinning
-                ? 'Pinning...'
-                : `Pin to ${environment?.displayName ?? 'environment'}`}
+                ? 'Going back...'
+                : `Go back to this in ${
+                    environment?.displayName ?? 'environment'
+                  }`}
             </Button>
           </span>
         </Tooltip>

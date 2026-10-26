@@ -28,7 +28,7 @@ const ALPHA_EXTENSION_NAMES = [
   // system-page
   ['entity-content', 'project-deploy'],
   ['entity-content', 'endpoint-deploy'],
-  ['entity-card', 'endpoint-traffic'],
+  ['entity-content', 'endpoint-rollout'],
   ['entity-card', 'endpoint-deployments'],
   ['entity-card', 'endpoint-backends'],
   ['entity-content', 'component-endpoints'],
@@ -71,6 +71,7 @@ const ALPHA_EXTENSION_NAMES = [
   // type families
   ['entity-card', 'component-type-overview'],
   ['entity-card', 'resource-type-overview'],
+  ['entity-card', 'endpoint-type-overview'],
   ['entity-card', 'trait-type-overview'],
   // workflow family
   ['entity-card', 'workflow-overview'],
@@ -103,6 +104,7 @@ const ALPHA_EXTENSION_NAMES = [
   ['scaffolder-form-field', 'project-namespace-field'],
   ['scaffolder-form-field', 'project-parameters-field'],
   ['scaffolder-form-field', 'project-type-yaml-editor'],
+  ['scaffolder-form-field', 'endpoint-backends-field'],
   ['scaffolder-form-field', 'resource-name-picker'],
   ['scaffolder-form-field', 'resource-parameters-field'],
   ['scaffolder-form-field', 'resource-type-yaml-editor'],
@@ -126,6 +128,7 @@ const ALPHA_EXTENSION_NAMES = [
   ['entity-content-layout', 'deployment-pipeline-overview'],
   ['entity-content-layout', 'component-type-overview'],
   ['entity-content-layout', 'resource-type-overview'],
+  ['entity-content-layout', 'endpoint-type-overview'],
   ['entity-content-layout', 'project-type-overview'],
   ['entity-content-layout', 'trait-type-overview'],
   ['entity-content-layout', 'workflow-overview-layout'],

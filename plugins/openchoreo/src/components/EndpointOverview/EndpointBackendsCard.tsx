@@ -1,14 +1,21 @@
-import { Box, Typography } from '@material-ui/core';
+import { Box, Button, Chip, Typography } from '@material-ui/core';
 import { Link } from '@backstage/core-components';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { Card, Skeleton } from '@openchoreo/backstage-design-system';
 import { useOverviewCardStyles } from '../Environments/OverviewCard/styles';
 import { backendKey, sharePercents } from '../Endpoints/endpointUi';
+import {
+  inRollout,
+  stageText,
+  STRATEGY_COPY,
+} from '../Endpoints/endpointRolloutUi';
 import { useEndpointOverview } from './useEndpointOverview';
 
 /**
  * Endpoint Overview card: the components that receive traffic, with their
- * share and how many environments each is deployed in.
+ * share and how many environments each is deployed in. While a rollout
+ * runs, a short summary links to the Rollout tab; there is no separate
+ * rollout card, so a basic Endpoint's Overview matches a Resource's.
  */
 export const EndpointBackendsCard = () => {
   const classes = useOverviewCardStyles();
@@ -80,6 +87,48 @@ export const EndpointBackendsCard = () => {
               </Box>
             );
           })}
+          {endpoint?.rollout && (
+            <Box
+              borderTop={1}
+              borderColor="divider"
+              pt={1}
+              display="flex"
+              flexDirection="column"
+              gridGap={4}
+            >
+              <Box
+                display="flex"
+                alignItems="center"
+                justifyContent="space-between"
+              >
+                <Typography variant="body2">
+                  <strong>Rollout</strong>
+                </Typography>
+                <Chip
+                  size="small"
+                  color="primary"
+                  label={STRATEGY_COPY[endpoint.rollout.strategy].name}
+                />
+              </Box>
+              <Typography variant="caption" color="textSecondary">
+                {endpoint.rollout.stable} → {endpoint.rollout.candidate}
+                {environments
+                  .filter(e => inRollout(e, endpoint.rollout!))
+                  .map(
+                    e =>
+                      ` · ${e.displayName}: ${stageText(e, endpoint.rollout!)}`,
+                  )
+                  .join('')}
+              </Typography>
+              <Box>
+                <Link to="rollout" style={{ textDecoration: 'none' }}>
+                  <Button variant="outlined" color="primary" size="small">
+                    Open rollout
+                  </Button>
+                </Link>
+              </Box>
+            </Box>
+          )}
         </Box>
       )}
     </Card>

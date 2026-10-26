@@ -14,6 +14,8 @@ export function mapKindToApiKind(backstageKind: string): PlatformResourceKind {
       return 'components';
     case 'resource':
       return 'resources';
+    case 'endpoint':
+      return 'endpoints';
     case 'componenttype':
       return 'componenttypes';
     case 'resourcetype':
@@ -74,6 +76,8 @@ export function mapKindToCrdKind(backstageKind: string): string {
       return 'Component';
     case 'resource':
       return 'Resource';
+    case 'endpoint':
+      return 'Endpoint';
     case 'componenttype':
       return 'ComponentType';
     case 'resourcetype':
@@ -171,6 +175,7 @@ export function isSupportedKind(kind: string): boolean {
     'domain',
     'component',
     'resource',
+    'endpoint',
     'componenttype',
     'resourcetype',
     'projecttype',

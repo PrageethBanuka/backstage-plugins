@@ -31,6 +31,6 @@ export const ENDPOINT_BADGE_LABEL: Record<EndpointRoutingStatus, string> = {
   Applying: 'Applying',
   BackendsUnresolved: 'Needs attention',
   Failed: 'Failed',
-  Releasing: 'Handing back',
+  Releasing: 'Returning traffic',
   NotRouted: 'Not routed',
 };

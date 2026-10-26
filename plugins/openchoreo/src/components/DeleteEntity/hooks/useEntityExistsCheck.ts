@@ -29,6 +29,8 @@ const KIND_DISPLAY_NAMES: Record<string, string> = {
   projecttype: 'Project Type',
   clustercomponenttype: 'Cluster Component Type',
   clusterresourcetype: 'Cluster Resource Type',
+  endpointtype: 'Endpoint Type',
+  clusterendpointtype: 'Cluster Endpoint Type',
   clusterprojecttype: 'Cluster Project Type',
   traittype: 'Trait Type',
   clustertraittype: 'Cluster Trait Type',

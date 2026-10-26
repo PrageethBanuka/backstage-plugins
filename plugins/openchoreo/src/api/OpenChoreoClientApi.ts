@@ -6,10 +6,16 @@ import type {
   ReleaseBindingCondition,
   ComponentTrafficEntry,
   EndpointBackendWeight,
-  EndpointReclaimPolicy,
+  EndpointRule,
+  EndpointTypeDetails,
+  EndpointVisibility,
+  EndpointWeightOverride,
+  RolloutActionResult,
+  RolloutPlan,
   EndpointEnvironment,
   EndpointReleaseSummary,
   EndpointSummary,
+  EndpointCandidate,
 } from '@openchoreo/backstage-plugin-common';
 import type { Environment } from '../components/RuntimeLogs/types';
 
@@ -576,6 +582,7 @@ export type PlatformResourceKind =
   | 'resourcetypes'
   | 'projecttypes'
   | 'resources'
+  | 'endpoints'
   | 'traits'
   | 'workflows'
   | 'component-workflows'
@@ -772,6 +779,15 @@ export interface OpenChoreoClientApi {
   fetchProjectEndpoints(entity: Entity): Promise<EndpointSummary[]>;
 
   /**
+   * List a project's components and the workload endpoints they have
+   * deployed, for picking a new Endpoint's URL and backends.
+   */
+  fetchEndpointCandidates(
+    namespaceName: string,
+    projectName: string,
+  ): Promise<EndpointCandidate[]>;
+
+  /**
    * List the Endpoints that send traffic to a Component entity, one entry
    * per environment, with the component's live share.
    */
@@ -807,17 +823,73 @@ export interface OpenChoreoClientApi {
    */
   deleteEndpointRelease(entity: Entity, releaseName: string): Promise<void>;
 
-  /** Set what happens to the Endpoint when no backend is left. */
-  updateEndpointReclaimPolicy(
+  /** Read an EndpointType or ClusterEndpointType entity's definition. */
+  fetchEndpointType(entity: Entity): Promise<EndpointTypeDetails>;
+
+  /**
+   * Replace the Endpoint's routing rules, and optionally its backends in the
+   * same update (a strategy adds a backend and its rule together). Cuts a new
+   * release.
+   */
+  updateEndpointRules(
     entity: Entity,
-    reclaimPolicy: EndpointReclaimPolicy,
-  ): Promise<{ reclaimPolicy: EndpointReclaimPolicy }>;
+    rules: EndpointRule[],
+    backends?: EndpointBackendWeight[],
+  ): Promise<{ latestRelease?: string; changed: boolean }>;
+
+  /**
+   * Set an environment's weights on its binding. Moves that environment's
+   * traffic without a new release; an empty list clears the overrides.
+   */
+  updateEndpointOverrides(
+    entity: Entity,
+    environment: string,
+    overrides: EndpointWeightOverride[],
+  ): Promise<{ bindingName: string; applied: boolean }>;
+
+  /**
+   * Start a rollout: adds the new version at 0% with its preview rule, and
+   * starts it in the given environments.
+   */
+  startRollout(
+    entity: Entity,
+    plan: RolloutPlan,
+    environments: string[],
+  ): Promise<RolloutActionResult>;
+
+  /** Move one environment to a stage: the new version gets `percent`. */
+  setRolloutStage(
+    entity: Entity,
+    environment: string,
+    percent: number,
+  ): Promise<{ bindingName: string; applied: boolean }>;
+
+  /** Promote the rollout from one environment to the next, at 0%. */
+  promoteRollout(
+    entity: Entity,
+    from: string,
+    to: string,
+  ): Promise<RolloutActionResult>;
+
+  /** Complete (keep the new version) or abandon (keep stable) the rollout. */
+  finishRollout(
+    entity: Entity,
+    outcome: 'complete' | 'abandon',
+  ): Promise<RolloutActionResult>;
+
+  /** Change the Endpoint's visibility or autoDeploy. */
+  updateEndpointSettings(
+    entity: Entity,
+    settings: { visibility?: EndpointVisibility[]; autoDeploy?: boolean },
+  ): Promise<{ latestRelease?: string }>;
 
   /** Pin an environment to a release: roll out, promote or roll back. */
   updateEndpointReleaseBinding(
     entity: Entity,
     environment: string,
     releaseName: string,
+    /** Weights to set in the same update; [] clears them. */
+    backendOverrides?: EndpointWeightOverride[],
   ): Promise<{ bindingName: string; created: boolean }>;
 
   /** Stop routing an Endpoint in an environment. */
@@ -825,6 +897,12 @@ export interface OpenChoreoClientApi {
     entity: Entity,
     environment: string,
   ): Promise<{ bindingName: string }>;
+
+  /** An environment's EndpointReleaseBinding as stored: metadata, spec, status. */
+  fetchEndpointReleaseBinding(
+    entity: Entity,
+    endpointReleaseBindingName: string,
+  ): Promise<Record<string, unknown>>;
 
   /** Live K8s resources applied by an environment's EndpointReleaseBinding. */
   fetchEndpointResourceTree(

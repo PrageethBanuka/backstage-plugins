@@ -174,12 +174,12 @@ const resourceDefinitionEntityContent = EntityContentBlueprint.make({
     title: 'Definition',
     group: 'definition',
     // API entities are excluded — upstream api-docs owns their /definition tab.
-    // Endpoints are excluded until the definition editor supports them (it
-    // needs the Endpoint kind in the platform-resource service and its own
-    // update/delete permissions).
+    // Endpoint types are read-only: the API serves list and get only.
     filter: entity =>
       isOpenChoreoManagedEntity(entity) &&
-      !['api', 'endpoint'].includes(entity.kind.toLowerCase()),
+      !['api', 'endpointtype', 'clusterendpointtype'].includes(
+        entity.kind.toLowerCase(),
+      ),
     loader: () =>
       import('./components/ResourceDefinition').then(m => (
         <m.ResourceDefinitionTab />
@@ -252,11 +252,13 @@ const projectDeployEntityContent = EntityContentBlueprint.make({
   },
 });
 
-// ─── Endpoint page (managed) tab + cards ──────────────────────────────────
+// ─── Endpoint page (managed) tabs + cards ─────────────────────────────────
 //
 // An Endpoint is a project-level entity at the same level as a Resource: its
-// Deploy tab is the Resource Deploy tab with a Traffic tile in place of the
-// "Set up" tile. Components list the Endpoints that route to them.
+// Deploy tab is the Resource Deploy tab. Progressive delivery (canary,
+// blue/green, A/B) is a separate Rollout tab on the same canvas, so
+// Endpoints with one version never see it. Components list the Endpoints
+// that route to them.
 
 const endpointDeployEntityContent = EntityContentBlueprint.make({
   name: 'endpoint-deploy',
@@ -270,14 +272,15 @@ const endpointDeployEntityContent = EntityContentBlueprint.make({
   },
 });
 
-const endpointTrafficOverviewCard = EntityCardBlueprint.make({
-  name: 'endpoint-traffic',
+const endpointRolloutEntityContent = EntityContentBlueprint.make({
+  name: 'endpoint-rollout',
   params: {
+    path: '/rollout',
+    title: 'Rollout',
+    group: 'deploy',
     filter: isOpenChoreoManagedOfKind('endpoint'),
     loader: () =>
-      import('./components/EndpointOverview').then(m => (
-        <m.EndpointTrafficOverviewCard />
-      )),
+      import('./components/Endpoints').then(m => <m.EndpointRollout />),
   },
 });
 
@@ -715,6 +718,17 @@ const resourceTypeOverviewCard = EntityCardBlueprint.make({
   },
 });
 
+const endpointTypeOverviewCard = EntityCardBlueprint.make({
+  name: 'endpoint-type-overview',
+  params: {
+    filter: isOpenChoreoManagedOfKind('endpointtype', 'clusterendpointtype'),
+    loader: () =>
+      import('./components/EndpointTypeOverview').then(m => (
+        <m.EndpointTypeOverviewCard />
+      )),
+  },
+});
+
 const traitTypeOverviewCard = EntityCardBlueprint.make({
   name: 'trait-type-overview',
   params: {
@@ -959,6 +973,17 @@ const resourceTypeOverviewLayout = EntityContentLayoutBlueprint.make({
   },
 });
 
+const endpointTypeOverviewLayout = EntityContentLayoutBlueprint.make({
+  name: 'endpoint-type-overview',
+  params: {
+    filter: isOpenChoreoManagedOfKind('endpointtype', 'clusterendpointtype'),
+    loader: () =>
+      import('./extensions/entityLayouts/EndpointTypeOverviewLayout').then(
+        m => m.default,
+      ),
+  },
+});
+
 const projectTypeOverviewLayout = EntityContentLayoutBlueprint.make({
   name: 'project-type-overview',
   params: {
@@ -1103,7 +1128,7 @@ export const openChoreoPlugin = createFrontendPlugin({
     runtimeHealthCard,
     projectDeployEntityContent,
     endpointDeployEntityContent,
-    endpointTrafficOverviewCard,
+    endpointRolloutEntityContent,
     endpointDeploymentsCard,
     endpointBackendsCard,
     componentEndpointsEntityContent,
@@ -1138,6 +1163,7 @@ export const openChoreoPlugin = createFrontendPlugin({
     promotionPathsCard,
     componentTypeOverviewCard,
     resourceTypeOverviewCard,
+    endpointTypeOverviewCard,
     traitTypeOverviewCard,
     workflowOverviewCard,
     componentWorkflowOverviewCard,
@@ -1159,6 +1185,7 @@ export const openChoreoPlugin = createFrontendPlugin({
     deploymentPipelineOverviewLayout,
     componentTypeOverviewLayout,
     resourceTypeOverviewLayout,
+    endpointTypeOverviewLayout,
     projectTypeOverviewLayout,
     traitTypeOverviewLayout,
     workflowOverviewLayout,

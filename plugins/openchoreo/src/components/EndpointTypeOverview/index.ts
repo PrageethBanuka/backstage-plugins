@@ -1,0 +1,1 @@
+export { EndpointTypeOverviewCard } from './EndpointTypeOverviewCard';
