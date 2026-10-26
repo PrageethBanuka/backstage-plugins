@@ -10,7 +10,9 @@ import {
   rolloutStages,
   rolloutWeights,
   serializeRollout,
+  completeSplit,
   stableLabel,
+  untouchedSplit,
 } from './endpointRollout';
 import { finishStrategy } from './endpointRules';
 
@@ -77,7 +79,7 @@ describe('rolloutWeights', () => {
     ]);
   });
 
-  describe('with two stable backends', () => {
+  describe('next to a backend the rollout leaves alone', () => {
     const split: EndpointRollout = {
       ...canary,
       baseline: [
@@ -88,14 +90,13 @@ describe('rolloutWeights', () => {
     const names = ['trips-python', 'trips-legacy', 'trips-go'];
 
     it.each([
-      [0, [70, 30, 0]],
-      [25, [53, 22, 25]],
-      [50, [35, 15, 50]],
-      [100, [0, 0, 100]],
-    ])('shares %i%% in the baseline ratio', (percent, weights) => {
+      [0, [7000, 3000, 0]],
+      [25, [5250, 3000, 1750]],
+      [50, [3500, 3000, 3500]],
+      [100, [0, 3000, 7000]],
+    ])('moves %i%% of the replaced traffic only', (percent, weights) => {
       const out = rolloutWeights(split, names, percent);
       expect(out.map(w => w.weight)).toEqual(weights);
-      expect(out.reduce((sum, w) => sum + w.weight, 0)).toBe(100);
       expect(
         rolloutPosition(
           split,
@@ -104,11 +105,18 @@ describe('rolloutWeights', () => {
       ).toBe(percent);
     });
 
-    it('names both on screen', () => {
-      expect(stableLabel(split)).toBe('trips-python + trips-legacy');
-      expect(rolloutStages(split)[0].action).toBe(
-        'Roll back to trips-python + trips-legacy',
-      );
+    it('leaves the untouched backend in place when it completes', () => {
+      expect(untouchedSplit(split)).toEqual([
+        { name: 'trips-legacy', weight: 30 },
+      ]);
+      expect(completeSplit(split)).toEqual([
+        { name: 'trips-legacy', weight: 30 },
+        { name: 'trips-go', weight: 70 },
+      ]);
+      expect(completeSplit(canary)).toEqual([
+        { name: 'trips-go', weight: 100 },
+      ]);
+      expect(stableLabel(split)).toBe('trips-python');
     });
   });
 });
@@ -178,7 +186,7 @@ describe('planRollout', () => {
     });
   });
 
-  it('takes the new version from the whole current split', () => {
+  it('records the whole current split', () => {
     const plan = planRollout(
       [
         { componentName: 'trips-legacy', endpoint: 'http', weight: 30 },
@@ -195,6 +203,21 @@ describe('planRollout', () => {
       { name: 'trips-legacy', weight: 30 },
       { name: 'trips-python', weight: 70 },
     ]);
+  });
+
+  it('replaces the version picked, or else the busiest one', () => {
+    const backends = [
+      { componentName: 'trips-legacy', endpoint: 'http', weight: 30 },
+      { componentName: 'trips-python', endpoint: 'http', weight: 70 },
+    ];
+    const plan = (replaces?: string) =>
+      planRollout(backends, [], {
+        strategy: 'canary',
+        candidate: { componentName: 'trips-go', endpoint: 'http' },
+        replaces,
+      }).rollout.stable;
+    expect(plan('trips-legacy')).toBe('trips-legacy');
+    expect(plan('nope')).toBe('trips-python');
   });
 });
 

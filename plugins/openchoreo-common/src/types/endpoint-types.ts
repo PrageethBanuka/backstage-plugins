@@ -112,9 +112,9 @@ export interface EndpointRollout {
   candidate: string;
   /**
    * The Endpoint's other backends and their weights when the rollout
-   * started. The candidate takes its share from all of them in this ratio,
-   * and abandoning restores it. Absent on rollouts started before it was
-   * recorded: `stable` alone is the stable side then.
+   * started. The candidate takes its share from `stable` only; the rest
+   * keep their weights, and abandoning restores the whole split. Absent on
+   * rollouts started before it was recorded: `stable` alone then.
    */
   baseline?: EndpointWeightOverride[];
   /** The candidate's percent at each stage after the first (which is 0). */
@@ -141,6 +141,11 @@ export interface RolloutPlan {
   /** Canary only; defaults to 5, 25, 50, 100. */
   steps?: number[];
   preview?: RolloutPreview;
+  /**
+   * The backend the new version replaces; defaults to the one with the most
+   * traffic. Other backends keep their weights.
+   */
+  replaces?: string;
 }
 
 /** A per-environment weight on an EndpointReleaseBinding. */
@@ -166,7 +171,10 @@ export interface EndpointCandidate {
     /** External URL in the first of those environments, if exposed. */
     externalURL?: string;
     /** Endpoints that already route this workload endpoint, and where. */
-    routedBy?: Array<{ endpointName: string; visibility: EndpointVisibility[] }>;
+    routedBy?: Array<{
+      endpointName: string;
+      visibility: EndpointVisibility[];
+    }>;
   }>;
 }
 

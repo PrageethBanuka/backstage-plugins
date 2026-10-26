@@ -30,20 +30,46 @@ export interface RolloutStage {
 }
 
 /**
- * The stable side of a rollout: the backends the candidate takes traffic
- * from, with their weights when it started. A rollout recorded before the
- * baseline was kept has `stable` alone.
+ * The Endpoint's split when the rollout started, which abandoning restores.
+ * A rollout recorded before the baseline was kept has `stable` alone.
  */
-export function stableSplit(rollout: EndpointRollout): EndpointWeightOverride[] {
+export function stableSplit(
+  rollout: EndpointRollout,
+): EndpointWeightOverride[] {
   const kept = (rollout.baseline ?? []).filter(b => b.weight > 0);
   return kept.length > 0 ? kept : [{ name: rollout.stable, weight: 100 }];
 }
 
-/** The stable side's name on screen, e.g. "trips-python + trips-legacy". */
+/**
+ * The backends outside the rollout: every version serving when it started
+ * other than the one it replaces. Like the other services on an Argo
+ * Rollouts or Flagger route, they keep their traffic throughout.
+ */
+export function untouchedSplit(
+  rollout: EndpointRollout,
+): EndpointWeightOverride[] {
+  return stableSplit(rollout).filter(
+    b => b.name !== rollout.stable && b.name !== rollout.candidate,
+  );
+}
+
+/** The version the rollout replaces, on screen. */
 export function stableLabel(rollout: EndpointRollout): string {
-  return stableSplit(rollout)
-    .map(b => b.name)
-    .join(' + ');
+  return rollout.stable;
+}
+
+/**
+ * The split a completed rollout leaves: the new version with the replaced
+ * version's weight, and every untouched backend as it was.
+ */
+export function completeSplit(
+  rollout: EndpointRollout,
+): EndpointWeightOverride[] {
+  const untouched = untouchedSplit(rollout);
+  if (untouched.length === 0) return [{ name: rollout.candidate, weight: 100 }];
+  const replaced =
+    stableSplit(rollout).find(b => b.name === rollout.stable)?.weight ?? 0;
+  return [...untouched, { name: rollout.candidate, weight: replaced }];
 }
 
 /**
@@ -137,11 +163,11 @@ export function rolloutPosition(
   rollout: EndpointRollout,
   weights: Record<string, number>,
 ): RolloutPosition {
-  const total = Object.values(weights).reduce((sum, w) => sum + w, 0);
-  const percent =
-    total > 0
-      ? Math.round(((weights[rollout.candidate] ?? 0) / total) * 100)
-      : 0;
+  // The candidate's share of the traffic it and the replaced version get;
+  // untouched backends are outside the rollout.
+  const candidate = weights[rollout.candidate] ?? 0;
+  const total = candidate + (weights[rollout.stable] ?? 0);
+  const percent = total > 0 ? Math.round((candidate / total) * 100) : 0;
   const index = rolloutStages(rollout).findIndex(s => s.percent === percent);
   return { index, percent, manual: index < 0 };
 }
@@ -158,27 +184,40 @@ export function nextRolloutStage(
   return stages[position.index + 1];
 }
 
+/** Weights total this much when untouched backends share the route. */
+const SHARED_TOTAL = 10000;
+
 /**
  * The binding weights that put an environment at `percent`: the candidate
- * gets it, the stable backends share the rest in their baseline ratio, and
- * any other backend gets 0. The weights add up to 100.
+ * gets that share of the replaced version's traffic, the replaced version
+ * the rest, untouched backends their baseline share, and any other backend
+ * 0. With nothing untouched the weights add up to 100; otherwise to 10000,
+ * so a step of a small slice still reads back exactly.
  */
 export function rolloutWeights(
   rollout: EndpointRollout,
   backendNames: string[],
   percent: number,
 ): EndpointWeightOverride[] {
-  const stable = new Map(
-    shareOut(
-      stableSplit(rollout).filter(
-        b => backendNames.includes(b.name) && b.name !== rollout.candidate,
-      ),
-      100 - percent,
-    ).map(b => [b.name, b.weight]),
+  const untouched = untouchedSplit(rollout).filter(b =>
+    backendNames.includes(b.name),
   );
+  const replaced =
+    stableSplit(rollout).find(b => b.name === rollout.stable)?.weight ?? 0;
+  const untouchedTotal = untouched.reduce((sum, b) => sum + b.weight, 0);
+  let slice = 100;
+  let others = new Map<string, number>();
+  if (untouched.length > 0 && replaced > 0) {
+    slice = Math.round((SHARED_TOTAL * replaced) / (replaced + untouchedTotal));
+    others = new Map(
+      shareOut(untouched, SHARED_TOTAL - slice).map(b => [b.name, b.weight]),
+    );
+  }
+  const candidate = Math.round((slice * percent) / 100);
   return backendNames.map(name => {
-    if (name === rollout.candidate) return { name, weight: percent };
-    return { name, weight: stable.get(name) ?? 0 };
+    if (name === rollout.candidate) return { name, weight: candidate };
+    if (name === rollout.stable) return { name, weight: slice - candidate };
+    return { name, weight: others.get(name) ?? 0 };
   });
 }
 
@@ -344,10 +383,12 @@ export function planRollout(
       : [100];
   if (steps[steps.length - 1] !== 100) steps.push(100);
   const candidateName = candidate.name ?? candidate.componentName;
-  // The candidate takes its traffic from every other backend, in the split
-  // they had when the rollout started; the main one names the stable side.
+  // The rollout replaces one version, the picked one or else the one with
+  // the most traffic; the others keep their weights (the baseline records
+  // the whole split for abandoning).
   const baseline = baselineOf(backends, candidateName);
   const stable =
+    baseline.find(b => b.name === plan.replaces && b.weight > 0)?.name ??
     [...baseline].sort((a, b) => b.weight - a.weight)[0]?.name ??
     candidateName;
   return {

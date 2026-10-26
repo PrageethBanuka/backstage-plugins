@@ -196,6 +196,8 @@ export {
   rolloutWeights,
   stableSplit,
   stableLabel,
+  untouchedSplit,
+  completeSplit,
   parseRollout,
   serializeRollout,
   currentRollout,
