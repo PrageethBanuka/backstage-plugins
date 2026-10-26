@@ -29,6 +29,48 @@ export interface RolloutStage {
   action: string;
 }
 
+/**
+ * The stable side of a rollout: the backends the candidate takes traffic
+ * from, with their weights when it started. A rollout recorded before the
+ * baseline was kept has `stable` alone.
+ */
+export function stableSplit(rollout: EndpointRollout): EndpointWeightOverride[] {
+  const kept = (rollout.baseline ?? []).filter(b => b.weight > 0);
+  return kept.length > 0 ? kept : [{ name: rollout.stable, weight: 100 }];
+}
+
+/** The stable side's name on screen, e.g. "trips-python + trips-legacy". */
+export function stableLabel(rollout: EndpointRollout): string {
+  return stableSplit(rollout)
+    .map(b => b.name)
+    .join(' + ');
+}
+
+/**
+ * Splits `total` across `weights` in their ratio as whole numbers that add
+ * up to `total` exactly (largest remainder).
+ */
+function shareOut(
+  weights: EndpointWeightOverride[],
+  total: number,
+): EndpointWeightOverride[] {
+  const sum = weights.reduce((acc, w) => acc + w.weight, 0);
+  if (sum <= 0) return weights.map(w => ({ ...w, weight: 0 }));
+  const exact = weights.map(w => (w.weight / sum) * total);
+  const out = exact.map(Math.floor);
+  let left = total - out.reduce((acc, w) => acc + w, 0);
+  exact
+    .map((x, i) => ({ i, rest: x - out[i] }))
+    .sort((a, b) => b.rest - a.rest)
+    .forEach(({ i }) => {
+      if (left > 0) {
+        out[i] += 1;
+        left -= 1;
+      }
+    });
+  return weights.map((w, i) => ({ name: w.name, weight: out[i] }));
+}
+
 /** The default canary steps. */
 export const DEFAULT_CANARY_STEPS = [5, 25, 50, 100];
 
@@ -41,7 +83,7 @@ export function rolloutStages(rollout: EndpointRollout): RolloutStage[] {
           id: 'preview',
           percent: 0,
           label: 'Preview only',
-          action: `Switch back to ${rollout.stable}`,
+          action: `Switch back to ${stableLabel(rollout)}`,
         },
         {
           id: 'switched',
@@ -71,7 +113,7 @@ export function rolloutStages(rollout: EndpointRollout): RolloutStage[] {
           id: 'canary-0',
           percent: 0,
           label: 'Not started',
-          action: `Roll back to ${rollout.stable}`,
+          action: `Roll back to ${stableLabel(rollout)}`,
         },
         ...rollout.steps.map(p => ({
           id: p >= 100 ? 'canary-100' : `canary-${p}`,
@@ -118,18 +160,42 @@ export function nextRolloutStage(
 
 /**
  * The binding weights that put an environment at `percent`: the candidate
- * gets it, the stable version the rest, any other backend 0.
+ * gets it, the stable backends share the rest in their baseline ratio, and
+ * any other backend gets 0. The weights add up to 100.
  */
 export function rolloutWeights(
   rollout: EndpointRollout,
   backendNames: string[],
   percent: number,
 ): EndpointWeightOverride[] {
+  const stable = new Map(
+    shareOut(
+      stableSplit(rollout).filter(
+        b => backendNames.includes(b.name) && b.name !== rollout.candidate,
+      ),
+      100 - percent,
+    ).map(b => [b.name, b.weight]),
+  );
   return backendNames.map(name => {
     if (name === rollout.candidate) return { name, weight: percent };
-    if (name === rollout.stable) return { name, weight: 100 - percent };
-    return { name, weight: 0 };
+    return { name, weight: stable.get(name) ?? 0 };
   });
+}
+
+const isWeight = (b: any): b is EndpointWeightOverride =>
+  typeof b?.name === 'string' &&
+  typeof b?.weight === 'number' &&
+  Number.isFinite(b.weight) &&
+  b.weight >= 0;
+
+/** The backends other than `candidate`, with their current weights. */
+function baselineOf(
+  backends: EndpointBackendWeight[],
+  candidate: string,
+): EndpointWeightOverride[] {
+  return backends
+    .map(b => ({ name: b.name ?? b.componentName, weight: b.weight }))
+    .filter(b => b.name !== candidate);
 }
 
 /** Reads the rollout annotation; undefined when absent or unreadable. */
@@ -146,7 +212,12 @@ export function parseRollout(
       typeof r.candidate === 'string' &&
       Array.isArray(r.steps)
     ) {
-      return r as EndpointRollout;
+      const { baseline, ...rest } = r;
+      return {
+        ...rest,
+        ...(Array.isArray(baseline) &&
+          baseline.every(isWeight) && { baseline }),
+      } as EndpointRollout;
     }
   } catch {
     // An unreadable annotation is ignored: the strategy is detected instead.
@@ -171,7 +242,11 @@ export function currentRollout(
   const recorded = parseRollout(annotations);
   const names = new Set(backends.map(b => b.name ?? b.componentName));
   if (recorded && names.has(recorded.stable) && names.has(recorded.candidate)) {
-    return { rollout: recorded, source: 'annotation' };
+    const baseline = recorded.baseline?.filter(b => names.has(b.name));
+    return {
+      rollout: { ...recorded, ...(baseline && { baseline }) },
+      source: 'annotation',
+    };
   }
   const detected = detectEndpointStrategy(backends, rules);
   switch (detected.kind) {
@@ -181,6 +256,7 @@ export function currentRollout(
           strategy: 'canary',
           stable: detected.stable,
           candidate: detected.canary,
+          baseline: baselineOf(backends, detected.canary),
           steps: DEFAULT_CANARY_STEPS,
         },
         source: 'detected',
@@ -191,6 +267,7 @@ export function currentRollout(
           strategy: 'blueGreen',
           stable: detected.blue,
           candidate: detected.green,
+          baseline: baselineOf(backends, detected.green),
           steps: [100],
         },
         source: 'detected',
@@ -201,6 +278,7 @@ export function currentRollout(
           strategy: 'abTest',
           stable: detected.control,
           candidate: detected.variant,
+          baseline: baselineOf(backends, detected.variant),
           steps: [100],
         },
         source: 'detected',
@@ -220,7 +298,6 @@ export function planRollout(
   plan: RolloutPlan,
   startedBy?: string,
 ): StrategyChange & { rollout: EndpointRollout } {
-  const stable = backends.find(b => b.weight > 0) ?? backends[0];
   const preview = plan.preview;
   let change: StrategyChange;
   switch (plan.strategy) {
@@ -266,12 +343,20 @@ export function planRollout(
         ].sort((a, b) => a - b)
       : [100];
   if (steps[steps.length - 1] !== 100) steps.push(100);
+  const candidateName = candidate.name ?? candidate.componentName;
+  // The candidate takes its traffic from every other backend, in the split
+  // they had when the rollout started; the main one names the stable side.
+  const baseline = baselineOf(backends, candidateName);
+  const stable =
+    [...baseline].sort((a, b) => b.weight - a.weight)[0]?.name ??
+    candidateName;
   return {
     ...change,
     rollout: {
       strategy: plan.strategy,
-      stable: stable.name ?? stable.componentName,
-      candidate: candidate.name ?? candidate.componentName,
+      stable,
+      candidate: candidateName,
+      baseline,
       steps,
       ...(preview && { preview }),
       startedAt: new Date().toISOString(),

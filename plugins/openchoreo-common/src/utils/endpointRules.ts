@@ -1,6 +1,7 @@
 import type {
   EndpointBackendWeight,
   EndpointRule,
+  EndpointWeightOverride,
 } from '../types/endpoint-types';
 
 const NAME = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
@@ -305,24 +306,30 @@ export function buildABTest(
 }
 
 /**
- * Finishes a strategy: only `keep` stays, at weight 100, and the strategy's
- * rules go. Other rules that still name a remaining backend are kept.
+ * Finishes a strategy: only the `keep` backends stay, at the weights given
+ * (one name keeps that backend at 100), and the strategy's rules go. Other
+ * rules keep the backends and mirrors that remain.
  */
 export function finishStrategy(
   backends: EndpointBackendWeight[],
   rules: EndpointRule[],
-  keep: string,
+  keep: string | EndpointWeightOverride[],
 ): StrategyChange {
+  const weights = new Map(
+    typeof keep === 'string'
+      ? [[keep, 100]]
+      : keep.map(k => [k.name, k.weight] as [string, number]),
+  );
   const kept = backends
-    .filter(b => nameOf(b) === keep)
-    .map(b => ({ ...b, weight: 100 }));
+    .filter(b => weights.has(nameOf(b)))
+    .map(b => ({ ...b, weight: weights.get(nameOf(b))! }));
   return {
     backends: kept,
     rules: withoutStrategyRules(rules)
       .map(r => ({
         ...r,
-        backends: r.backends.filter(b => b.name === keep),
-        mirrors: r.mirrors?.filter(m => m.backend === keep),
+        backends: r.backends.filter(b => weights.has(b.name)),
+        mirrors: r.mirrors?.filter(m => weights.has(m.backend)),
       }))
       .filter(r => r.backends.length > 0),
   };

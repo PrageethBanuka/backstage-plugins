@@ -110,6 +110,13 @@ export interface EndpointRollout {
   strategy: RolloutStrategy;
   stable: string;
   candidate: string;
+  /**
+   * The Endpoint's other backends and their weights when the rollout
+   * started. The candidate takes its share from all of them in this ratio,
+   * and abandoning restores it. Absent on rollouts started before it was
+   * recorded: `stable` alone is the stable side then.
+   */
+  baseline?: EndpointWeightOverride[];
   /** The candidate's percent at each stage after the first (which is 0). */
   steps: number[];
   preview?: RolloutPreview;

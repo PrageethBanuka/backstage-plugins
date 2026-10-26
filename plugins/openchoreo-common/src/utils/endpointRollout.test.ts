@@ -10,7 +10,9 @@ import {
   rolloutStages,
   rolloutWeights,
   serializeRollout,
+  stableLabel,
 } from './endpointRollout';
+import { finishStrategy } from './endpointRules';
 
 const canary: EndpointRollout = {
   strategy: 'canary',
@@ -74,12 +76,62 @@ describe('rolloutWeights', () => {
       { name: 'other', weight: 0 },
     ]);
   });
+
+  describe('with two stable backends', () => {
+    const split: EndpointRollout = {
+      ...canary,
+      baseline: [
+        { name: 'trips-python', weight: 70 },
+        { name: 'trips-legacy', weight: 30 },
+      ],
+    };
+    const names = ['trips-python', 'trips-legacy', 'trips-go'];
+
+    it.each([
+      [0, [70, 30, 0]],
+      [25, [53, 22, 25]],
+      [50, [35, 15, 50]],
+      [100, [0, 0, 100]],
+    ])('shares %i%% in the baseline ratio', (percent, weights) => {
+      const out = rolloutWeights(split, names, percent);
+      expect(out.map(w => w.weight)).toEqual(weights);
+      expect(out.reduce((sum, w) => sum + w.weight, 0)).toBe(100);
+      expect(
+        rolloutPosition(
+          split,
+          Object.fromEntries(out.map(w => [w.name, w.weight])),
+        ).percent,
+      ).toBe(percent);
+    });
+
+    it('names both on screen', () => {
+      expect(stableLabel(split)).toBe('trips-python + trips-legacy');
+      expect(rolloutStages(split)[0].action).toBe(
+        'Roll back to trips-python + trips-legacy',
+      );
+    });
+  });
 });
 
 describe('the rollout annotation', () => {
   it('round-trips', () => {
     expect(
       parseRollout({ [ROLLOUT_ANNOTATION]: serializeRollout(canary) }),
+    ).toEqual(canary);
+  });
+
+  it('reads a rollout recorded without a baseline, and drops a bad one', () => {
+    expect(
+      parseRollout({ [ROLLOUT_ANNOTATION]: serializeRollout(canary) })
+        ?.baseline,
+    ).toBeUndefined();
+    expect(
+      parseRollout({
+        [ROLLOUT_ANNOTATION]: JSON.stringify({
+          ...canary,
+          baseline: [{ name: 'x' }],
+        }),
+      }),
     ).toEqual(canary);
   });
 
@@ -124,6 +176,52 @@ describe('planRollout', () => {
       candidate: 'trips-go',
       steps: [10, 50, 100],
     });
+  });
+
+  it('takes the new version from the whole current split', () => {
+    const plan = planRollout(
+      [
+        { componentName: 'trips-legacy', endpoint: 'http', weight: 30 },
+        { componentName: 'trips-python', endpoint: 'http', weight: 70 },
+      ],
+      [],
+      {
+        strategy: 'canary',
+        candidate: { componentName: 'trips-go', endpoint: 'http' },
+      },
+    );
+    expect(plan.rollout.stable).toBe('trips-python');
+    expect(plan.rollout.baseline).toEqual([
+      { name: 'trips-legacy', weight: 30 },
+      { name: 'trips-python', weight: 70 },
+    ]);
+  });
+});
+
+describe('finishStrategy with several backends kept', () => {
+  it('restores their weights and keeps the rules that name them', () => {
+    const change = finishStrategy(
+      [
+        { componentName: 'a', endpoint: 'http', weight: 50 },
+        { componentName: 'b', endpoint: 'http', weight: 50 },
+        { componentName: 'c', endpoint: 'http', weight: 0 },
+      ],
+      [
+        {
+          name: 'default',
+          backends: [{ name: 'a' }, { name: 'b' }, { name: 'c' }],
+        },
+      ],
+      [
+        { name: 'a', weight: 70 },
+        { name: 'b', weight: 30 },
+      ],
+    );
+    expect(change.backends.map(b => [b.componentName, b.weight])).toEqual([
+      ['a', 70],
+      ['b', 30],
+    ]);
+    expect(change.rules[0].backends).toEqual([{ name: 'a' }, { name: 'b' }]);
   });
 });
 

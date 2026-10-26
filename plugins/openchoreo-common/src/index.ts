@@ -194,6 +194,8 @@ export {
   rolloutPosition,
   nextRolloutStage,
   rolloutWeights,
+  stableSplit,
+  stableLabel,
   parseRollout,
   serializeRollout,
   currentRollout,
