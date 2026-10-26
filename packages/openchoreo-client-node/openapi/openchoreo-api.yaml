@@ -7239,7 +7239,7 @@ components:
       description: ClusterEndpointType name
       schema:
         type: string
-        example: http-weighted
+        example: http
 
     EndpointTypeNameParam:
       name: etName
@@ -7248,7 +7248,7 @@ components:
       description: EndpointType name
       schema:
         type: string
-        example: http-weighted
+        example: http
 
     EndpointNameParam:
       name: endpointName
@@ -11802,6 +11802,18 @@ components:
           description: CEL-based validation rules evaluated before rendering
           items:
             $ref: '#/components/schemas/ValidationRule'
+        allowedHostnames:
+          type: array
+          description: Hostnames Endpoints of this type may ask for in a top-level "hostname" parameter; a leading "*." matches one label. Empty means the environment's gateway host only.
+          items:
+            type: string
+            example: '*.example.com'
+        allowedBackendKinds:
+          type: array
+          description: Backend kinds Endpoints of this type may use. Empty allows Component.
+          items:
+            type: string
+            enum: [Component]
         resources:
           type: array
           description: Routing manifests (e.g. HTTPRoute, GRPCRoute, VirtualService) emitted on the data plane for each EndpointReleaseBinding.
@@ -11908,18 +11920,18 @@ components:
           description: Template name.
           minLength: 1
           pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
-          example: http-weighted
+          example: http
 
-    EndpointBackendRef:
+    EndpointComponentRef:
       type: object
-      description: A component workload endpoint the Endpoint routes traffic to, with its relative weight.
+      description: A workload endpoint of a component in the Endpoint's project.
       required:
-        - componentName
+        - name
         - endpoint
       properties:
-        componentName:
+        name:
           type: string
-          description: Component in the Endpoint's project that serves this backend
+          description: Component name
           minLength: 1
           pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
           example: payments-v1
@@ -11928,6 +11940,25 @@ components:
           description: Name of the endpoint in the component's Workload.spec.endpoints
           minLength: 1
           example: http
+
+    EndpointBackendRef:
+      type: object
+      description: One backend of an Endpoint, a component workload endpoint, with its relative weight.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Identifies the backend within the Endpoint; per-environment overrides refer to it
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          example: payments-v1
+        kind:
+          type: string
+          description: Kind of backend
+          enum: [Component]
+          default: Component
+        component:
+          $ref: '#/components/schemas/EndpointComponentRef'
         weight:
           type: integer
           format: int32
@@ -11936,6 +11967,113 @@ components:
           maximum: 1000000
           default: 1
           example: 90
+
+    EndpointRule:
+      type: object
+      description: |
+        Routes the requests it matches to its backends. Rules are evaluated in order; a rule without
+        matches is the catch-all and must be last. Without one, unmatched requests follow backendRefs.
+      required: [name, backends]
+      properties:
+        name:
+          type: string
+          description: Identifies the rule
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          example: preview
+        matches:
+          type: array
+          description: A request matches when any entry matches; every condition of an entry must hold
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/EndpointMatch'
+        backends:
+          type: array
+          description: Backends (by backendRefs name) receiving the rule's requests, with relative weights
+          minItems: 1
+          items:
+            type: object
+            required: [name]
+            properties:
+              name:
+                type: string
+                example: checkout-green
+              weight:
+                type: integer
+                format: int32
+                minimum: 0
+                maximum: 1000000
+                default: 1
+        mirrors:
+          type: array
+          description: Copies a share of the rule's requests to a backend; responses are discarded
+          items:
+            type: object
+            required: [backend, percent]
+            properties:
+              backend:
+                type: string
+                example: trips-go
+              percent:
+                type: integer
+                format: int32
+                minimum: 1
+                maximum: 100
+
+    EndpointMatch:
+      type: object
+      description: Request conditions, all of which must hold
+      properties:
+        headers:
+          type: array
+          items:
+            type: object
+            required: [name, value]
+            properties:
+              name:
+                type: string
+                example: x-preview
+              type:
+                type: string
+                enum: [Exact, RegularExpression]
+                default: Exact
+              value:
+                type: string
+                example: green
+        cookies:
+          type: array
+          maxItems: 1
+          items:
+            type: object
+            required: [name, value]
+            properties:
+              name:
+                type: string
+                pattern: '^[A-Za-z0-9_-]{1,64}$'
+                example: exp_cartrecs
+              value:
+                type: string
+                pattern: '^[A-Za-z0-9_.-]{1,128}$'
+                example: b
+        queryParams:
+          type: array
+          items:
+            type: object
+            required: [name, value]
+            properties:
+              name:
+                type: string
+              value:
+                type: string
+
+    EndpointSchema:
+      type: object
+      description: API definition of the Endpoint
+      properties:
+        type:
+          type: string
+          example: openapi
+        content:
+          type: string
 
     EndpointList:
       type: object
@@ -11985,6 +12123,8 @@ components:
       required:
         - owner
         - type
+        - visibility
+        - backendRefs
       properties:
         owner:
           type: object
@@ -11999,24 +12139,35 @@ components:
               example: shop
         type:
           $ref: '#/components/schemas/EndpointTypeRef'
+        visibility:
+          type: array
+          description: Scopes the Endpoint is reachable from. The EndpointType renders a route for each.
+          minItems: 1
+          items:
+            type: string
+            enum: [namespace, internal, external]
+        autoDeploy:
+          type: boolean
+          description: Deploy each new release to the first environment of the project's deployment pipeline
         backendRefs:
           type: array
-          description: Component workload endpoints receiving traffic, with relative weights. May be empty; see reclaimPolicy.
+          description: Component workload endpoints receiving traffic, with relative weights.
+          minItems: 1
+          maxItems: 16
           items:
             $ref: '#/components/schemas/EndpointBackendRef'
+        rules:
+          type: array
+          description: Header, cookie and query routing, in order. Unset routes every request by backendRefs weights.
+          maxItems: 16
+          items:
+            $ref: '#/components/schemas/EndpointRule'
+        schema:
+          $ref: '#/components/schemas/EndpointSchema'
         parameters:
           type: object
           description: Values for the parameter schema declared on the referenced (Cluster)EndpointType. Validated by the controller.
           additionalProperties: true
-        reclaimPolicy:
-          type: string
-          description: |
-            What happens when the Endpoint has no backends left. Delete removes it and hands its URL back;
-            Retain keeps it as Orphaned, without routes, until a backend is added.
-          enum: [Delete, Retain]
-          x-enum-varnames: [EndpointReclaimPolicyDelete, EndpointReclaimPolicyRetain]
-          default: Delete
-
     EndpointStatus:
       type: object
       description: Observed state of an Endpoint.
@@ -12098,6 +12249,12 @@ components:
       properties:
         owner:
           $ref: '#/components/schemas/EndpointReleaseOwner'
+        visibility:
+          type: array
+          description: Snapshot of Endpoint.spec.visibility at release time.
+          items:
+            type: string
+            enum: [namespace, internal, external]
         endpointType:
           type: object
           description: Frozen snapshot of the referenced (Cluster)EndpointType.
@@ -12114,7 +12271,7 @@ components:
               type: string
               description: Source endpoint type name
               minLength: 1
-              example: http-weighted
+              example: http
             spec:
               $ref: '#/components/schemas/EndpointTypeSpec'
         backendRefs:
@@ -12123,6 +12280,13 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/EndpointBackendRef'
+        rules:
+          type: array
+          description: Snapshot of Endpoint.spec.rules at release time.
+          items:
+            $ref: '#/components/schemas/EndpointRule'
+        schema:
+          $ref: '#/components/schemas/EndpointSchema'
         parameters:
           type: object
           description: Snapshot of parameter values from Endpoint.spec at release time.
@@ -12212,15 +12376,34 @@ components:
           type: object
           description: Per-environment values for (Cluster)EndpointType.spec.environmentConfigs.
           additionalProperties: true
+        backendOverrides:
+          type: array
+          description: Environment-specific values for the release's backends, matched by name
+          items:
+            type: object
+            required: [name]
+            properties:
+              name:
+                type: string
+                example: legacy
+              weight:
+                type: integer
+                format: int32
+                minimum: 0
+                maximum: 1000000
+                description: Replaces the release's weight for this backend in this environment, in backendRefs and in rules that split between several backends
 
     ResolvedEndpointBackend:
       type: object
       description: Resolution of one backendRef in the binding's environment.
       required:
-        - componentName
-        - endpoint
+        - name
         - resolved
       properties:
+        name:
+          type: string
+          description: Backend name in the release
+          example: payments-v1
         componentName:
           type: string
           description: Backend component name
@@ -12273,14 +12456,14 @@ components:
           type: string
           description: Release whose rendered routes were accepted
           example: payments-api-5b7fc7b
-        backends:
+        urls:
           type: array
-          description: Component workload endpoints receiving traffic (non-zero weight) through the accepted routes
+          description: Component workload endpoints the accepted routes serve (the Endpoint's component backends)
           items:
             $ref: '#/components/schemas/EndpointBackendSlot'
         visibilities:
           type: array
-          description: Gateway visibilities the accepted routes serve
+          description: The Endpoint's declared visibilities
           items:
             type: string
             enum: [project, namespace, internal, external]
@@ -13799,15 +13982,6 @@ components:
               type: string
             content:
               type: string
-        endpointType:
-          $ref: '#/components/schemas/EndpointTypeRef'
-        endpointName:
-          type: string
-          description: |
-            Name of the Endpoint that serves this endpoint when endpointType is set.
-            Defaults to <component>-<endpoint>. The Endpoint is created if missing and is not owned by the component.
-          maxLength: 63
-          example: payments-api
 
     WorkloadConnection:
       type: object

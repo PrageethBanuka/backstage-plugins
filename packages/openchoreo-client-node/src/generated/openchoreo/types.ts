@@ -5800,6 +5800,10 @@ export interface components {
       environmentConfigs?: components['schemas']['SchemaSection'];
       /** @description CEL-based validation rules evaluated before rendering */
       validations?: components['schemas']['ValidationRule'][];
+      /** @description Hostnames Endpoints of this type may ask for in a top-level "hostname" parameter; a leading "*." matches one label. Empty means the environment's gateway host only. */
+      allowedHostnames?: string[];
+      /** @description Backend kinds Endpoints of this type may use. Empty allows Component. */
+      allowedBackendKinds?: 'Component'[];
       /** @description Routing manifests (e.g. HTTPRoute, GRPCRoute, VirtualService) emitted on the data plane for each EndpointReleaseBinding. */
       resources: components['schemas']['EndpointTypeResource'][];
     };
@@ -5864,22 +5868,37 @@ export interface components {
       kind: 'EndpointType' | 'ClusterEndpointType';
       /**
        * @description Template name.
-       * @example http-weighted
+       * @example http
        */
       name: string;
     };
-    /** @description A component workload endpoint the Endpoint routes traffic to, with its relative weight. */
-    EndpointBackendRef: {
+    /** @description A workload endpoint of a component in the Endpoint's project. */
+    EndpointComponentRef: {
       /**
-       * @description Component in the Endpoint's project that serves this backend
+       * @description Component name
        * @example payments-v1
        */
-      componentName: string;
+      name: string;
       /**
        * @description Name of the endpoint in the component's Workload.spec.endpoints
        * @example http
        */
       endpoint: string;
+    };
+    /** @description One backend of an Endpoint, a component workload endpoint, with its relative weight. */
+    EndpointBackendRef: {
+      /**
+       * @description Identifies the backend within the Endpoint; per-environment overrides refer to it
+       * @example payments-v1
+       */
+      name: string;
+      /**
+       * @description Kind of backend
+       * @default Component
+       * @enum {string}
+       */
+      kind: 'Component';
+      component?: components['schemas']['EndpointComponentRef'];
       /**
        * Format: int32
        * @description Share of traffic relative to the sum of all weights (Gateway API semantics). 0 sends no traffic.
@@ -5887,6 +5906,66 @@ export interface components {
        * @example 90
        */
       weight: number;
+    };
+    /**
+     * @description Routes the requests it matches to its backends. Rules are evaluated in order; a rule without
+     *     matches is the catch-all and must be last. Without one, unmatched requests follow backendRefs.
+     */
+    EndpointRule: {
+      /**
+       * @description Identifies the rule
+       * @example preview
+       */
+      name: string;
+      /** @description A request matches when any entry matches; every condition of an entry must hold */
+      matches?: components['schemas']['EndpointMatch'][];
+      /** @description Backends (by backendRefs name) receiving the rule's requests, with relative weights */
+      backends: {
+        /** @example checkout-green */
+        name: string;
+        /**
+         * Format: int32
+         * @default 1
+         */
+        weight: number;
+      }[];
+      /** @description Copies a share of the rule's requests to a backend; responses are discarded */
+      mirrors?: {
+        /** @example trips-go */
+        backend: string;
+        /** Format: int32 */
+        percent: number;
+      }[];
+    };
+    /** @description Request conditions, all of which must hold */
+    EndpointMatch: {
+      headers?: {
+        /** @example x-preview */
+        name: string;
+        /**
+         * @default Exact
+         * @enum {string}
+         */
+        type: 'Exact' | 'RegularExpression';
+        /** @example green */
+        value: string;
+      }[];
+      cookies?: {
+        /** @example exp_cartrecs */
+        name: string;
+        /** @example b */
+        value: string;
+      }[];
+      queryParams?: {
+        name: string;
+        value: string;
+      }[];
+    };
+    /** @description API definition of the Endpoint */
+    EndpointSchema: {
+      /** @example openapi */
+      type?: string;
+      content?: string;
     };
     /** @description Paginated list of endpoints */
     EndpointList: {
@@ -5924,19 +6003,19 @@ export interface components {
         projectName: string;
       };
       type: components['schemas']['EndpointTypeRef'];
-      /** @description Component workload endpoints receiving traffic, with relative weights. May be empty; see reclaimPolicy. */
-      backendRefs?: components['schemas']['EndpointBackendRef'][];
+      /** @description Scopes the Endpoint is reachable from. The EndpointType renders a route for each. */
+      visibility: ('namespace' | 'internal' | 'external')[];
+      /** @description Deploy each new release to the first environment of the project's deployment pipeline */
+      autoDeploy?: boolean;
+      /** @description Component workload endpoints receiving traffic, with relative weights. */
+      backendRefs: components['schemas']['EndpointBackendRef'][];
+      /** @description Header, cookie and query routing, in order. Unset routes every request by backendRefs weights. */
+      rules?: components['schemas']['EndpointRule'][];
+      schema?: components['schemas']['EndpointSchema'];
       /** @description Values for the parameter schema declared on the referenced (Cluster)EndpointType. Validated by the controller. */
       parameters?: {
         [key: string]: unknown;
       };
-      /**
-       * @description What happens when the Endpoint has no backends left. Delete removes it and hands its URL back;
-       *     Retain keeps it as Orphaned, without routes, until a backend is added.
-       * @default Delete
-       * @enum {string}
-       */
-      reclaimPolicy: 'Delete' | 'Retain';
     };
     /** @description Observed state of an Endpoint. */
     EndpointStatus: {
@@ -5990,6 +6069,8 @@ export interface components {
     /** @description Desired state of an EndpointRelease. Immutable after creation. */
     EndpointReleaseSpec: {
       owner: components['schemas']['EndpointReleaseOwner'];
+      /** @description Snapshot of Endpoint.spec.visibility at release time. */
+      visibility?: ('namespace' | 'internal' | 'external')[];
       /** @description Frozen snapshot of the referenced (Cluster)EndpointType. */
       endpointType: {
         /**
@@ -5999,13 +6080,16 @@ export interface components {
         kind: 'EndpointType' | 'ClusterEndpointType';
         /**
          * @description Source endpoint type name
-         * @example http-weighted
+         * @example http
          */
         name: string;
         spec: components['schemas']['EndpointTypeSpec'];
       };
       /** @description Snapshot of Endpoint.spec.backendRefs at release time. */
       backendRefs: components['schemas']['EndpointBackendRef'][];
+      /** @description Snapshot of Endpoint.spec.rules at release time. */
+      rules?: components['schemas']['EndpointRule'][];
+      schema?: components['schemas']['EndpointSchema'];
       /** @description Snapshot of parameter values from Endpoint.spec at release time. */
       parameters?: {
         [key: string]: unknown;
@@ -6069,19 +6153,34 @@ export interface components {
       endpointTypeEnvironmentConfigs?: {
         [key: string]: unknown;
       };
+      /** @description Environment-specific values for the release's backends, matched by name */
+      backendOverrides?: {
+        /** @example legacy */
+        name: string;
+        /**
+         * Format: int32
+         * @description Replaces the release's weight for this backend in this environment, in backendRefs and in rules that split between several backends
+         */
+        weight?: number;
+      }[];
     };
     /** @description Resolution of one backendRef in the binding's environment. */
     ResolvedEndpointBackend: {
       /**
+       * @description Backend name in the release
+       * @example payments-v1
+       */
+      name: string;
+      /**
        * @description Backend component name
        * @example payments-v1
        */
-      componentName: string;
+      componentName?: string;
       /**
        * @description Workload endpoint name on the backend component
        * @example http
        */
-      endpoint: string;
+      endpoint?: string;
       /**
        * Format: int32
        * @description Effective weight applied to this backend
@@ -6120,9 +6219,9 @@ export interface components {
        * @example payments-api-5b7fc7b
        */
       endpointRelease: string;
-      /** @description Component workload endpoints receiving traffic (non-zero weight) through the accepted routes */
-      backends?: components['schemas']['EndpointBackendSlot'][];
-      /** @description Gateway visibilities the accepted routes serve */
+      /** @description Component workload endpoints the accepted routes serve (the Endpoint's component backends) */
+      urls?: components['schemas']['EndpointBackendSlot'][];
+      /** @description The Endpoint's declared visibilities */
       visibilities?: ('project' | 'namespace' | 'internal' | 'external')[];
       /**
        * Format: date-time
@@ -7201,13 +7300,6 @@ export interface components {
         type?: string;
         content?: string;
       };
-      endpointType?: components['schemas']['EndpointTypeRef'];
-      /**
-       * @description Name of the Endpoint that serves this endpoint when endpointType is set.
-       *     Defaults to <component>-<endpoint>. The Endpoint is created if missing and is not owned by the component.
-       * @example payments-api
-       */
-      endpointName?: string;
     };
     /** @description A connection to another component's endpoint */
     WorkloadConnection: {
