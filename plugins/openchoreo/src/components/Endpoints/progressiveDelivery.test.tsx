@@ -43,11 +43,30 @@ const preview: EndpointRule = {
 };
 
 describe('weightPresets', () => {
+  it('offers nothing for a split set up by hand', () => {
+    expect(
+      weightPresets(
+        [
+          backend('trips-python', 60),
+          backend('trips-legacy', 30),
+          backend('trips-go', 10),
+        ],
+        [],
+      ),
+    ).toEqual([]);
+  });
+
   it('offers canary steps and a rollback', () => {
     expect(
       weightPresets(
         [backend('trips-python', 100), backend('trips-go', 0)],
-        [],
+        [
+          {
+            name: 'canary-testers',
+            matches: [{ headers: [{ name: 'x-canary', value: 'true' }] }],
+            backends: [{ name: 'trips-go' }],
+          },
+        ],
       ).map(p => p.label),
     ).toEqual([
       'Canary 5%',

@@ -167,6 +167,24 @@ describe('strategies', () => {
     ).toEqual({ backends: [backend('checkout-green', 100)], rules: [] });
   });
 
+  it('reads a split or a rule set up by hand as no strategy', () => {
+    const three = [
+      backend('trips-python', 60),
+      backend('trips-legacy', 30),
+      backend('trips-go', 10),
+    ];
+    expect(detectEndpointStrategy(three, [])).toEqual({ kind: 'none' });
+    expect(
+      detectEndpointStrategy(three, [
+        {
+          name: 'beta',
+          matches: [{ headers: [{ name: 'x-beta', value: '1' }] }],
+          backends: [{ name: 'trips-go' }],
+        },
+      ]),
+    ).toEqual({ kind: 'none' });
+  });
+
   it('sees no strategy with one backend', () => {
     expect(detectEndpointStrategy(current, [])).toEqual({ kind: 'none' });
   });

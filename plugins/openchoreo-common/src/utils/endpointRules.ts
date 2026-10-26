@@ -31,7 +31,9 @@ export function endpointRuleProblems(
   rules.forEach((r, i) => {
     const at = `rule ${r.name || i + 1}`;
     if (!NAME.test(r.name ?? '')) {
-      problems.push(`${at}: name must be lowercase letters, digits and hyphens`);
+      problems.push(
+        `${at}: name must be lowercase letters, digits and hyphens`,
+      );
     }
     if (names.has(r.name)) problems.push(`${at}: name is used twice`);
     names.add(r.name);
@@ -77,7 +79,9 @@ export function endpointRuleProblems(
         }
       }
       if (!m.headers?.length && !m.cookies?.length && !m.queryParams?.length) {
-        problems.push(`${at}: a match needs a header, cookie or query parameter`);
+        problems.push(
+          `${at}: a match needs a header, cookie or query parameter`,
+        );
       }
     }
   });
@@ -102,59 +106,66 @@ export const STRATEGY_RULES = {
 } as const;
 
 /**
- * Reads which strategy an Endpoint is running from its backends and rules,
- * to label it and offer the next steps. Nothing is stored for it: the
- * strategy is what the split and the rules already say.
+ * Reads which strategy an Endpoint is running, for Endpoints that lost the
+ * rollout annotation or were changed outside the portal. Only the rules the
+ * strategy builders write count: a split or a rule set up by hand (several
+ * versions on the Configure page, a header rule in the rules editor) is not
+ * a rollout.
  *
- * - A/B: a rule matching a cookie sends to one backend.
- * - Blue/green: a rule matching a header sends to a backend at weight 0.
- * - Canary: two backends; the second is the new version, optionally with a
- *   testers' header rule.
+ * - A/B: the variant's cookie rule.
+ * - Blue/green: green's preview header rule.
+ * - Canary: the testers' header rule; a canary started outside the portal
+ *   without one reads as a plain split.
  */
 export function detectEndpointStrategy(
   backends: EndpointBackendWeight[],
   rules: EndpointRule[],
 ): EndpointStrategy {
   if (backends.length < 2) return { kind: 'none' };
-  const single = (r: EndpointRule) =>
-    r.backends.length === 1 ? r.backends[0].name : undefined;
-  const firstOther = (name: string) =>
-    nameOf(backends.find(b => nameOf(b) !== name) ?? backends[0]);
-
-  for (const r of rules) {
-    const target = single(r);
-    const cookie = r.matches?.flatMap(m => m.cookies ?? [])[0];
-    if (target && cookie) {
-      return {
-        kind: 'abTest',
-        control: firstOther(target),
-        variant: target,
-        cookie: `${cookie.name}=${cookie.value}`,
-      };
-    }
-  }
-  for (const r of rules) {
-    const target = single(r);
-    const hasHeader = r.matches?.some(m => m.headers?.length);
-    const targetBackend = backends.find(b => nameOf(b) === target);
-    if (target && hasHeader && r.name !== STRATEGY_RULES.canaryTesters) {
-      if (targetBackend && targetBackend.weight === 0) {
-        return {
-          kind: 'blueGreen',
-          blue: firstOther(target),
-          green: target,
-          previewRule: r.name,
-        };
-      }
-    }
-  }
-  const testers = rules.find(r => r.name === STRATEGY_RULES.canaryTesters);
-  return {
-    kind: 'canary',
-    stable: nameOf(backends[0]),
-    canary: nameOf(backends[backends.length - 1]),
-    ...(testers && { testerRule: testers.name }),
+  const names = new Set(backends.map(nameOf));
+  // The rule's one backend, when it is on the Endpoint.
+  const targetOf = (name: string) => {
+    const r = rules.find(x => x.name === name);
+    const target = r?.backends.length === 1 ? r.backends[0].name : undefined;
+    return r && target && names.has(target) ? { rule: r, target } : undefined;
   };
+  // The main other version: the one with the most traffic.
+  const stableFor = (target: string) =>
+    nameOf(
+      [...backends]
+        .filter(b => nameOf(b) !== target)
+        .sort((a, b) => b.weight - a.weight)[0],
+    );
+
+  const ab = targetOf(STRATEGY_RULES.abVariant);
+  const cookie = ab?.rule.matches?.flatMap(m => m.cookies ?? [])[0];
+  if (ab && cookie) {
+    return {
+      kind: 'abTest',
+      control: stableFor(ab.target),
+      variant: ab.target,
+      cookie: `${cookie.name}=${cookie.value}`,
+    };
+  }
+  const bg = targetOf(STRATEGY_RULES.bluePreview);
+  if (bg && bg.rule.matches?.some(m => m.headers?.length)) {
+    return {
+      kind: 'blueGreen',
+      blue: stableFor(bg.target),
+      green: bg.target,
+      previewRule: bg.rule.name,
+    };
+  }
+  const testers = targetOf(STRATEGY_RULES.canaryTesters);
+  if (testers) {
+    return {
+      kind: 'canary',
+      stable: stableFor(testers.target),
+      canary: testers.target,
+      testerRule: testers.rule.name,
+    };
+  }
+  return { kind: 'none' };
 }
 
 /** A new component workload endpoint a strategy adds as a backend. */
