@@ -7,6 +7,7 @@ import {
   type OpenChoreoComponents,
 } from '@openchoreo/openchoreo-client-node';
 import {
+  audienceProblem,
   completeSplit,
   currentRollout,
   finishStrategy,
@@ -1190,6 +1191,8 @@ export class EndpointInfoService {
     token?: string,
     startedBy?: string,
   ): Promise<RolloutActionResult> {
+    const problem = audienceProblem(request.plan.preview?.audience);
+    if (problem) throw new InputError(problem);
     const client = this.client(token);
     const endpoint = await this.getEndpoint(
       client,

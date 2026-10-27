@@ -1081,6 +1081,31 @@ describe('EndpointInfoService', () => {
       );
     });
 
+    it('refuses an A/B audience header the gateway cannot match', async () => {
+      await expect(
+        service.startRollout(
+          {
+            namespaceName: 'default',
+            projectName: 'shop',
+            endpointName: 'payments-api',
+            plan: {
+              strategy: 'abTest',
+              candidate: { componentName: 'payments-v3', endpoint: 'http' },
+              preview: {
+                kind: 'cookie',
+                name: 'exp',
+                value: 'b',
+                audience: { name: 'x client', value: 'ios' },
+              },
+            },
+            environments: ['development'],
+          },
+          'token',
+        ),
+      ).rejects.toThrow(/valid HTTP header name/);
+      expect(mockGET).not.toHaveBeenCalled();
+    });
+
     it('refuses to replace the versions while a rollout runs', async () => {
       routeRollout();
 
