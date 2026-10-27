@@ -153,13 +153,13 @@ export function buildCreateResourcePath(
 
 /**
  * Build path to the create-openchoreo-endpoint template, pre-filled with the
- * project and with one component as the first backend. Used from a
- * Component's Endpoints tab.
+ * project and, from a Component's Endpoints tab, with that component as the
+ * first backend. From a project page there is no component to pre-fill.
  */
 export function buildCreateEndpointPath(
   projectName: string,
   namespaceName: string,
-  componentName: string,
+  componentName?: string,
   workloadEndpoint = 'http',
 ): string {
   const formData = {
@@ -167,7 +167,9 @@ export function buildCreateEndpointPath(
       project_name: projectName,
       namespace_name: namespaceName,
     },
-    backends: [{ componentName, endpoint: workloadEndpoint, weight: 100 }],
+    ...(componentName && {
+      backends: [{ componentName, endpoint: workloadEndpoint, weight: 100 }],
+    }),
   };
   const params = new URLSearchParams();
   params.set('formData', JSON.stringify(formData));

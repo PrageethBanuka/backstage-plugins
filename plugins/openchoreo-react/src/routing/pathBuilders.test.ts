@@ -241,4 +241,12 @@ describe('buildCreateEndpointPath', () => {
       ],
     });
   });
+  it('pre-fills only the project when opened from a project page', () => {
+    const url = buildCreateEndpointPath('shop', 'default');
+    expect(
+      JSON.parse(new URLSearchParams(url.split('?')[1]).get('formData')!),
+    ).toEqual({
+      project_namespace: { project_name: 'shop', namespace_name: 'default' },
+    });
+  });
 });

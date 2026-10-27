@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import AddIcon from '@material-ui/icons/Add';
 import { SplitButton } from '@openchoreo/backstage-design-system';
 import {
+  buildCreateEndpointPath,
   useCreateComponentPath,
   useCreateResourcePath,
+  useEndpointCreatePermission,
   useScopedComponentCreatePermission,
   useResourceCreatePermission,
 } from '@openchoreo/backstage-plugin-react';
@@ -12,7 +14,8 @@ import {
 /**
  * "Create" split button for the Project Contents table. The primary action
  * defaults to creating a Component; the dropdown switches to creating a
- * Resource. Each kind is independently permission-gated.
+ * Resource or an Endpoint, the latter with the project filled in. Each kind
+ * is independently permission-gated.
  */
 export const CreateProjectContentButton = ({ entity }: { entity: Entity }) => {
   const navigate = useNavigate();
@@ -32,13 +35,24 @@ export const CreateProjectContentButton = ({ entity }: { entity: Entity }) => {
     loading: resourcePermLoading,
     createDeniedTooltip: resourceDeniedTooltip,
   } = useResourceCreatePermission();
+  const {
+    canCreate: canCreateEndpoint,
+    loading: endpointPermLoading,
+    createDeniedTooltip: endpointDeniedTooltip,
+  } = useEndpointCreatePermission();
+  const endpointPath = buildCreateEndpointPath(
+    entity.metadata.name,
+    entity.metadata.namespace ?? 'default',
+  );
 
   const loading =
     componentPathLoading ||
     resourcePathLoading ||
     componentPermLoading ||
-    resourcePermLoading;
-  const groupDisabled = !canCreateComponent && !canCreateResource;
+    resourcePermLoading ||
+    endpointPermLoading;
+  const groupDisabled =
+    !canCreateComponent && !canCreateResource && !canCreateEndpoint;
 
   const options = [
     {
@@ -53,6 +67,12 @@ export const CreateProjectContentButton = ({ entity }: { entity: Entity }) => {
       icon: <AddIcon />,
       disabled: !canCreateResource,
     },
+    {
+      key: 'endpoint',
+      label: 'Create Endpoint',
+      icon: <AddIcon />,
+      disabled: !canCreateEndpoint,
+    },
   ];
 
   const handleClick = (key: string) => {
@@ -60,6 +80,8 @@ export const CreateProjectContentButton = ({ entity }: { entity: Entity }) => {
       navigate(componentPath);
     } else if (key === 'resource' && canCreateResource) {
       navigate(resourcePath);
+    } else if (key === 'endpoint' && canCreateEndpoint) {
+      navigate(endpointPath);
     }
   };
 
@@ -74,7 +96,11 @@ export const CreateProjectContentButton = ({ entity }: { entity: Entity }) => {
       size="small"
       minWidth={180}
       tooltip={
-        groupDisabled ? componentDeniedTooltip || resourceDeniedTooltip : ''
+        groupDisabled
+          ? componentDeniedTooltip ||
+            resourceDeniedTooltip ||
+            endpointDeniedTooltip
+          : ''
       }
     />
   );
