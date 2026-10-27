@@ -1,5 +1,7 @@
 import {
+  audienceProblem,
   buildABTest,
+  MOBILE_USER_AGENT,
   buildBlueGreen,
   buildCanary,
   detectEndpointStrategy,
@@ -117,7 +119,7 @@ describe('strategies', () => {
       [],
       { componentName: 'storefront-recs', endpoint: 'http' },
       { name: 'exp_cartrecs', value: 'b' },
-      true,
+      MOBILE_USER_AGENT,
     );
     expect(change.rules[0].matches).toEqual([
       {
@@ -133,6 +135,39 @@ describe('strategies', () => {
       variant: 'storefront-recs',
       cookie: 'exp_cartrecs=b',
     });
+  });
+
+  it('adds a header the app sends to the cookie, in the same match', () => {
+    const change = buildABTest(
+      [backend('storefront', 100)],
+      [],
+      { componentName: 'storefront-recs', endpoint: 'http' },
+      { name: 'exp_cartrecs', value: 'b' },
+      { name: 'X-Client', value: 'ios' },
+    );
+    expect(change.rules[0].matches).toEqual([
+      {
+        cookies: [{ name: 'exp_cartrecs', value: 'b' }],
+        headers: [{ name: 'X-Client', type: 'Exact', value: 'ios' }],
+      },
+    ]);
+  });
+
+  it('checks an audience header before it is written', () => {
+    expect(audienceProblem({ name: 'X-Client', value: 'ios' })).toBeUndefined();
+    expect(audienceProblem({ name: 'x client', value: 'ios' })).toMatch(
+      /valid HTTP header name/,
+    );
+    expect(audienceProblem({ name: 'X-Client', value: '' })).toMatch(
+      /Give a value/,
+    );
+    expect(
+      audienceProblem({
+        name: 'user-agent',
+        value: '(Mobi',
+        type: 'RegularExpression',
+      }),
+    ).toMatch(/not a valid regular expression/);
   });
 
   it('keeps the Endpoint’s own rules, with its catch-all last', () => {

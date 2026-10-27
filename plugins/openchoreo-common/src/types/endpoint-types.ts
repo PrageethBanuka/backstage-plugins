@@ -96,7 +96,12 @@ export interface RolloutPreview {
   kind: 'header' | 'cookie';
   name: string;
   value: string;
-  /** A/B only: the cookie group must also be on a phone. */
+  /**
+   * A/B only: a header the request must also carry, e.g. X-Client: ios or
+   * a User-Agent pattern. Takes precedence over mobileOnly.
+   */
+  audience?: EndpointHeaderMatch;
+  /** A/B only, from before audience: the cookie group must be on a phone. */
   mobileOnly?: boolean;
 }
 

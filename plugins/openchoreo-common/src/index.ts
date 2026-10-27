@@ -180,6 +180,7 @@ export {
   finishStrategy,
   MAX_ENDPOINT_RULES,
   MOBILE_USER_AGENT,
+  audienceProblem,
   STRATEGY_RULES,
 } from './utils/endpointRules';
 export type {
@@ -198,6 +199,7 @@ export {
   stableLabel,
   untouchedSplit,
   completeSplit,
+  abAudience,
   parseRollout,
   serializeRollout,
   currentRollout,

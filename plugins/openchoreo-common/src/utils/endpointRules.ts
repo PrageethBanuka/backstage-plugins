@@ -1,5 +1,6 @@
 import type {
   EndpointBackendWeight,
+  EndpointHeaderMatch,
   EndpointRule,
   EndpointWeightOverride,
 } from '../types/endpoint-types';
@@ -282,18 +283,46 @@ export const MOBILE_USER_AGENT = {
   value: '.*Mobi.*',
 };
 
+/** A header name as the CRD accepts it (an HTTP token). */
+const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/;
+
+/**
+ * What is wrong with an A/B audience header, or undefined when it is fine.
+ * A regular expression is checked with the browser's engine; the gateway
+ * uses RE2, which is close but not identical, so admission is the backstop.
+ */
+export function audienceProblem(
+  h: EndpointHeaderMatch | undefined,
+): string | undefined {
+  if (!h) return undefined;
+  if (!HEADER_NAME.test(h.name)) {
+    return `Header name "${h.name}" must be a valid HTTP header name`;
+  }
+  if (!h.value) return `Give a value for ${h.name}`;
+  if (h.value.length > 4096) return `The value for ${h.name} is too long`;
+  if (h.type === 'RegularExpression') {
+    try {
+      // eslint-disable-next-line no-new
+      new RegExp(h.value);
+    } catch {
+      return `"${h.value}" is not a valid regular expression`;
+    }
+  }
+  return undefined;
+}
+
 /**
  * A/B test: visitors whose cookie says they are in the variant group reach
  * the variant; everyone else stays on the current version. The app assigns
- * the cookie once, so each visitor stays in a group. With mobileOnly, the
- * cookie AND a mobile User-Agent must both hold.
+ * the cookie once, so each visitor stays in a group. An audience header
+ * (a phone User-Agent, or one the app sends) must hold as well.
  */
 export function buildABTest(
   backends: EndpointBackendWeight[],
   rules: EndpointRule[],
   target: StrategyTarget,
   cookie: { name: string; value: string },
-  mobileOnly = false,
+  audience?: EndpointHeaderMatch,
 ): StrategyChange {
   const added = withTarget(backends, target);
   return {
@@ -305,7 +334,9 @@ export function buildABTest(
           matches: [
             {
               cookies: [cookie],
-              ...(mobileOnly && { headers: [MOBILE_USER_AGENT] }),
+              ...(audience && {
+                headers: [{ ...audience, type: audience.type ?? 'Exact' }],
+              }),
             },
           ],
           backends: [{ name: added.name }],

@@ -10,6 +10,7 @@ import {
   rolloutStages,
   rolloutWeights,
   serializeRollout,
+  abAudience,
   completeSplit,
   stableLabel,
   untouchedSplit,
@@ -261,5 +262,28 @@ describe('completionBlockers', () => {
         stg: { index: 2, percent: 25, manual: false },
       }).map(e => e.name),
     ).toEqual(['stg']);
+  });
+});
+
+describe('abAudience', () => {
+  it('uses the recorded header, or the phone User-Agent for older rollouts', () => {
+    expect(
+      abAudience({
+        kind: 'cookie',
+        name: 'exp',
+        value: 'b',
+        audience: { name: 'X-Client', value: 'ios' },
+      }),
+    ).toEqual({ name: 'X-Client', value: 'ios' });
+    expect(
+      abAudience({ kind: 'cookie', name: 'exp', value: 'b', mobileOnly: true }),
+    ).toEqual({
+      name: 'user-agent',
+      type: 'RegularExpression',
+      value: '.*Mobi.*',
+    });
+    expect(
+      abAudience({ kind: 'cookie', name: 'exp', value: 'b' }),
+    ).toBeUndefined();
   });
 });

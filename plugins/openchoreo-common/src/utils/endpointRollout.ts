@@ -1,16 +1,19 @@
 import type {
   EndpointBackendWeight,
+  EndpointHeaderMatch,
   EndpointRollout,
   EndpointRule,
   EndpointWeightOverride,
   RolloutPlan,
   RolloutPosition,
+  RolloutPreview,
 } from '../types/endpoint-types';
 import {
   buildABTest,
   buildBlueGreen,
   buildCanary,
   detectEndpointStrategy,
+  MOBILE_USER_AGENT,
   type StrategyChange,
 } from './endpointRules';
 
@@ -95,6 +98,17 @@ function shareOut(
       }
     });
   return weights.map((w, i) => ({ name: w.name, weight: out[i] }));
+}
+
+/**
+ * The header an A/B test's group must also carry: the recorded audience, or
+ * the phone User-Agent for rollouts recorded with mobileOnly.
+ */
+export function abAudience(
+  preview: RolloutPreview | undefined,
+): EndpointHeaderMatch | undefined {
+  if (preview?.audience) return preview.audience;
+  return preview?.mobileOnly ? MOBILE_USER_AGENT : undefined;
 }
 
 /** The default canary steps. */
@@ -352,7 +366,7 @@ export function planRollout(
         rules,
         plan.candidate,
         { name: preview?.name || 'exp_group', value: preview?.value || 'b' },
-        preview?.mobileOnly,
+        abAudience(preview),
       );
       break;
     default:
