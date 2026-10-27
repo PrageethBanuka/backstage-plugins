@@ -100,7 +100,6 @@ describe('rolloutAction', () => {
       kind: 'stage',
       label: 'Advance to 50%',
       percent: 50,
-      completes: false,
     });
   });
 
@@ -122,35 +121,22 @@ describe('rolloutAction', () => {
     expect(rolloutAction(dev, summary(canary), [dev, staging])).toBeUndefined();
   });
 
-  it("does not complete with blue/green's switch outside the last environment", () => {
-    const blueGreen: EndpointRollout = {
-      ...canary,
-      strategy: 'blueGreen',
-      steps: [100],
-    };
-    const dev = env('development', 0);
-    const staging = env('staging', 100);
-    expect(rolloutAction(dev, summary(blueGreen), [dev, staging])).toEqual(
-      expect.objectContaining({
+  it.each(['blueGreen', 'abTest'] as const)(
+    "%s: the last environment's switch only moves traffic; Complete follows",
+    strategy => {
+      const rollout: EndpointRollout = { ...canary, strategy, steps: [100] };
+      const before = env('development', 0);
+      expect(rolloutAction(before, summary(rollout), [before])).toMatchObject({
         kind: 'stage',
         percent: 100,
-        completes: false,
-      }),
-    );
-  });
-
-  it("completes with blue/green's switch in the last environment", () => {
-    const blueGreen: EndpointRollout = {
-      ...canary,
-      strategy: 'blueGreen',
-      steps: [100],
-    };
-    const dev = env('development', 100);
-    const staging = env('staging', 0);
-    expect(rolloutAction(staging, summary(blueGreen), [dev, staging])).toEqual(
-      expect.objectContaining({ kind: 'stage', percent: 100, completes: true }),
-    );
-  });
+      });
+      const after = env('development', 100);
+      expect(rolloutAction(after, summary(rollout), [after])).toEqual({
+        kind: 'complete',
+        label: 'Complete rollout',
+      });
+    },
+  );
 
   it('does not offer Complete while a bound environment has not got the rollout', () => {
     const dev = env('development', 100);
@@ -204,7 +190,7 @@ describe('rolloutAction', () => {
     const staging = env('staging', undefined);
     expect(
       rolloutAction(dev, summary(blueGreen), [dev, staging]),
-    ).toMatchObject({ kind: 'stage', percent: 100, completes: false });
+    ).toMatchObject({ kind: 'stage', percent: 100 });
   });
 
   it('has no step without a rollout', () => {

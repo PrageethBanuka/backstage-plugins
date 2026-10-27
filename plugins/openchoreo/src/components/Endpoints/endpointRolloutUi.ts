@@ -102,13 +102,7 @@ export function stageText(
 /** The tile's primary button on the Rollout tab. */
 export type RolloutAction =
   | { kind: 'promote'; label: string; from: string }
-  | {
-      kind: 'stage';
-      label: string;
-      percent: number;
-      /** This step also completes the rollout (last environment's switch). */
-      completes: boolean;
-    }
+  | { kind: 'stage'; label: string; percent: number }
   | { kind: 'complete'; label: string };
 
 /**
@@ -149,9 +143,9 @@ export function readyToComplete(
 /**
  * The one next step in an environment: bring the rollout here from the
  * nearest environment before it that has it, or move to the next stage.
- * The last environment running the Endpoint also completes the rollout
- * once every environment sends all traffic to the new version; for
- * blue/green and A/B its switch does both at once.
+ * Once every environment running the Endpoint sends all traffic to the new
+ * version, the last one offers Complete. A blue/green switch or an A/B ship
+ * only moves traffic; completing is always its own step, as for a canary.
  */
 export function rolloutAction(
   env: EndpointEnvironment,
@@ -178,26 +172,17 @@ export function rolloutAction(
     }
     return undefined;
   }
-  const done = (e: EndpointEnvironment) => doneForCompletion(e, rollout);
-  const isLast = completionEnvironment(environments)?.name === env.name;
-  if (environments.every(done)) {
-    return isLast ? { kind: 'complete', label: 'Complete rollout' } : undefined;
+  if (environments.every(e => doneForCompletion(e, rollout))) {
+    return completionEnvironment(environments)?.name === env.name
+      ? { kind: 'complete', label: 'Complete rollout' }
+      : undefined;
   }
   const next = nextRolloutStage(
     rollout,
     env.rollout ?? { index: 0, percent: 0, manual: false },
   );
   if (!next) return undefined;
-  return {
-    kind: 'stage',
-    label: next.action,
-    percent: next.percent,
-    completes:
-      isLast &&
-      rollout.strategy !== 'canary' &&
-      next.percent === 100 &&
-      environments.every(e => e.name === env.name || done(e)),
-  };
+  return { kind: 'stage', label: next.action, percent: next.percent };
 }
 
 /** Who takes part in an A/B test besides the cookie group, on screen. */

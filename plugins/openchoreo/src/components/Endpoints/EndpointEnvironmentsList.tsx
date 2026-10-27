@@ -50,6 +50,12 @@ import {
   type RolloutAction,
 } from './endpointRolloutUi';
 
+/** "Staging", "Staging and Production", "A, B and C". */
+const listNames = (names: string[]) =>
+  names.length <= 1
+    ? names.join('')
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+
 /** Poll fast while an environment is settling; the route lands in seconds. */
 const SETTLING_POLL_MS = 3000;
 
@@ -240,7 +246,7 @@ export const EndpointEnvironmentsList = ({
   );
 
   const finish = useCallback(
-    (outcome: 'complete' | 'abandon', firstStep?: () => Promise<unknown>) => {
+    (outcome: 'complete' | 'abandon') => {
       const r = endpoint?.rollout;
       if (!endpoint || !r) return;
       const untouched = untouchedSummary(r);
@@ -251,6 +257,18 @@ export const EndpointEnvironmentsList = ({
       let completeBody = `${r.candidate} becomes the only version of ${endpoint.name} ${where}. ${r.stable} stops getting traffic from ${endpoint.name}.`;
       if (untouched) {
         completeBody = `${r.candidate} replaces ${r.stable} ${where}. ${untouched} stays as it is.`;
+      }
+      // Environments later in the pipeline that do not run the Endpoint yet
+      // skip the rollout: they get the new version directly when deployed.
+      const notYet = envs.filter(e => !e.bindingName).map(e => e.displayName);
+      if (notYet.length > 0) {
+        completeBody += ` ${listNames(notYet)} ${
+          notYet.length === 1 ? "doesn't" : "don't"
+        } run ${endpoint.name} yet: when deployed there, ${
+          notYet.length === 1 ? 'it gets' : 'they get'
+        } ${
+          r.candidate
+        } directly. To roll out there too, promote the rollout first.`;
       }
       setConfirmation({
         title:
@@ -269,7 +287,6 @@ export const EndpointEnvironmentsList = ({
           touchesProduction && { typeToConfirm: endpoint.name }),
         run: () =>
           run('*', 'stage', async () => {
-            if (firstStep) await firstStep();
             return resultMessage(
               outcome === 'complete'
                 ? `Rollout complete: ${r.candidate} replaced ${r.stable}`
@@ -348,14 +365,7 @@ export const EndpointEnvironmentsList = ({
           finish('complete');
           break;
         default:
-          if (action.completes) {
-            // The last environment's switch also ends the rollout.
-            finish('complete', () =>
-              client.setRolloutStage(entity, env.name, action.percent),
-            );
-          } else {
-            setStage(env, action.percent, action.label);
-          }
+          setStage(env, action.percent, action.label);
       }
     },
     [client, endpoint, entity, envs, finish, guarded, setStage],
