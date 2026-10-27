@@ -16,6 +16,7 @@ import { useResourceEnvironmentDetailPanelStyles } from '../ResourceEnvironments
 import { useEndpointEnvironmentsContext } from './EndpointEnvironmentsContext';
 import { EndpointSetupPane } from './EndpointSetupPane';
 import {
+  audienceText,
   completionEnvironment,
   inRollout,
   restoredSummary,
@@ -135,6 +136,9 @@ export const EndpointRolloutPane = ({
         <Box>
           <Row label="From" value={rollout.stable} />
           <Row label="To" value={rollout.candidate} />
+          {rollout.strategy === 'abTest' && (
+            <Row label="Who" value={audienceText(rollout.preview)} />
+          )}
           {untouchedSummary(rollout) && (
             <Row label="Unchanged" value={untouchedSummary(rollout)} />
           )}

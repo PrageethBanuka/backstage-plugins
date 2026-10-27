@@ -169,4 +169,36 @@ describe('StartRolloutPage', () => {
       screen.queryByRole('option', { name: 'trips-python' }),
     ).not.toBeInTheDocument();
   });
+
+  it('sends the header an A/B group must also carry', async () => {
+    render(
+      <MemoryRouter>
+        <StartRolloutPage />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('radio', { name: /trips-python · 70%/ });
+
+    fireEvent.click(screen.getByRole('radio', { name: /A\/B test/ }));
+    fireEvent.mouseDown(screen.getByLabelText('Component'));
+    fireEvent.click(await screen.findByRole('option', { name: 'trips-go' }));
+    fireEvent.click(
+      screen.getByRole('radio', {
+        name: /Only requests that also send a header/,
+      }),
+    );
+    fireEvent.click(screen.getByText('Your app'));
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: '' } });
+    expect(screen.getByText('Start rollout').closest('button')).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Value'), {
+      target: { value: 'android' },
+    });
+    fireEvent.click(screen.getByText('Start rollout'));
+
+    await waitFor(() => expect(mockClient.startRollout).toHaveBeenCalled());
+    expect(mockClient.startRollout.mock.calls[0][1].preview).toMatchObject({
+      kind: 'cookie',
+      audience: { name: 'X-Client', type: 'Exact', value: 'android' },
+    });
+  });
 });

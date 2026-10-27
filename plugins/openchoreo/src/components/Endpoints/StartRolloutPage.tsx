@@ -26,8 +26,10 @@ import {
   ForbiddenState,
 } from '@openchoreo/backstage-plugin-react';
 import {
+  audienceProblem,
   CHOREO_ANNOTATIONS,
   DEFAULT_CANARY_STEPS,
+  type EndpointHeaderMatch,
   type EndpointEnvironment,
   type EndpointSummary,
   type RolloutPlan,
@@ -88,6 +90,13 @@ const useStyles = makeStyles(theme => ({
     borderColor: theme.palette.primary.main,
     boxShadow: `0 0 0 1px ${theme.palette.primary.main}`,
   },
+  audience: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) 160px minmax(0, 1fr)',
+    gap: theme.spacing(1),
+    maxWidth: 640,
+    [theme.breakpoints.down('xs')]: { gridTemplateColumns: 'minmax(0, 1fr)' },
+  },
   pair: {
     display: 'grid',
     gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
@@ -96,6 +105,33 @@ const useStyles = makeStyles(theme => ({
     [theme.breakpoints.down('xs')]: { gridTemplateColumns: 'minmax(0, 1fr)' },
   },
 }));
+
+/** Header conditions to start from; each fills the fields and can be edited. */
+const AUDIENCE_PRESETS: {
+  label: string;
+  header: EndpointHeaderMatch;
+  hint: string;
+}[] = [
+  {
+    label: 'Phones',
+    header: {
+      name: 'user-agent',
+      type: 'RegularExpression',
+      value: '.*Mobi.*',
+    },
+    hint: "Browsers on phones put 'Mobi' in their User-Agent. iPads and apps that send their own User-Agent are missed.",
+  },
+  {
+    label: 'Chromium on mobile',
+    header: { name: 'sec-ch-ua-mobile', type: 'Exact', value: '?1' },
+    hint: 'Chrome, Edge and other Chromium browsers send this hint on mobile; Safari and Firefox do not.',
+  },
+  {
+    label: 'Your app',
+    header: { name: 'X-Client', type: 'Exact', value: 'ios' },
+    hint: 'Use the header your app already sends, such as X-Client: ios. The most reliable choice for native apps.',
+  },
+];
 
 const ICONS: Record<RolloutStrategy, JSX.Element> = {
   canary: <CallSplitIcon color="primary" />,
@@ -131,7 +167,14 @@ export const StartRolloutPage = () => {
   const [headerValue, setHeaderValue] = useState('true');
   const [cookieName, setCookieName] = useState('');
   const [cookieValue, setCookieValue] = useState('b');
-  const [mobileOnly, setMobileOnly] = useState(false);
+  // A/B: a header the cookie group must also send, as Flagger's
+  // analysis.match and Argo Rollouts' setHeaderRoute allow.
+  const [audienceOn, setAudienceOn] = useState(false);
+  const [audience, setAudience] = useState<EndpointHeaderMatch>({
+    name: 'user-agent',
+    type: 'RegularExpression',
+    value: '.*Mobi.*',
+  });
   const [targets, setTargets] = useState<string[]>([]);
   const [replaces, setReplaces] = useState('');
   const [busy, setBusy] = useState(false);
@@ -232,7 +275,7 @@ export const StartRolloutPage = () => {
               kind: 'cookie',
               name: cookieName,
               value: cookieValue,
-              mobileOnly,
+              ...(audienceOn && { audience }),
             },
           }
         : null;
@@ -260,7 +303,8 @@ export const StartRolloutPage = () => {
     endpointKey,
     cookieName,
     cookieValue,
-    mobileOnly,
+    audienceOn,
+    audience,
     headerName,
     headerValue,
     useHeader,
@@ -303,6 +347,8 @@ export const StartRolloutPage = () => {
   let blocked = '';
   if (endpoint?.rollout) blocked = 'A rollout is already running';
   else if (!component) blocked = 'Pick the new version';
+  else if (strategy === 'abTest' && audienceOn && audienceProblem(audience))
+    blocked = audienceProblem(audience)!;
   else if (!plan) blocked = 'Fill in how to reach the new version';
   else if (targets.length === 0) blocked = 'Pick at least one environment';
 
@@ -540,16 +586,92 @@ export const StartRolloutPage = () => {
                   Your app gives each visitor this cookie once, so a visitor
                   always sees the same version.
                 </Typography>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      color="primary"
-                      checked={mobileOnly}
-                      onChange={e => setMobileOnly(e.target.checked)}
-                    />
-                  }
-                  label="Only visitors on a phone take part"
-                />
+                <Typography variant="body2" className={classes.label}>
+                  Who takes part
+                </Typography>
+                <RadioGroup
+                  aria-label="Who takes part"
+                  value={audienceOn ? 'header' : 'everyone'}
+                  onChange={e => setAudienceOn(e.target.value === 'header')}
+                >
+                  <FormControlLabel
+                    value="everyone"
+                    control={<Radio color="primary" size="small" />}
+                    label="Everyone in the cookie group"
+                  />
+                  <FormControlLabel
+                    value="header"
+                    control={<Radio color="primary" size="small" />}
+                    label="Only requests that also send a header"
+                  />
+                </RadioGroup>
+                {audienceOn && (
+                  <>
+                    <Box display="flex" flexWrap="wrap" gridGap={8}>
+                      {AUDIENCE_PRESETS.map(p => (
+                        <Button
+                          key={p.label}
+                          size="small"
+                          variant="outlined"
+                          onClick={() => setAudience(p.header)}
+                        >
+                          {p.label}
+                        </Button>
+                      ))}
+                    </Box>
+                    <Box className={classes.audience}>
+                      <TextField
+                        id="rollout-audience-name"
+                        size="small"
+                        variant="outlined"
+                        label="Header"
+                        value={audience.name}
+                        onChange={e =>
+                          setAudience(a => ({ ...a, name: e.target.value }))
+                        }
+                      />
+                      <TextField
+                        id="rollout-audience-type"
+                        select
+                        size="small"
+                        variant="outlined"
+                        label="Match"
+                        value={audience.type ?? 'Exact'}
+                        onChange={e =>
+                          setAudience(a => ({
+                            ...a,
+                            type: e.target.value as EndpointHeaderMatch['type'],
+                          }))
+                        }
+                      >
+                        <MenuItem value="Exact">is exactly</MenuItem>
+                        <MenuItem value="RegularExpression">
+                          matches regex
+                        </MenuItem>
+                      </TextField>
+                      <TextField
+                        id="rollout-audience-value"
+                        size="small"
+                        variant="outlined"
+                        label="Value"
+                        value={audience.value}
+                        error={Boolean(audienceProblem(audience))}
+                        helperText={audienceProblem(audience)}
+                        onChange={e =>
+                          setAudience(a => ({ ...a, value: e.target.value }))
+                        }
+                      />
+                    </Box>
+                    <Typography variant="caption" color="textSecondary">
+                      {AUDIENCE_PRESETS.find(
+                        p =>
+                          p.header.name === audience.name &&
+                          p.header.value === audience.value,
+                      )?.hint ??
+                        'Both the cookie and this header must match. A header your app sends is the most reliable.'}
+                    </Typography>
+                  </>
+                )}
               </>
             )}
           </Box>

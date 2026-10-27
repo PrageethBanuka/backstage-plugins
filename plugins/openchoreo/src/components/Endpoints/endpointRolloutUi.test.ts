@@ -8,6 +8,7 @@ import {
   type EndpointSummary,
 } from '@openchoreo/backstage-plugin-common';
 import {
+  audienceText,
   inRollout,
   previewCommand,
   rolloutAction,
@@ -347,5 +348,38 @@ describe('advancing a rollout step by step', () => {
         { componentName: 'trips-go', endpoint: 'http', weight: 0 },
       ]),
     ).toEqual(steps);
+  });
+});
+
+describe('A/B audience on screen', () => {
+  const ab = (audience?: object, mobileOnly?: boolean): EndpointRollout => ({
+    strategy: 'abTest',
+    stable: 'storefront',
+    candidate: 'storefront-recs',
+    steps: [100],
+    preview: {
+      kind: 'cookie',
+      name: 'exp',
+      value: 'b',
+      ...(audience && { audience }),
+      ...(mobileOnly && { mobileOnly }),
+    } as EndpointRollout['preview'],
+  });
+
+  it('names who takes part and how to reach the variant', () => {
+    expect(audienceText(ab().preview)).toBe('Everyone in the cookie group');
+    expect(previewCommand(ab(), 'http://x')).toBe(
+      "curl -H 'Cookie: exp=b' http://x",
+    );
+    const app = ab({ name: 'X-Client', value: 'ios', type: 'Exact' });
+    expect(audienceText(app.preview)).toBe(
+      'The cookie group, when X-Client is ios',
+    );
+    expect(previewCommand(app, 'http://x')).toBe(
+      "curl -H 'Cookie: exp=b' -H 'X-Client: ios' http://x",
+    );
+    expect(previewCommand(ab(undefined, true), 'http://x')).toBe(
+      "curl -H 'Cookie: exp=b' -A 'Mobile' http://x",
+    );
   });
 });

@@ -1,4 +1,5 @@
 import {
+  abAudience,
   nextRolloutStage,
   rolloutStages,
   stableSplit,
@@ -7,6 +8,7 @@ import {
   type EndpointEnvironment,
   type EndpointRollout,
   type EndpointSummary,
+  type RolloutPreview,
   type RolloutStrategy,
 } from '@openchoreo/backstage-plugin-common';
 
@@ -198,6 +200,16 @@ export function rolloutAction(
   };
 }
 
+/** Who takes part in an A/B test besides the cookie group, on screen. */
+export function audienceText(preview: RolloutPreview | undefined): string {
+  const h = abAudience(preview);
+  if (!h) return 'Everyone in the cookie group';
+  if (h.type === 'RegularExpression') {
+    return `The cookie group, when ${h.name} matches ${h.value}`;
+  }
+  return `The cookie group, when ${h.name} is ${h.value}`;
+}
+
 /** The command that reaches the new version before it gets traffic. */
 export function previewCommand(
   rollout: EndpointRollout,
@@ -207,9 +219,18 @@ export function previewCommand(
   if (!p) return undefined;
   const target = url ?? '<endpoint URL>';
   if (p.kind === 'header') return `curl -H '${p.name}: ${p.value}' ${target}`;
-  return `curl -H 'Cookie: ${p.name}=${p.value}'${
-    p.mobileOnly ? " -A 'Mobile'" : ''
-  } ${target}`;
+  const h = abAudience(p);
+  let extra = '';
+  if (h && h.type === 'RegularExpression') {
+    // A value that matches the pattern; the phone pattern has a known one.
+    extra =
+      h.value === '.*Mobi.*'
+        ? " -A 'Mobile'"
+        : ` -H '${h.name}: <a value matching ${h.value}>'`;
+  } else if (h) {
+    extra = ` -H '${h.name}: ${h.value}'`;
+  }
+  return `curl -H 'Cookie: ${p.name}=${p.value}'${extra} ${target}`;
 }
 
 /**
