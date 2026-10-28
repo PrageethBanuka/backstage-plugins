@@ -327,6 +327,7 @@ export type {
   UpdateEndpointTrafficRequest,
   UpdateEndpointReleaseBindingRequest,
   ConvertRolloutRequest,
+  UpdateEndpointEnvironmentConfigsRequest,
   UpdateEndpointOverridesRequest,
   UpdateEndpointSettingsRequest,
   RolloutStrategy,

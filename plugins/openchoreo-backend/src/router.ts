@@ -1305,6 +1305,24 @@ export async function createRouter({
     );
   });
 
+  router.get('/endpoint-release-schema', async (req, res) => {
+    const { namespaceName, releaseName } = req.query;
+    if (!namespaceName || !releaseName) {
+      throw new InputError(
+        'namespaceName and releaseName are required query parameters',
+      );
+    }
+    res.json(
+      await endpointInfoService.fetchEndpointReleaseSchema(
+        {
+          namespaceName: namespaceName as string,
+          releaseName: releaseName as string,
+        },
+        getUserTokenFromRequest(req),
+      ),
+    );
+  });
+
   router.get('/endpoint-release-binding', async (req, res) => {
     const { namespaceName, endpointReleaseBindingName } = req.query;
 
@@ -1420,6 +1438,34 @@ export async function createRouter({
       ),
     );
   });
+
+  router.put(
+    '/update-endpoint-environment-configs',
+    requireAuth,
+    async (req, res) => {
+      const { endpointName, namespaceName, environment } = req.body;
+      if (!endpointName || !namespaceName || !environment) {
+        throw new InputError(
+          'endpointName, namespaceName and environment are required in request body',
+        );
+      }
+      const configs = req.body.environmentConfigs;
+      if (!configs || typeof configs !== 'object' || Array.isArray(configs)) {
+        throw new InputError('environmentConfigs must be an object');
+      }
+      res.json(
+        await endpointInfoService.updateEndpointEnvironmentConfigs(
+          {
+            namespaceName: req.body.namespaceName,
+            endpointName: req.body.endpointName,
+            environment: req.body.environment,
+            environmentConfigs: configs,
+          },
+          getUserTokenFromRequest(req),
+        ),
+      );
+    },
+  );
 
   router.put('/update-endpoint-overrides', requireAuth, async (req, res) => {
     const { endpointName, namespaceName, environment, overrides } = req.body;

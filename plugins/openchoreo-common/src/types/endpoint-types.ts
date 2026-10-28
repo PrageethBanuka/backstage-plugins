@@ -248,6 +248,13 @@ export interface EndpointEnvironment {
   backends: EndpointBackendStatus[];
   /** The binding's per-environment values (spec.backendOverrides). */
   overrides: EndpointWeightOverride[];
+  /**
+   * The binding's values for the EndpointType's environment configs
+   * (spec.endpointTypeEnvironmentConfigs); empty when none are set.
+   */
+  environmentConfigs?: Record<string, unknown>;
+  /** When the routes this environment serves were first accepted. */
+  deployedAt?: string;
   /** Where this environment stands in the Endpoint's rollout, if any. */
   rollout?: RolloutPosition;
   /**
@@ -337,6 +344,18 @@ export interface UpdateEndpointOverridesRequest {
   environment: string;
   /** An empty list clears the overrides, so the release's values apply. */
   overrides: EndpointWeightOverride[];
+}
+
+/**
+ * Request body of PUT /update-endpoint-environment-configs: the binding's
+ * values for the EndpointType's environment configs. No release is cut.
+ */
+export interface UpdateEndpointEnvironmentConfigsRequest {
+  namespaceName: string;
+  endpointName: string;
+  environment: string;
+  /** An empty object clears them, so the type's defaults apply. */
+  environmentConfigs: Record<string, unknown>;
 }
 
 /** Request body of PUT /update-endpoint-settings. Cuts a new release. */

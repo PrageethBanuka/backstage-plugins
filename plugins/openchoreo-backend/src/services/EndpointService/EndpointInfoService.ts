@@ -38,6 +38,7 @@ import type {
   RolloutActionResult,
   SetRolloutStageRequest,
   StartRolloutRequest,
+  UpdateEndpointEnvironmentConfigsRequest,
   UpdateEndpointReleaseBindingRequest,
   UpdateEndpointSettingsRequest,
   UpdateEndpointTrafficRequest,
@@ -439,6 +440,13 @@ export class EndpointInfoService {
         invokeURL: binding?.status?.invokeURL,
         backends: toBackendStatuses(binding),
         overrides: toOverrides(binding),
+        environmentConfigs:
+          (binding?.spec?.endpointTypeEnvironmentConfigs as
+            | Record<string, unknown>
+            | undefined) ?? {},
+        deployedAt:
+          binding?.status?.serving?.since ??
+          binding?.metadata.creationTimestamp,
         ...(rollout && binding && { rollout: positionOf(rollout, binding) }),
         deployedBackends: [...(deployed.get(envName) ?? [])].sort(),
         promotionTargets: targetsByEnv.get(envName) ?? [],
@@ -1006,6 +1014,82 @@ export class EndpointInfoService {
       await sleep(RELEASE_POLL_MS);
     }
     return { bindingName: binding.metadata.name, applied: false };
+  }
+
+  /**
+   * The JSON Schema of the environment configs the release's EndpointType
+   * snapshot declares, so a form validates against what the release was cut
+   * with rather than the live type. Empty when the type declares none.
+   */
+  async fetchEndpointReleaseSchema(
+    request: { namespaceName: string; releaseName: string },
+    token?: string,
+  ): Promise<Record<string, unknown>> {
+    const client = this.client(token);
+    const res = await client.GET(
+      '/api/v1/namespaces/{namespaceName}/endpointreleases/{endpointReleaseName}',
+      {
+        params: {
+          path: {
+            namespaceName: request.namespaceName,
+            endpointReleaseName: request.releaseName,
+          },
+        },
+      },
+    );
+    assertApiResponse(res, 'get endpoint release');
+    const section = res.data!.spec?.endpointType?.spec?.environmentConfigs as
+      | { openAPIV3Schema?: Record<string, unknown> }
+      | undefined;
+    return section?.openAPIV3Schema ?? {};
+  }
+
+  /**
+   * Sets an environment's values for the EndpointType's environment configs
+   * on its binding (spec.endpointTypeEnvironmentConfigs). The binding
+   * controller validates them against the type's schema and re-renders the
+   * environment's routes; no release is cut. An empty object clears them.
+   */
+  async updateEndpointEnvironmentConfigs(
+    request: UpdateEndpointEnvironmentConfigsRequest,
+    token?: string,
+  ): Promise<{ bindingName: string }> {
+    const client = this.client(token);
+    const binding = (
+      await this.listBindings(client, request.namespaceName, {
+        endpoint: request.endpointName,
+        environment: request.environment,
+      })
+    )[0];
+    if (!binding) {
+      throw new NotFoundError(
+        `Endpoint ${request.endpointName} is not deployed in ${request.environment}; deploy it there first`,
+      );
+    }
+    const empty = Object.keys(request.environmentConfigs).length === 0;
+    const { endpointTypeEnvironmentConfigs: _old, ...spec } = binding.spec!;
+    const res = await client.PUT(
+      '/api/v1/namespaces/{namespaceName}/endpointreleasebindings/{endpointReleaseBindingName}',
+      {
+        params: {
+          path: {
+            namespaceName: request.namespaceName,
+            endpointReleaseBindingName: binding.metadata.name,
+          },
+        },
+        body: {
+          metadata: binding.metadata,
+          spec: {
+            ...spec,
+            ...(!empty && {
+              endpointTypeEnvironmentConfigs: request.environmentConfigs,
+            }),
+          },
+        },
+      },
+    );
+    assertApiResponse(res, 'update endpoint release binding');
+    return { bindingName: binding.metadata.name };
   }
 
   /**

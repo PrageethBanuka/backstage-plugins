@@ -641,6 +641,79 @@ describe('EndpointInfoService', () => {
     });
   });
 
+  describe('environment configs', () => {
+    it("sets and clears the binding's environment configs", async () => {
+      routeGET({
+        [`${NS}/endpointreleasebindings`]: () =>
+          list([
+            {
+              ...binding('development'),
+              spec: {
+                ...binding('development').spec,
+                endpointTypeEnvironmentConfigs: { requestTimeout: '30s' },
+              },
+            },
+          ]),
+      });
+      mockPUT.mockResolvedValue(createOkResponse({}));
+
+      await service.updateEndpointEnvironmentConfigs(
+        {
+          namespaceName: 'default',
+          endpointName: 'payments-api',
+          environment: 'development',
+          environmentConfigs: { requestTimeout: '5s' },
+        },
+        'token',
+      );
+      expect(
+        mockPUT.mock.calls[0][1].body.spec.endpointTypeEnvironmentConfigs,
+      ).toEqual({ requestTimeout: '5s' });
+
+      await service.updateEndpointEnvironmentConfigs(
+        {
+          namespaceName: 'default',
+          endpointName: 'payments-api',
+          environment: 'development',
+          environmentConfigs: {},
+        },
+        'token',
+      );
+      expect(mockPUT.mock.calls[1][1].body.spec).not.toHaveProperty(
+        'endpointTypeEnvironmentConfigs',
+      );
+      expect(mockPUT.mock.calls[1][1].body.spec.endpointRelease).toBe(
+        'payments-api-aaa',
+      );
+    });
+
+    it("reads the schema from the release's EndpointType snapshot", async () => {
+      const schema = {
+        type: 'object',
+        properties: { requestTimeout: { type: 'string' } },
+      };
+      routeGET({
+        [`${NS}/endpointreleases/{endpointReleaseName}`]: () =>
+          createOkResponse({
+            metadata: { name: 'payments-api-aaa' },
+            spec: {
+              endpointType: {
+                kind: 'ClusterEndpointType',
+                name: 'http',
+                spec: { environmentConfigs: { openAPIV3Schema: schema } },
+              },
+            },
+          }),
+      });
+      expect(
+        await service.fetchEndpointReleaseSchema(
+          { namespaceName: 'default', releaseName: 'payments-api-aaa' },
+          'token',
+        ),
+      ).toEqual(schema);
+    });
+  });
+
   describe('updateEndpointOverrides', () => {
     it("sets the environment binding's weights and waits until they apply", async () => {
       const applied = {
