@@ -4,7 +4,11 @@ import { useEntity } from '@backstage/plugin-catalog-react';
 import { Card, Skeleton } from '@openchoreo/backstage-design-system';
 import { useOverviewCardStyles } from '../Environments/OverviewCard/styles';
 import { stableLabel } from '@openchoreo/backstage-plugin-common';
-import { backendKey, sharePercents } from '../Endpoints/endpointUi';
+import {
+  backendKey,
+  describeReach,
+  sharePercents,
+} from '../Endpoints/endpointUi';
 import {
   inRollout,
   stageText,
@@ -14,8 +18,9 @@ import { useEndpointOverview } from './useEndpointOverview';
 
 /**
  * Endpoint Overview card: the components that receive traffic, with their
- * share and how many environments each is deployed in. While a rollout
- * runs, a short summary links to the Rollout tab; there is no separate
+ * share, match or mirror, and how many environments each is deployed in.
+ * While a rollout runs, a short summary links to the Deploy tab; there is no
+ * separate
  * rollout card, so a basic Endpoint's Overview matches a Resource's.
  */
 export const EndpointBackendsCard = () => {
@@ -82,6 +87,7 @@ export const EndpointBackendsCard = () => {
                   </Typography>
                 </Typography>
                 <Typography variant="caption" color="textSecondary">
+                  {describeReach(b) ? `${describeReach(b)} · ` : ''}
                   {percents[i]}% · deployed in {deployedIn}{' '}
                   {deployedIn === 1 ? 'environment' : 'environments'}
                 </Typography>
@@ -122,9 +128,9 @@ export const EndpointBackendsCard = () => {
                   .join('')}
               </Typography>
               <Box>
-                <Link to="rollout" style={{ textDecoration: 'none' }}>
+                <Link to="environments" style={{ textDecoration: 'none' }}>
                   <Button variant="outlined" color="primary" size="small">
-                    Open rollout
+                    Open Deploy
                   </Button>
                 </Link>
               </Box>

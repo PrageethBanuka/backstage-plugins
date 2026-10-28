@@ -256,9 +256,9 @@ const projectDeployEntityContent = EntityContentBlueprint.make({
 //
 // An Endpoint is a project-level entity at the same level as a Resource: its
 // Deploy tab is the Resource Deploy tab. Progressive delivery (canary,
-// blue/green, A/B) is a separate Rollout tab on the same canvas, so
-// Endpoints with one version never see it. Components list the Endpoints
-// that route to them.
+// blue/green, A/B, mirror) runs on the same tab: a new backend is added from
+// the Set up pane and each environment moves forward from its own panel.
+// Components list the Endpoints that route to them.
 
 const endpointDeployEntityContent = EntityContentBlueprint.make({
   name: 'endpoint-deploy',
@@ -269,18 +269,6 @@ const endpointDeployEntityContent = EntityContentBlueprint.make({
     filter: isOpenChoreoManagedOfKind('endpoint'),
     loader: () =>
       import('./components/Endpoints').then(m => <m.EndpointDeploy />),
-  },
-});
-
-const endpointRolloutEntityContent = EntityContentBlueprint.make({
-  name: 'endpoint-rollout',
-  params: {
-    path: '/rollout',
-    title: 'Rollout',
-    group: 'deploy',
-    filter: isOpenChoreoManagedOfKind('endpoint'),
-    loader: () =>
-      import('./components/Endpoints').then(m => <m.EndpointRollout />),
   },
 });
 
@@ -1128,7 +1116,6 @@ export const openChoreoPlugin = createFrontendPlugin({
     runtimeHealthCard,
     projectDeployEntityContent,
     endpointDeployEntityContent,
-    endpointRolloutEntityContent,
     endpointDeploymentsCard,
     endpointBackendsCard,
     componentEndpointsEntityContent,

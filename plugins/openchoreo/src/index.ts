@@ -21,7 +21,6 @@ export { ProjectEnvironments } from './components/ProjectEnvironments';
 export {
   ComponentEndpoints,
   EndpointDeploy,
-  EndpointRollout,
   TrafficCard,
 } from './components/Endpoints';
 export { ApiTryOut } from './components/ApiTryOut';

@@ -33,7 +33,7 @@ import {
   useEndpointEnvironmentsContext,
 } from './EndpointEnvironmentsContext';
 import { deriveEndpointBadgeStatus, ENDPOINT_BADGE_LABEL } from './badgeStatus';
-import { missingBackends, statusMessage } from './endpointUi';
+import { describeReach, missingBackends, statusMessage } from './endpointUi';
 import {
   completionEnvironment,
   inRollout,
@@ -51,10 +51,10 @@ interface EndpointEnvironmentDetailPanelProps {
 
 /**
  * Right pane for a selected environment, built on the Resource detail panel
- * (ResourceEnvironmentDetailPanel) and its styles. The Deploy tab shows the
- * version of the routing the environment runs and the Resource actions; the
- * Rollout tab shows its traffic, how to preview the new version and the
- * rollout steps.
+ * (ResourceEnvironmentDetailPanel) and its styles. With no rollout running it
+ * shows the version of the routing the environment runs and the Resource
+ * actions; while one runs it shows the environment's traffic, how to preview
+ * the new backend, and the rollout steps.
  */
 export const EndpointEnvironmentDetailPanel = ({
   env,
@@ -401,6 +401,22 @@ function RolloutSections({ env }: { env: EndpointEnvironment }) {
   const denied = !perm.loading && !perm.canRollOut;
   const preview =
     rollout && running ? previewCommand(rollout, env.invokeURL) : undefined;
+  const candidate = rollout
+    ? endpoint.backends.find(
+        b => (b.name ?? b.componentName) === rollout.candidate,
+      )
+    : undefined;
+  const candidateReach = candidate
+    ? describeReach({
+        ...candidate,
+        ...(candidate.mirror && {
+          mirror:
+            env.backends.find(
+              b => (b.name ?? b.componentName) === rollout!.candidate,
+            )?.mirror ?? candidate.mirror,
+        }),
+      })
+    : '';
 
   return (
     <>
@@ -434,12 +450,19 @@ function RolloutSections({ env }: { env: EndpointEnvironment }) {
               {stageText(env, rollout)}
             </Typography>
           )}
+          {running && candidateReach && (
+            <Typography variant="caption" className={classes.statusMessage}>
+              {rollout!.strategy === 'mirror'
+                ? `${rollout!.candidate} gets ${candidateReach}`
+                : `${candidateReach} → ${rollout!.candidate}`}
+            </Typography>
+          )}
         </Box>
       ) : (
         <Box className={classes.section}>
           <Typography variant="body2" color="textSecondary">
-            This Endpoint is not routed in {env.displayName} yet. Deploy it from
-            the Deploy tab.
+            This Endpoint is not routed in {env.displayName} yet. Promote it
+            here from the environment before it.
           </Typography>
         </Box>
       )}
@@ -513,7 +536,9 @@ function RolloutSections({ env }: { env: EndpointEnvironment }) {
                     }
                     onClick={() => onRollBack(env.name)}
                   >
-                    Roll back to {stableLabel(rollout)}
+                    {rollout.strategy === 'mirror'
+                      ? 'Stop copying'
+                      : `Roll back to ${stableLabel(rollout)}`}
                   </Button>
                 </span>
               </Tooltip>
@@ -537,6 +562,12 @@ function RolloutSections({ env }: { env: EndpointEnvironment }) {
               </Tooltip>
             )}
           </Box>
+          {running && env.bindingName && (
+            <Typography variant="caption" color="textSecondary">
+              Steps here write EndpointReleaseBinding {env.bindingName}{' '}
+              spec.backendOverrides; no new release is cut.
+            </Typography>
+          )}
         </Box>
       )}
 

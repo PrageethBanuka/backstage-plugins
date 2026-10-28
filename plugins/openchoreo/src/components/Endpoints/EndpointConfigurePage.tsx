@@ -94,8 +94,8 @@ const sameSet = <T,>(a: T[], b: T[]) =>
  * up tile, on the Configure Resource page's layout (DetailPageLayout). It
  * covers only what deploying needs: where the Endpoint is reachable from,
  * the one version it serves and whether new versions deploy on their own.
- * Splitting traffic across versions belongs to the Rollout tab. This is a
- * placeholder until the Endpoint's deploy config is defined.
+ * Splitting traffic across backends is done with Add a backend on the same
+ * tab. This is a placeholder until the Endpoint's deploy config is defined.
  */
 export const EndpointConfigurePage = () => {
   const classes = useStyles();
@@ -354,10 +354,10 @@ export const EndpointConfigurePage = () => {
             </Box>
             {locked && (
               <Typography variant="caption" color="textSecondary">
-                A rollout to {endpoint.rollout!.candidate} is running. Finish or
-                abandon it on the{' '}
-                <RouterLink to="../../rollout" relative="path">
-                  Rollout tab
+                {endpoint.rollout!.candidate} is being rolled out. Keep only it,
+                or remove it, from the{' '}
+                <RouterLink to=".." relative="path">
+                  Set up pane
                 </RouterLink>{' '}
                 first.
               </Typography>
@@ -370,8 +370,8 @@ export const EndpointConfigurePage = () => {
             )}
             {!locked && !several && (
               <Typography variant="caption" color="textSecondary">
-                This version gets all traffic. To move traffic to a new version
-                step by step, use the Rollout tab.
+                This backend gets all traffic. To move traffic to another
+                component step by step, use Add a backend on the Set up pane.
               </Typography>
             )}
           </Box>

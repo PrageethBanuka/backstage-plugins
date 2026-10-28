@@ -7,8 +7,8 @@ import type {
 import type { RolloutAction } from './endpointRolloutUi';
 
 /**
- * Which tab the pipeline canvas is on: Deploy (versions of the routing per
- * environment, like a Resource) or Rollout (moving traffic to a new version).
+ * What the canvas shows: deploy (versions of the routing per environment,
+ * like a Resource) or, while a rollout runs, its steps.
  */
 export type EndpointTabMode = 'deploy' | 'rollout';
 
@@ -39,7 +39,7 @@ export interface EndpointEnvironmentsContextValue {
   onRolloutAction: (environment: string, action: RolloutAction) => void;
   /** Send all of an environment's traffic back to the stable version. */
   onRollBack: (environment: string) => void;
-  /** Open the Rollout tab. */
+  /** Show the rollout summary (the Set up pane). */
   onOpenRollout: () => void;
   onCopy: (text: string, label: string) => void;
 }

@@ -58,9 +58,8 @@ const ICON_STYLE = { marginRight: 8 };
  * Environment tile on the Endpoint pipeline canvas, built on the Resource
  * tile (ResourceMiniEnvironmentNode) and its styles.
  *
- * On the Deploy tab it is the Resource tile: status, a "newer" badge and
- * Promote, plus a chip linking to the Rollout tab while a rollout runs
- * here. On the Rollout tab it shows the split the environment serves, its
+ * With no rollout running it is the Resource tile: status, a "newer" badge
+ * and Promote. While one runs it shows the split the environment serves, its
  * stage, and the next step in the slot where Promote sits.
  */
 export const EndpointMiniEnvironmentNode = ({
@@ -417,7 +416,7 @@ function DeployPrimary({ env }: { env: EndpointEnvironment }) {
   );
 }
 
-/** The Rollout tab's next step, in the slot where Promote sits. */
+/** The rollout's next step, in the slot where Promote sits. */
 function RolloutPrimary({ env }: { env: EndpointEnvironment }) {
   const classes = useResourceMiniEnvironmentNodeStyles();
   const { endpoint, environments, pendingAction, onRolloutAction } =

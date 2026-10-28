@@ -1,13 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type {
-  EndpointEnvironment,
-  EndpointRule,
-} from '@openchoreo/backstage-plugin-common';
+import type { EndpointEnvironment } from '@openchoreo/backstage-plugin-common';
 import {
   EnvironmentWeightsDialog,
   weightPresets,
 } from './EnvironmentWeightsDialog';
-import { describeRule } from './endpointUi';
+import { describeMatch, describeReach } from './endpointUi';
 
 const backend = (name: string, weight: number) => ({
   name,
@@ -31,62 +28,60 @@ const env = (
     resolved: true,
   })),
   overrides,
-  rules: [],
   deployedBackends: [],
   promotionTargets: [],
 });
 
-const preview: EndpointRule = {
-  name: 'preview',
-  matches: [{ headers: [{ name: 'x-preview', value: 'green' }] }],
-  backends: [{ name: 'checkout-green' }],
+// Green at weight 0, reached by the preview header.
+const green = {
+  ...backend('checkout-green', 0),
+  match: { headers: [{ name: 'x-preview', value: 'green' }] },
 };
 
 describe('weightPresets', () => {
   it('offers nothing for a split set up by hand', () => {
     expect(
-      weightPresets(
-        [
-          backend('trips-python', 60),
-          backend('trips-legacy', 30),
-          backend('trips-go', 10),
-        ],
-        [],
-      ),
+      weightPresets([
+        backend('trips-python', 60),
+        backend('trips-legacy', 30),
+        backend('trips-go', 10),
+      ]),
     ).toEqual([]);
   });
 
   it('offers canary steps and a rollback', () => {
     expect(
-      weightPresets(
-        [backend('trips-python', 100), backend('trips-go', 0)],
-        [
-          {
-            name: 'canary-testers',
-            matches: [{ headers: [{ name: 'x-canary', value: 'true' }] }],
-            backends: [{ name: 'trips-go' }],
-          },
-        ],
-      ).map(p => p.label),
+      weightPresets([
+        backend('trips-python', 100),
+        {
+          ...backend('trips-go', 0),
+          match: { headers: [{ name: 'x-canary', value: 'true' }] },
+        },
+      ]).map(p => p.label),
     ).toEqual([
       'Canary 5%',
       'Canary 25%',
       'Canary 50%',
-      'Promote: 100%',
+      'All traffic: 100%',
       'Roll back: 0%',
     ]);
   });
 
-  it('offers the blue/green switch and switch-back', () => {
-    const presets = weightPresets(
-      [backend('checkout-blue', 100), backend('checkout-green', 0)],
-      [preview],
-    );
-    expect(presets[0]).toEqual({
-      label: 'Switch to checkout-green',
-      weights: { 'checkout-green': 100, 'checkout-blue': 0 },
-    });
-    expect(presets[1].label).toBe('Switch back to checkout-blue');
+  it('offers no weight presets for a mirror', () => {
+    expect(
+      weightPresets(
+        [
+          backend('trips-python', 100),
+          { ...backend('trips-go', 0), mirror: { percent: 10 } },
+        ],
+        {
+          strategy: 'mirror',
+          stable: 'trips-python',
+          candidate: 'trips-go',
+          steps: [5, 10, 100],
+        },
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -98,7 +93,6 @@ describe('weightPresets during a rollout', () => {
         backend('trips-legacy', 30),
         backend('trips-go', 0),
       ],
-      [],
       {
         strategy: 'canary',
         stable: 'trips-python',
@@ -123,21 +117,22 @@ describe('weightPresets during a rollout', () => {
   });
 });
 
-describe('describeRule', () => {
-  it('reads a rule as a sentence', () => {
-    expect(describeRule(preview)).toBe(
-      'when x-preview: green → checkout-green',
-    );
+describe('describeMatch', () => {
+  it("reads a backend's match and mirror as a line", () => {
+    expect(describeMatch(green.match)).toBe('x-preview: green');
     expect(
-      describeRule({
-        name: 'default',
-        backends: [
-          { name: 'a', weight: 90 },
-          { name: 'b', weight: 10 },
+      describeMatch({
+        path: { value: '/next' },
+        headers: [
+          { name: 'user-agent', type: 'RegularExpression', value: '.*Mobi.*' },
         ],
-        mirrors: [{ backend: 'b', percent: 5 }],
+        cookies: [{ name: 'exp', value: 'b' }],
       }),
-    ).toBe('every other request → a (90), b (10), mirror 5% to b');
+    ).toBe('path /next/… and user-agent ~ .*Mobi.* and cookie exp=b');
+    expect(
+      describeReach({ ...backend('shadow', 0), mirror: { percent: 10 } }),
+    ).toBe('a copy of 10% of traffic');
+    expect(describeReach(backend('blue', 100))).toBe('');
   });
 });
 
@@ -148,8 +143,13 @@ describe('EnvironmentWeightsDialog', () => {
       <EnvironmentWeightsDialog
         open
         env={env({ 'checkout-blue': 100, 'checkout-green': 0 })}
-        backends={[backend('checkout-blue', 100), backend('checkout-green', 0)]}
-        rules={[preview]}
+        backends={[backend('checkout-blue', 100), green]}
+        rollout={{
+          strategy: 'blueGreen',
+          stable: 'checkout-blue',
+          candidate: 'checkout-green',
+          steps: [100],
+        }}
         onClose={jest.fn()}
         onSave={onSave}
       />,
@@ -173,7 +173,6 @@ describe('EnvironmentWeightsDialog', () => {
         open
         env={env({ a: 50, b: 50 }, [{ name: 'b', weight: 50 }])}
         backends={[backend('a', 90), backend('b', 10)]}
-        rules={[]}
         onClose={jest.fn()}
         onSave={onSave}
       />,
@@ -182,5 +181,31 @@ describe('EnvironmentWeightsDialog', () => {
       screen.getByRole('button', { name: "Reset to the Endpoint's weights" }),
     );
     await waitFor(() => expect(onSave).toHaveBeenCalledWith('development', []));
+  });
+
+  it("sets a mirror's copy share next to the weights", async () => {
+    const onSave = jest.fn().mockResolvedValue({ applied: true });
+    render(
+      <EnvironmentWeightsDialog
+        open
+        env={env({ blue: 100, shadow: 0 })}
+        backends={[
+          backend('blue', 100),
+          { ...backend('shadow', 0), mirror: { percent: 100 } },
+        ]}
+        onClose={jest.fn()}
+        onSave={onSave}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/shadow/, { selector: 'input' }), {
+      target: { value: '10' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply here' }));
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith('development', [
+        { name: 'blue', weight: 100 },
+        { name: 'shadow', mirror: { percent: 10 } },
+      ]),
+    );
   });
 });

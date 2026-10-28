@@ -14,8 +14,8 @@ interface EndpointSetupCardProps {
 
 /**
  * Leading tile on the Endpoint pipeline canvas: the Resource `Set up` tile
- * (ResourceSetupCard) with the Endpoint's own title. The Deploy tab shows
- * "Set up"; the Rollout tab shows "Rollout" and what is rolling out.
+ * (ResourceSetupCard) with the Endpoint's own title, and what is rolling out
+ * while a rollout runs.
  */
 export const EndpointSetupCard = ({
   selected,

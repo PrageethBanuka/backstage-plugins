@@ -40,8 +40,8 @@ interface EndpointDeployFlowCanvasProps {
 
 /**
  * Pipeline DAG for an Endpoint's environments: the Resource deploy canvas
- * (ResourceDeployFlowCanvas) with Endpoint tiles. Both the Deploy and the
- * Rollout tab use it; only the leading tile and the tile mode differ.
+ * (ResourceDeployFlowCanvas) with Endpoint tiles; the tiles switch to the
+ * rollout's steps while one runs.
  * Shares the dagre layout, pan/zoom and styles.
  */
 export const EndpointDeployFlowCanvas = ({

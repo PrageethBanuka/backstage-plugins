@@ -6,7 +6,6 @@ import type {
   ReleaseBindingCondition,
   ComponentTrafficEntry,
   EndpointBackendWeight,
-  EndpointRule,
   EndpointTypeDetails,
   EndpointVisibility,
   EndpointWeightOverride,
@@ -827,19 +826,8 @@ export interface OpenChoreoClientApi {
   fetchEndpointType(entity: Entity): Promise<EndpointTypeDetails>;
 
   /**
-   * Replace the Endpoint's routing rules, and optionally its backends in the
-   * same update (a strategy adds a backend and its rule together). Cuts a new
-   * release.
-   */
-  updateEndpointRules(
-    entity: Entity,
-    rules: EndpointRule[],
-    backends?: EndpointBackendWeight[],
-  ): Promise<{ latestRelease?: string; changed: boolean }>;
-
-  /**
-   * Set an environment's weights on its binding. Moves that environment's
-   * traffic without a new release; an empty list clears the overrides.
+   * Set an environment's weights and mirror shares on its binding. Moves that
+   * environment's traffic without a new release; an empty list clears them.
    */
   updateEndpointOverrides(
     entity: Entity,
@@ -848,8 +836,8 @@ export interface OpenChoreoClientApi {
   ): Promise<{ bindingName: string; applied: boolean }>;
 
   /**
-   * Start a rollout: adds the new version at 0% with its preview rule, and
-   * starts it in the given environments.
+   * Start a rollout: adds the new backend at 0% with the match its preview
+   * needs, or its mirror, and starts it in the given environments.
    */
   startRollout(
     entity: Entity,
@@ -871,10 +859,16 @@ export interface OpenChoreoClientApi {
     to: string,
   ): Promise<RolloutActionResult>;
 
-  /** Complete (keep the new version) or abandon (keep stable) the rollout. */
+  /** Complete (keep the new backend) or abandon (keep stable) the rollout. */
   finishRollout(
     entity: Entity,
     outcome: 'complete' | 'abandon',
+  ): Promise<RolloutActionResult>;
+
+  /** Turn a mirror rollout into a canary on the same backend, at 0%. */
+  convertRollout(
+    entity: Entity,
+    testerHeader?: { name: string; value: string },
   ): Promise<RolloutActionResult>;
 
   /** Change the Endpoint's visibility or autoDeploy. */

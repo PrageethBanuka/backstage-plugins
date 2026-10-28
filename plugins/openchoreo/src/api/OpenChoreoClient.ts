@@ -7,7 +7,6 @@ import {
   type ReleaseBindingCondition,
   type ComponentTrafficEntry,
   type EndpointBackendWeight,
-  type EndpointRule,
   type EndpointVisibility,
   type EndpointWeightOverride,
   type RolloutActionResult,
@@ -93,13 +92,13 @@ const API_ENDPOINTS = {
   ENDPOINT_ENVIRONMENT_INFO: '/endpoint-environment-info',
   ENDPOINT_RELEASES: '/endpoint-releases',
   UPDATE_ENDPOINT_TRAFFIC: '/update-endpoint-traffic',
-  UPDATE_ENDPOINT_RULES: '/update-endpoint-rules',
   UPDATE_ENDPOINT_OVERRIDES: '/update-endpoint-overrides',
   UPDATE_ENDPOINT_SETTINGS: '/update-endpoint-settings',
   ROLLOUT_START: '/endpoint-rollout/start',
   ROLLOUT_STAGE: '/endpoint-rollout/stage',
   ROLLOUT_PROMOTE: '/endpoint-rollout/promote',
   ROLLOUT_FINISH: '/endpoint-rollout/finish',
+  ROLLOUT_CONVERT: '/endpoint-rollout/convert',
   UPDATE_ENDPOINT_RELEASE_BINDING: '/update-endpoint-release-binding',
   DELETE_ENDPOINT_RELEASE_BINDING: '/delete-endpoint-release-binding',
   DELETE_ENDPOINT: '/delete-endpoint',
@@ -675,24 +674,6 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
     });
   }
 
-  async updateEndpointRules(
-    entity: Entity,
-    rules: EndpointRule[],
-    backends?: EndpointBackendWeight[],
-  ): Promise<{ latestRelease?: string; changed: boolean }> {
-    const { endpointName, namespaceName } =
-      extractEndpointEntityMetadata(entity);
-    return this.apiFetch(API_ENDPOINTS.UPDATE_ENDPOINT_RULES, {
-      method: 'PUT',
-      body: {
-        endpointName,
-        namespaceName,
-        rules,
-        ...(backends && { backends }),
-      },
-    });
-  }
-
   async updateEndpointOverrides(
     entity: Entity,
     environment: string,
@@ -746,6 +727,19 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
     return this.apiFetch(API_ENDPOINTS.ROLLOUT_FINISH, {
       method: 'PUT',
       body: { ...extractEndpointEntityMetadata(entity), outcome },
+    });
+  }
+
+  async convertRollout(
+    entity: Entity,
+    testerHeader?: { name: string; value: string },
+  ): Promise<RolloutActionResult> {
+    return this.apiFetch(API_ENDPOINTS.ROLLOUT_CONVERT, {
+      method: 'PUT',
+      body: {
+        ...extractEndpointEntityMetadata(entity),
+        ...(testerHeader && { testerHeader }),
+      },
     });
   }
 

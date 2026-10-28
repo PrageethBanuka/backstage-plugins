@@ -8,9 +8,9 @@ import {
   teal,
 } from '@material-ui/core/colors';
 import type {
+  EndpointBackendMatch,
   EndpointBackendWeight,
   EndpointEnvironment,
-  EndpointRule,
   EndpointStrategy,
 } from '@openchoreo/backstage-plugin-common';
 
@@ -100,43 +100,46 @@ export function missingBackends(
     .map(b => b.componentName);
 }
 
-/** One line for a rule's conditions and where it sends, for summaries. */
-export function describeRule(rule: EndpointRule): string {
-  const when = (rule.matches ?? [])
-    .map(m =>
-      [
-        ...(m.headers ?? []).map(h =>
-          h.type === 'RegularExpression'
-            ? `${h.name} ~ ${h.value}`
-            : `${h.name}: ${h.value}`,
-        ),
-        ...(m.cookies ?? []).map(c => `cookie ${c.name}=${c.value}`),
-        ...(m.queryParams ?? []).map(q => `?${q.name}=${q.value}`),
-      ].join(' and '),
-    )
-    .join(' or ');
-  const to = rule.backends
-    .map(b =>
-      rule.backends.length > 1 ? `${b.name} (${b.weight ?? 1})` : b.name,
-    )
-    .join(', ');
-  const mirrors = (rule.mirrors ?? [])
-    .map(m => `, mirror ${m.percent}% to ${m.backend}`)
-    .join('');
-  return `${when ? `when ${when}` : 'every other request'} → ${to}${mirrors}`;
+/**
+ * One line for a backend's match, e.g. "x-preview: green", "path /next/…
+ * and cookie exp=b", for the traffic sections and summaries.
+ */
+export function describeMatch(match: EndpointBackendMatch): string {
+  return [
+    ...(match.path
+      ? [
+          match.path.type === 'Exact'
+            ? `path ${match.path.value}`
+            : `path ${match.path.value.replace(/\/$/, '')}/…`,
+        ]
+      : []),
+    ...(match.headers ?? []).map(h =>
+      h.type === 'RegularExpression'
+        ? `${h.name} ~ ${h.value}`
+        : `${h.name}: ${h.value}`,
+    ),
+    ...(match.cookies ?? []).map(c => `cookie ${c.name}=${c.value}`),
+  ].join(' and ');
 }
 
-/** A sentence for the strategy an Endpoint's backends and rules show. */
+/**
+ * What a backend gets besides its weight, e.g. "x-preview: green" or "a copy
+ * of 10% of traffic"; empty for a plain weighted backend.
+ */
+export function describeReach(b: EndpointBackendWeight): string {
+  if (b.mirror) return `a copy of ${b.mirror.percent}% of traffic`;
+  return b.match ? describeMatch(b.match) : '';
+}
+
+/** A sentence for the strategy an Endpoint's backends show. */
 export function describeStrategy(strategy: EndpointStrategy): string {
   switch (strategy.kind) {
     case 'canary':
-      return `Canary: ${strategy.canary} next to ${strategy.stable}${
-        strategy.testerRule ? '; testers reach it by header' : ''
-      }. Step it up per environment with Adjust weights.`;
-    case 'blueGreen':
-      return `Blue/green: ${strategy.green} in preview behind rule ${strategy.previewRule}; ${strategy.blue} serves everyone. Switch per environment with Adjust weights.`;
+      return `Canary: ${strategy.canary} next to ${strategy.stable}. Step it up per environment.`;
     case 'abTest':
       return `A/B test: visitors with ${strategy.cookie} reach ${strategy.variant}; everyone else stays on ${strategy.control}.`;
+    case 'mirror':
+      return `Mirror: ${strategy.shadow} gets copies of ${strategy.stable}'s traffic and nobody sees its answers.`;
     default:
       return 'None running. One backend serves all traffic.';
   }

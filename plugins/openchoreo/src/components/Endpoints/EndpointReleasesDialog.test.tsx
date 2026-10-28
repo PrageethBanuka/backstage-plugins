@@ -29,7 +29,6 @@ const environment: EndpointEnvironment = {
   latestRelease: 'rel-latest',
   backends: [],
   overrides: [],
-  rules: [],
   deployedBackends: ['payments-v1/http'],
   promotionTargets: [],
 };
@@ -38,7 +37,6 @@ const release = (name: string): EndpointReleaseSummary => ({
   name,
   createdAt: '2026-10-14T00:00:00Z',
   backends: [{ componentName: 'payments-v1', endpoint: 'http', weight: 100 }],
-  rules: [],
 });
 
 function renderDialog(onDelete = jest.fn().mockResolvedValue(undefined)) {

@@ -6,34 +6,21 @@ import { StartRolloutPage } from './StartRolloutPage';
 
 /**
  * Router for the Endpoint entity's `/environments` (Deploy) tab, the same
- * shape as the Resource Deploy tab.
+ * shape as the Resource Deploy tab. Progressive delivery runs here too: a
+ * new backend is added from the Set up pane, and each environment moves
+ * forward from its own panel.
  *
  * Sub-routes:
  * - `/` — the pipeline canvas and detail panel
  * - `/configure` — Configure & Deploy, opened from the Set up tile
+ * - `/add-backend` — Add a backend and choose how it gets traffic
  * - `/release/:envName` — the K8s artifacts applied in one environment
  */
 export const EndpointDeploy = () => (
   <Routes>
-    <Route path="/" element={<EndpointEnvironmentsList mode="deploy" />} />
+    <Route path="/" element={<EndpointEnvironmentsList />} />
     <Route path="/configure" element={<EndpointConfigurePage />} />
-    <Route path="/release/:envName" element={<EndpointReleaseDetailsPage />} />
-  </Routes>
-);
-
-/**
- * Router for the Endpoint entity's `/rollout` tab: progressive delivery on
- * the same canvas, for Endpoints that move traffic to a new version.
- *
- * Sub-routes:
- * - `/` — the pipeline canvas in rollout mode
- * - `/start` — Start a rollout
- * - `/release/:envName` — the K8s artifacts applied in one environment
- */
-export const EndpointRollout = () => (
-  <Routes>
-    <Route path="/" element={<EndpointEnvironmentsList mode="rollout" />} />
-    <Route path="/start" element={<StartRolloutPage />} />
+    <Route path="/add-backend" element={<StartRolloutPage />} />
     <Route path="/release/:envName" element={<EndpointReleaseDetailsPage />} />
   </Routes>
 );

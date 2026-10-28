@@ -38,7 +38,6 @@ const summary = (rollout?: EndpointRollout): EndpointSummary => ({
     { componentName: 'trips-python', endpoint: 'http', weight: 100 },
     { componentName: 'trips-go', endpoint: 'http', weight: 0 },
   ],
-  rules: [],
   rollout,
   rolloutSource: rollout ? 'annotation' : 'none',
   environments: [],
@@ -79,7 +78,6 @@ const env = (
           },
         ],
   overrides: [],
-  rules: [],
   rollout:
     percent === undefined
       ? undefined
@@ -116,7 +114,7 @@ describe('rolloutAction', () => {
     const staging = env('staging', 100);
     expect(rolloutAction(staging, summary(canary), [dev, staging])).toEqual({
       kind: 'complete',
-      label: 'Complete rollout',
+      label: 'Keep only trips-go',
     });
     expect(rolloutAction(dev, summary(canary), [dev, staging])).toBeUndefined();
   });
@@ -133,7 +131,7 @@ describe('rolloutAction', () => {
       const after = env('development', 100);
       expect(rolloutAction(after, summary(rollout), [after])).toEqual({
         kind: 'complete',
-        label: 'Complete rollout',
+        label: 'Keep only trips-go',
       });
     },
   );
@@ -152,7 +150,7 @@ describe('rolloutAction', () => {
     const prod = env('production', undefined, { bindingName: undefined });
     expect(rolloutAction(dev, summary(canary), [dev, prod])).toEqual({
       kind: 'complete',
-      label: 'Complete rollout',
+      label: 'Keep only trips-go',
     });
   });
 
@@ -265,7 +263,7 @@ describe('advancing a rollout step by step', () => {
   // Plans a canary, then presses each environment's primary button and
   // applies the weights it sets, as the backend does.
   const walk = (backends: EndpointBackendWeight[]) => {
-    const plan = planRollout(backends, [], {
+    const plan = planRollout(backends, {
       strategy: 'canary',
       candidate: { componentName: 'trips-go', endpoint: 'http' },
     });
@@ -282,12 +280,12 @@ describe('advancing a rollout step by step', () => {
           componentName: w.name,
           endpoint: 'http',
           name: w.name,
-          weight: w.weight,
+          weight: w.weight ?? 0,
           resolved: true,
         })),
         rollout: rolloutPosition(
           plan.rollout,
-          Object.fromEntries(weights.map(w => [w.name, w.weight])),
+          Object.fromEntries(weights.map(w => [w.name, w.weight ?? 0])),
         ),
       };
     };
@@ -309,7 +307,7 @@ describe('advancing a rollout step by step', () => {
     'Advance to 25%',
     'Advance to 50%',
     'Send all traffic to trips-go',
-    'Complete rollout',
+    'Keep only trips-go',
   ];
 
   it('walks every step on a single-version Endpoint', () => {

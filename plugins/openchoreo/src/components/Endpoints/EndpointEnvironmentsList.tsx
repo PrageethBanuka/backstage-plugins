@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyState } from '@backstage/core-components';
 import { PageLoader } from '@openchoreo/backstage-design-system';
-import { Box } from '@material-ui/core';
+import { Box, Button, Tooltip, Typography } from '@material-ui/core';
 import { useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
 import { useEntity } from '@backstage/plugin-catalog-react';
@@ -35,7 +35,6 @@ import { EndpointRolloutPane } from './EndpointRolloutPane';
 import { EndpointSetupCard } from './EndpointSetupCard';
 import { EndpointSetupPane } from './EndpointSetupPane';
 import { EnvironmentWeightsDialog } from './EnvironmentWeightsDialog';
-import { RulesEditorDialog } from './RulesEditorDialog';
 import { StopRoutingDialog } from './StopRoutingDialog';
 import {
   ConfirmTrafficDialog,
@@ -72,17 +71,13 @@ function resultMessage(what: string, result: RolloutActionResult) {
 }
 
 /**
- * The pipeline canvas and detail panel of an Endpoint, mounted by both the
- * Deploy tab (`mode="deploy"`) and the Rollout tab (`mode="rollout"`). Same
- * layout and flow as ResourceEnvironmentsList: a leading tile, environment
- * tiles, the selected tile's panel on the right, and the dialogs lifted up
- * here.
+ * The pipeline canvas and detail panel of an Endpoint's Deploy tab. Same
+ * layout and flow as ResourceEnvironmentsList: a leading Set up tile,
+ * environment tiles, the selected tile's panel on the right, and the dialogs
+ * lifted up here. While a rollout runs, the tiles and panels show its steps
+ * and the Set up pane summarises it; otherwise they deploy and promote.
  */
-export const EndpointEnvironmentsList = ({
-  mode,
-}: {
-  mode: EndpointTabMode;
-}) => {
+export const EndpointEnvironmentsList = () => {
   const canvasClasses = useResourceDeployFlowCanvasStyles();
   const { entity } = useEntity();
   const navigate = useNavigate();
@@ -108,7 +103,6 @@ export const EndpointEnvironmentsList = ({
   const [selectedSetup, setSelectedSetup] = useState(false);
   const [releasesEnv, setReleasesEnv] = useState<string | null>(null);
   const [overridesEnv, setOverridesEnv] = useState<string | null>(null);
-  const [rulesOpen, setRulesOpen] = useState(false);
   const [stopTarget, setStopTarget] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<TrafficConfirmation | null>(
     null,
@@ -162,12 +156,6 @@ export const EndpointEnvironmentsList = ({
   useEffect(() => {
     fetchAll({ showProgress: true });
   }, [fetchAll]);
-
-  // The Rollout tab opens on the Rollout tile, so its summary or the
-  // strategies are the first thing in the panel.
-  useEffect(() => {
-    if (mode === 'rollout') setSelectedSetup(true);
-  }, [mode]);
 
   const isAnySettling =
     pendingAction !== null ||
@@ -254,7 +242,7 @@ export const EndpointEnvironmentsList = ({
       const where = `in every environment${
         touchesProduction ? ', including production' : ''
       }`;
-      let completeBody = `${r.candidate} becomes the only version of ${endpoint.name} ${where}. ${r.stable} stops getting traffic from ${endpoint.name}.`;
+      let completeBody = `${r.candidate} becomes the only backend of ${endpoint.name} ${where}. ${r.stable} stops getting traffic from ${endpoint.name}.`;
       if (untouched) {
         completeBody = `${r.candidate} replaces ${r.stable} ${where}. ${untouched} stays as it is.`;
       }
@@ -268,13 +256,13 @@ export const EndpointEnvironmentsList = ({
           notYet.length === 1 ? 'it gets' : 'they get'
         } ${
           r.candidate
-        } directly. To roll out there too, promote the rollout first.`;
+        } directly. To step through the rollout there too, promote it first.`;
       }
       setConfirmation({
         title:
           outcome === 'complete'
-            ? `Complete the rollout to ${r.candidate}?`
-            : `Abandon the rollout to ${r.candidate}?`,
+            ? `Keep only ${r.candidate}?`
+            : `Remove ${r.candidate}?`,
         body:
           outcome === 'complete'
             ? completeBody
@@ -282,15 +270,17 @@ export const EndpointEnvironmentsList = ({
                 r,
               )} in every environment, and ${r.candidate} leaves the Endpoint.`,
         confirmLabel:
-          outcome === 'complete' ? 'Complete rollout' : 'Abandon rollout',
+          outcome === 'complete'
+            ? `Keep only ${r.candidate}`
+            : `Remove ${r.candidate}`,
         ...(outcome === 'complete' &&
           touchesProduction && { typeToConfirm: endpoint.name }),
         run: () =>
           run('*', 'stage', async () => {
             return resultMessage(
               outcome === 'complete'
-                ? `Rollout complete: ${r.candidate} replaced ${r.stable}`
-                : `Rollout abandoned: ${restoredSummary(r)} restored`,
+                ? `${r.candidate} replaced ${r.stable}`
+                : `${r.candidate} removed: ${restoredSummary(r)} restored`,
               await client.finishRollout(entity, outcome),
             );
           }),
@@ -298,6 +288,28 @@ export const EndpointEnvironmentsList = ({
     },
     [client, endpoint, entity, envs, run],
   );
+
+  // A mirror only gets copies; to send it real traffic it becomes a canary
+  // on the same backend, which testers reach with x-canary: true.
+  const convert = useCallback(() => {
+    const r = endpoint?.rollout;
+    if (!endpoint || !r) return;
+    setConfirmation({
+      title: `Turn ${r.candidate} into a canary?`,
+      body: `${r.candidate} stops getting copies and starts at 0% wherever it runs, so no user traffic moves yet. Testers reach it with the header x-canary: true. Then advance each environment as for any canary.`,
+      confirmLabel: 'Turn into a canary',
+      run: () =>
+        run('*', 'stage', async () =>
+          resultMessage(
+            `${r.candidate} is now a canary at 0%`,
+            await client.convertRollout(entity, {
+              name: 'x-canary',
+              value: 'true',
+            }),
+          ),
+        ),
+    });
+  }, [client, endpoint, entity, run]);
 
   const setStage = useCallback(
     (env: EndpointEnvironment, percent: number, label: string) => {
@@ -307,13 +319,18 @@ export const EndpointEnvironmentsList = ({
         env,
         {
           title: `${label} in ${env.displayName}?`,
-          body: `${r.candidate} gets ${percent}% of ${
-            untouchedSummary(r)
-              ? `${r.stable}'s traffic in ${env.displayName}`
-              : `${env.displayName} traffic`
-          } and ${stableKeeps(r, percent)}.${
-            untouchedSummary(r) ? ` ${untouchedSummary(r)} is unchanged.` : ''
-          } You can roll back from the panel at any time.`,
+          body:
+            r.strategy === 'mirror'
+              ? `${r.candidate} gets a copy of ${percent}% of ${env.displayName} traffic. Users still get only ${r.stable}'s answers.`
+              : `${r.candidate} gets ${percent}% of ${
+                  untouchedSummary(r)
+                    ? `${r.stable}'s traffic in ${env.displayName}`
+                    : `${env.displayName} traffic`
+                } and ${stableKeeps(r, percent)}.${
+                  untouchedSummary(r)
+                    ? ` ${untouchedSummary(r)} is unchanged.`
+                    : ''
+                } You can roll back from the panel at any time.`,
           confirmLabel: label,
         },
         'stage',
@@ -321,7 +338,10 @@ export const EndpointEnvironmentsList = ({
           await client.setRolloutStage(entity, env.name, percent);
           return {
             ok: true,
-            message: `${env.displayName}: ${r.candidate} now gets ${percent}% of traffic`,
+            message:
+              r.strategy === 'mirror'
+                ? `${env.displayName}: ${r.candidate} now gets a copy of ${percent}% of traffic`
+                : `${env.displayName}: ${r.candidate} now gets ${percent}% of traffic`,
           };
         },
       );
@@ -341,13 +361,22 @@ export const EndpointEnvironmentsList = ({
             env,
             {
               title: `Promote the rollout to ${env.displayName}?`,
-              body: `${env.displayName} gets ${
-                r.candidate
-              } next to ${stableLabel(
-                r,
-              )}, at 0%. No traffic moves until you advance ${
-                env.displayName
-              }.`,
+              body:
+                r.strategy === 'mirror'
+                  ? `${env.displayName} gets ${
+                      r.candidate
+                    } next to ${stableLabel(
+                      r,
+                    )}, copying the share the release sets. Users keep getting ${stableLabel(
+                      r,
+                    )}'s answers.`
+                  : `${env.displayName} gets ${
+                      r.candidate
+                    } next to ${stableLabel(
+                      r,
+                    )}, at 0%. No traffic moves until you advance ${
+                      env.displayName
+                    }.`,
               confirmLabel: 'Promote',
             },
             'rollout',
@@ -375,7 +404,15 @@ export const EndpointEnvironmentsList = ({
     (environment: string) => {
       const env = envs.find(e => e.name === environment);
       const r = endpoint?.rollout;
-      if (env && r) setStage(env, 0, `Roll back to ${stableLabel(r)}`);
+      if (env && r) {
+        setStage(
+          env,
+          0,
+          r.strategy === 'mirror'
+            ? 'Stop copying'
+            : `Roll back to ${stableLabel(r)}`,
+        );
+      }
     },
     [endpoint, envs, setStage],
   );
@@ -474,7 +511,7 @@ export const EndpointEnvironmentsList = ({
     () =>
       endpoint
         ? {
-            mode,
+            mode: (endpoint.rollout ? 'rollout' : 'deploy') as EndpointTabMode,
             endpoint,
             environments: envs,
             releases,
@@ -489,12 +526,11 @@ export const EndpointEnvironmentsList = ({
             onConfigureOverrides: setOverridesEnv,
             onRolloutAction: handleRolloutAction,
             onRollBack: handleRollBack,
-            onOpenRollout: () => navigate('../rollout', { relative: 'path' }),
+            onOpenRollout: handleSelectSetup,
             onCopy: (text: string, label: string) => void copy(text, label),
           }
         : null,
     [
-      mode,
       endpoint,
       envs,
       releases,
@@ -506,6 +542,7 @@ export const EndpointEnvironmentsList = ({
       handleRollBack,
       copy,
       navigate,
+      handleSelectSetup,
     ],
   );
 
@@ -552,51 +589,73 @@ export const EndpointEnvironmentsList = ({
     changeBlocked = 'Wait for the current change to finish';
   }
 
-  const setupTile =
-    mode === 'deploy' ? (
-      <EndpointSetupCard
-        selected={selectedSetup}
-        title="Set up"
-        hint="Endpoint configuration"
-      />
-    ) : (
-      <EndpointSetupCard
-        selected={selectedSetup}
-        title="Rollout"
-        hint={
-          rollout
-            ? `${STRATEGY_COPY[rollout.strategy].name} · ${rollout.candidate}`
-            : 'None running'
-        }
-      />
-    );
+  const setupTile = (
+    <EndpointSetupCard
+      selected={selectedSetup}
+      title="Set up"
+      hint={
+        rollout
+          ? `${STRATEGY_COPY[rollout.strategy].name} · ${rollout.candidate}`
+          : 'Endpoint configuration'
+      }
+    />
+  );
 
-  const setupPane =
-    mode === 'deploy' ? (
-      <EndpointSetupPane
-        title="Set up"
-        onClose={handleClearSelection}
-        action={{
-          label: 'Configure & Deploy',
-          onClick: () => navigate('configure'),
-          disabledReason:
-            !trafficPerm.loading && !trafficPerm.canChangeTraffic
-              ? trafficPerm.deniedTooltip
-              : '',
-        }}
-      >
-        Change how the Endpoint routes traffic and deploy a new version.
-      </EndpointSetupPane>
-    ) : (
-      <EndpointRolloutPane
-        startBlocked={changeBlocked}
-        onStart={() => navigate('start')}
-        changeBlocked={changeBlocked}
-        onAbandon={() => finish('abandon')}
-        onEditRules={() => setRulesOpen(true)}
-        onClose={handleClearSelection}
-      />
-    );
+  const setupPane = rollout ? (
+    <EndpointRolloutPane
+      changeBlocked={changeBlocked}
+      onKeep={() => finish('complete')}
+      onConvert={convert}
+      onRemove={() => finish('abandon')}
+      onClose={handleClearSelection}
+    />
+  ) : (
+    <EndpointSetupPane
+      title="Set up"
+      onClose={handleClearSelection}
+      action={{
+        label: 'Configure & Deploy',
+        onClick: () => navigate('configure'),
+        disabledReason:
+          !trafficPerm.loading && !trafficPerm.canChangeTraffic
+            ? trafficPerm.deniedTooltip
+            : '',
+      }}
+    >
+      <Box display="flex" flexDirection="column" gridGap={12}>
+        <Typography variant="body2" color="textSecondary">
+          Change how the Endpoint routes traffic and deploy a new version of it.
+        </Typography>
+        <Box>
+          <Typography variant="body2" style={{ fontWeight: 600 }}>
+            Backends
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            To move traffic to another component, add it as a backend and choose
+            how it gets traffic:{' '}
+            {Object.values(STRATEGY_COPY)
+              .map(c => c.name)
+              .join(', ')}
+            . Nothing changes for users until you advance an environment.
+          </Typography>
+          <Tooltip title={changeBlocked} disableHoverListener={!changeBlocked}>
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                color="primary"
+                disabled={Boolean(changeBlocked)}
+                onClick={() => navigate('add-backend')}
+                style={{ marginTop: 8 }}
+              >
+                Add a backend
+              </Button>
+            </span>
+          </Tooltip>
+        </Box>
+      </Box>
+    </EndpointSetupPane>
+  );
 
   return (
     <EndpointEnvironmentsProvider value={contextValue}>
@@ -607,7 +666,7 @@ export const EndpointEnvironmentsList = ({
           selectedEnvName={selectedEnvName}
           selectedSetup={selectedSetup}
           setupTile={setupTile}
-          setupLabel={mode === 'deploy' ? 'Select setup' : 'Select rollout'}
+          setupLabel="Select setup"
           onSelectEnv={setSelectedEnvName}
           onSelectSetup={handleSelectSetup}
           onClearSelection={handleClearSelection}
@@ -628,23 +687,6 @@ export const EndpointEnvironmentsList = ({
         confirmation={confirmation}
         onClose={() => setConfirmation(null)}
       />
-      <RulesEditorDialog
-        open={rulesOpen}
-        endpointName={endpoint.name}
-        backends={endpoint.backends}
-        rules={endpoint.rules}
-        onClose={() => setRulesOpen(false)}
-        onSave={async rules => {
-          const res = await client.updateEndpointRules(entity, rules);
-          if (res.changed) {
-            notification.showSuccess(
-              'Routing rules saved as a new version. Deploy it from the Deploy tab.',
-            );
-          }
-          await fetchAll();
-          return res;
-        }}
-      />
       <EnvironmentWeightsDialog
         open={overridesEnvironment !== null}
         env={overridesEnvironment}
@@ -652,7 +694,6 @@ export const EndpointEnvironmentsList = ({
           releases.find(r => r.name === overridesEnvironment?.endpointRelease)
             ?.backends ?? endpoint.backends
         }
-        rules={overridesEnvironment?.rules ?? []}
         rollout={endpoint.rollout}
         onClose={() => setOverridesEnv(null)}
         onSave={async (environment, overrides) => {

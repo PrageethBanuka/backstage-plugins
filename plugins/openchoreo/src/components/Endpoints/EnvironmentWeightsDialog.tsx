@@ -20,7 +20,6 @@ import {
   type EndpointBackendWeight,
   type EndpointEnvironment,
   type EndpointRollout,
-  type EndpointRule,
   type EndpointWeightOverride,
 } from '@openchoreo/backstage-plugin-common';
 import { getErrorMessage } from '../../utils/errorUtils';
@@ -58,14 +57,14 @@ export interface WeightPreset {
 /**
  * The steps that make sense for what the Endpoint is running: the running
  * rollout's stages (the stable backends keep their ratio), or else canary
- * steps and a rollback, the blue/green switch and switch-back, or plain
- * splits.
+ * steps and a rollback, an A/B ship, or nothing for a plain split. A mirror's
+ * copy share has its own field, so it gets no weight presets.
  */
 export function weightPresets(
   backends: EndpointBackendWeight[],
-  rules: EndpointRule[],
   rollout?: EndpointRollout,
 ): WeightPreset[] {
+  if (rollout?.strategy === 'mirror') return [];
   if (rollout) {
     const names = backends.map(nameOf);
     return rolloutStages(rollout).map(stage => ({
@@ -73,12 +72,12 @@ export function weightPresets(
       weights: Object.fromEntries(
         rolloutWeights(rollout, names, stage.percent).map(w => [
           w.name,
-          w.weight,
+          w.weight ?? 0,
         ]),
       ),
     }));
   }
-  const strategy = detectEndpointStrategy(backends, rules);
+  const strategy = detectEndpointStrategy(backends);
   const split = (
     a: string,
     b: string,
@@ -95,23 +94,12 @@ export function weightPresets(
           weights: split(strategy.canary, strategy.stable, p),
         })),
         {
-          label: 'Promote: 100%',
+          label: 'All traffic: 100%',
           weights: split(strategy.canary, strategy.stable, 100),
         },
         {
           label: 'Roll back: 0%',
           weights: split(strategy.canary, strategy.stable, 0),
-        },
-      ];
-    case 'blueGreen':
-      return [
-        {
-          label: `Switch to ${strategy.green}`,
-          weights: split(strategy.green, strategy.blue, 100),
-        },
-        {
-          label: `Switch back to ${strategy.blue}`,
-          weights: split(strategy.blue, strategy.green, 100),
         },
       ];
     case 'abTest':
@@ -123,7 +111,7 @@ export function weightPresets(
           weights: split(strategy.control, strategy.variant, 100),
         },
         {
-          label: `Ship ${strategy.variant} to everyone`,
+          label: `${strategy.variant} for everyone`,
           weights: split(strategy.variant, strategy.control, 100),
         },
       ];
@@ -135,10 +123,11 @@ export function weightPresets(
 export interface EnvironmentWeightsDialogProps {
   open: boolean;
   env: EndpointEnvironment | null;
-  /** The Endpoint's backends, in order (names and colours). */
+  /**
+   * The backends of the release this environment runs, in order (names and
+   * colours, matches and mirrors).
+   */
   backends: EndpointBackendWeight[];
-  /** Rules of the release this environment runs, for the presets. */
-  rules: EndpointRule[];
   /** The running rollout, whose stages become the presets. */
   rollout?: EndpointRollout;
   onClose: () => void;
@@ -150,22 +139,32 @@ export interface EnvironmentWeightsDialogProps {
 }
 
 /**
- * Moves one environment's traffic by setting weights on its binding: no new
- * release, and the change lands in seconds. This is how a canary is stepped
- * up or rolled back, and how blue/green switches.
+ * Moves one environment's traffic by setting weights, and mirror shares, on
+ * its binding: no new release, and the change lands in seconds. This is how
+ * a canary is stepped up or rolled back, how blue/green switches, and how
+ * much a mirror copies.
  */
 export const EnvironmentWeightsDialog = ({
   open,
   env,
-  backends,
-  rules,
+  backends: allBackends,
   rollout,
   onClose,
   onSave,
 }: EnvironmentWeightsDialogProps) => {
+  // A mirror backend stays at weight 0; it only has a copy share.
+  const backends = useMemo(
+    () => allBackends.filter(b => !b.mirror),
+    [allBackends],
+  );
+  const mirrors = useMemo(
+    () => allBackends.filter(b => b.mirror),
+    [allBackends],
+  );
   const classes = useStyles();
   const theme = useTheme();
   const [percents, setPercents] = useState<number[]>([]);
+  const [shares, setShares] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -180,13 +179,24 @@ export const EnvironmentWeightsDialog = ({
   useEffect(() => {
     if (open) {
       setPercents(sharePercents(current));
+      const live = new Map(
+        (env?.backends ?? []).map(b => [b.name ?? b.componentName, b.mirror]),
+      );
+      setShares(
+        Object.fromEntries(
+          mirrors.map(b => [
+            nameOf(b),
+            live.get(nameOf(b))?.percent ?? b.mirror!.percent,
+          ]),
+        ),
+      );
       setError(null);
     }
-  }, [open, current]);
+  }, [open, current, env, mirrors]);
 
   const presets = useMemo(
-    () => weightPresets(backends, rules, rollout),
-    [backends, rules, rollout],
+    () => weightPresets(backends, rollout),
+    [backends, rollout],
   );
   const total = percents.reduce((sum, p) => sum + p, 0);
   const two = backends.length === 2;
@@ -234,9 +244,8 @@ export const EnvironmentWeightsDialog = ({
       <DialogContent dividers>
         <Typography variant="body2" color="textSecondary" paragraph>
           Moves this environment's traffic in seconds. Other environments keep
-          their own split. Weights apply to the backends and to rules that split
-          between several backends; a rule with one backend, such as a preview
-          header, ignores them.
+          their own split. Weights split the requests no backend's match takes;
+          a match, such as a preview header, keeps working whatever the weights.
         </Typography>
         {error && (
           <Alert severity="error" style={{ marginBottom: 16 }}>
@@ -294,6 +303,44 @@ export const EnvironmentWeightsDialog = ({
             );
           })}
         </Box>
+        {mirrors.map(b => {
+          const id = `env-mirror-${nameOf(b)}`;
+          return (
+            <Box
+              key={id}
+              mt={2}
+              display="flex"
+              alignItems="center"
+              gridGap={16}
+            >
+              <Typography variant="body2" component="label" htmlFor={id}>
+                <strong>{b.componentName}</strong> gets a copy of
+              </Typography>
+              <TextField
+                id={id}
+                type="number"
+                size="small"
+                variant="outlined"
+                value={shares[nameOf(b)] ?? 0}
+                onChange={e =>
+                  setShares(prev => ({
+                    ...prev,
+                    [nameOf(b)]: Math.max(
+                      0,
+                      Math.min(100, Math.round(Number(e.target.value)) || 0),
+                    ),
+                  }))
+                }
+                inputProps={{ min: 0, max: 100, step: 1 }}
+                InputProps={{ endAdornment: '%' }}
+                style={{ width: 110 }}
+              />
+              <Typography variant="body2" color="textSecondary">
+                of traffic
+              </Typography>
+            </Box>
+          );
+        })}
         <Box mt={2}>
           <TrafficSplitBar backends={draft} showLegend height={10} />
           <Typography
@@ -323,7 +370,13 @@ export const EnvironmentWeightsDialog = ({
           disabled={busy || !valid || !env?.bindingName}
           startIcon={busy ? <CircularProgress size={16} /> : undefined}
           onClick={() =>
-            void save(draft.map(b => ({ name: nameOf(b), weight: b.weight })))
+            void save([
+              ...draft.map(b => ({ name: nameOf(b), weight: b.weight })),
+              ...mirrors.map(b => ({
+                name: nameOf(b),
+                mirror: { percent: shares[nameOf(b)] ?? 0 },
+              })),
+            ])
           }
         >
           {busy ? 'Applying...' : 'Apply here'}

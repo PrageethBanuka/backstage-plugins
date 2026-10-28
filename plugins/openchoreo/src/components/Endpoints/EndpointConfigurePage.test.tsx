@@ -61,8 +61,6 @@ jest.mock('../Environments/components/AutoDeployConfirmationDialog', () => ({
   AutoDeployConfirmationDialog: () => null,
 }));
 
-jest.mock('./RulesEditorDialog', () => ({ RulesEditorDialog: () => null }));
-
 const summary = (rollout?: EndpointRollout): EndpointSummary => ({
   name: 'trips-api',
   namespaceName: 'default',
@@ -84,7 +82,6 @@ const summary = (rollout?: EndpointRollout): EndpointSummary => ({
       weight: 30,
     },
   ],
-  rules: [],
   rollout,
   rolloutSource: rollout ? 'annotation' : 'none',
   environments: [],
@@ -148,7 +145,7 @@ describe('EndpointConfigurePage', () => {
     });
 
     expect(
-      screen.getByText(/A rollout to trips-go is running/),
+      screen.getByText(/trips-go is being rolled out/),
     ).toBeInTheDocument();
   });
 });

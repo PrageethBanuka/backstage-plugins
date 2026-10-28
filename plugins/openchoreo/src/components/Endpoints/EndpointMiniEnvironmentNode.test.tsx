@@ -46,7 +46,6 @@ const endpoint = (rollout?: EndpointRollout): EndpointSummary => ({
       ? [{ componentName: 'trips-go', endpoint: 'http', weight: 0 }]
       : []),
   ],
-  rules: [],
   rollout,
   rolloutSource: rollout ? 'annotation' : 'none',
   environments: [],
@@ -80,7 +79,6 @@ const dev = (percent?: number): EndpointEnvironment => ({
         ]),
   ],
   overrides: [],
-  rules: [],
   rollout:
     percent === undefined
       ? undefined
@@ -165,10 +163,10 @@ describe('EndpointMiniEnvironmentNode', () => {
     );
   });
 
-  it('offers Complete rollout once every environment is at 100%', () => {
+  it('offers Keep only once every environment is at 100%', () => {
     renderTile(dev(100), { mode: 'rollout', endpoint: endpoint(canary) });
     expect(
-      screen.getByRole('button', { name: 'Complete rollout' }),
+      screen.getByRole('button', { name: 'Keep only trips-go' }),
     ).toBeInTheDocument();
   });
 });

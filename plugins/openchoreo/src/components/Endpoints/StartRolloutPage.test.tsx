@@ -78,7 +78,6 @@ const summary: EndpointSummary = {
       weight: 30,
     },
   ],
-  rules: [],
   rolloutSource: 'none',
   environments: [],
   latestRelease: 'rel-1',
@@ -93,7 +92,6 @@ const development: EndpointEnvironment = {
   endpointRelease: 'rel-1',
   backends: [],
   overrides: [],
-  rules: [],
   deployedBackends: [
     { componentName: 'trips-go', endpoint: 'http' },
     { componentName: 'trips-python', endpoint: 'http' },
@@ -131,7 +129,7 @@ describe('StartRolloutPage', () => {
 
     fireEvent.mouseDown(screen.getByLabelText('Component'));
     fireEvent.click(await screen.findByRole('option', { name: 'trips-go' }));
-    fireEvent.click(screen.getByText('Start rollout'));
+    fireEvent.click(screen.getByText(/^Save and deploy/));
 
     await waitFor(() => expect(mockClient.startRollout).toHaveBeenCalled());
     expect(mockClient.startRollout.mock.calls[0][1]).toMatchObject({
@@ -188,17 +186,67 @@ describe('StartRolloutPage', () => {
     );
     fireEvent.click(screen.getByText('Your app'));
     fireEvent.change(screen.getByLabelText('Value'), { target: { value: '' } });
-    expect(screen.getByText('Start rollout').closest('button')).toBeDisabled();
+    expect(
+      screen.getByText(/^Save and deploy/).closest('button'),
+    ).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText('Value'), {
       target: { value: 'android' },
     });
-    fireEvent.click(screen.getByText('Start rollout'));
+    fireEvent.click(screen.getByText(/^Save and deploy/));
 
     await waitFor(() => expect(mockClient.startRollout).toHaveBeenCalled());
     expect(mockClient.startRollout.mock.calls[0][1].preview).toMatchObject({
       kind: 'cookie',
       audience: { name: 'X-Client', type: 'Exact', value: 'android' },
+    });
+  });
+
+  it('adds a mirror and shows the backendRefs it saves', async () => {
+    render(
+      <MemoryRouter>
+        <StartRolloutPage />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('radio', { name: /trips-python · 70%/ });
+
+    fireEvent.click(screen.getByRole('radio', { name: /Mirror/ }));
+    fireEvent.mouseDown(screen.getByLabelText('Component'));
+    fireEvent.click(await screen.findByRole('option', { name: 'trips-go' }));
+    expect(screen.getByText(/mirror: \{percent: 100\}/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/^Save and deploy/));
+
+    await waitFor(() => expect(mockClient.startRollout).toHaveBeenCalled());
+    expect(mockClient.startRollout.mock.calls[0][1]).toMatchObject({
+      strategy: 'mirror',
+      mirrorPercent: 100,
+    });
+  });
+
+  it('previews blue/green by a path', async () => {
+    render(
+      <MemoryRouter>
+        <StartRolloutPage />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('radio', { name: /trips-python · 70%/ });
+
+    fireEvent.click(screen.getByRole('radio', { name: /Blue\/green/ }));
+    fireEvent.mouseDown(screen.getByLabelText('Component'));
+    fireEvent.click(await screen.findByRole('option', { name: 'trips-go' }));
+    fireEvent.click(screen.getByRole('radio', { name: /A path/ }));
+    fireEvent.change(screen.getByLabelText('Path'), {
+      target: { value: '/next' },
+    });
+    expect(
+      screen.getByText(/path: \{type: PathPrefix, value: \/next\}/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/^Save and deploy/));
+
+    await waitFor(() => expect(mockClient.startRollout).toHaveBeenCalled());
+    expect(mockClient.startRollout.mock.calls[0][1].preview).toMatchObject({
+      kind: 'path',
+      value: '/next',
     });
   });
 });

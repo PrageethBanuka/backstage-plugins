@@ -29,8 +29,13 @@ export const STRATEGY_COPY: Record<
   },
   abTest: {
     name: 'A/B test',
-    question: 'Which version works better for users?',
-    pitch: 'Show a variant to one cookie group and compare.',
+    question: 'Which backend works better for users?',
+    pitch: 'Send one group of users to it and compare.',
+  },
+  mirror: {
+    name: 'Mirror',
+    question: 'Does it hold up under real traffic?',
+    pitch: 'Copy live traffic to it. Nobody sees its answers.',
   },
 };
 
@@ -51,10 +56,10 @@ export function inRollout(
 /** Backends with their share of the split the rollout started from. */
 function shares(rollout: EndpointRollout, names: string[]): string {
   const split = stableSplit(rollout);
-  const total = split.reduce((sum, b) => sum + b.weight, 0);
+  const total = split.reduce((sum, b) => sum + (b.weight ?? 0), 0);
   return split
     .filter(b => names.includes(b.name))
-    .map(b => `${b.name} ${Math.round((b.weight / total) * 100)}%`)
+    .map(b => `${b.name} ${Math.round(((b.weight ?? 0) / total) * 100)}%`)
     .join(' · ');
 }
 
@@ -99,7 +104,7 @@ export function stageText(
   return rolloutStages(rollout)[env.rollout.index]?.label ?? 'Not started';
 }
 
-/** The tile's primary button on the Rollout tab. */
+/** The tile's primary button while a rollout runs. */
 export type RolloutAction =
   | { kind: 'promote'; label: string; from: string }
   | { kind: 'stage'; label: string; percent: number }
@@ -172,9 +177,12 @@ export function rolloutAction(
     }
     return undefined;
   }
-  if (environments.every(e => doneForCompletion(e, rollout))) {
+  if (
+    rollout.strategy !== 'mirror' &&
+    environments.every(e => doneForCompletion(e, rollout))
+  ) {
     return completionEnvironment(environments)?.name === env.name
-      ? { kind: 'complete', label: 'Complete rollout' }
+      ? { kind: 'complete', label: `Keep only ${rollout.candidate}` }
       : undefined;
   }
   const next = nextRolloutStage(
@@ -195,15 +203,16 @@ export function audienceText(preview: RolloutPreview | undefined): string {
   return `The cookie group, when ${h.name} is ${h.value}`;
 }
 
-/** The command that reaches the new version before it gets traffic. */
+/** The command that reaches the new backend before it gets traffic. */
 export function previewCommand(
   rollout: EndpointRollout,
   url: string | undefined,
 ): string | undefined {
   const p = rollout.preview;
-  if (!p) return undefined;
+  if (!p || rollout.strategy === 'mirror') return undefined;
   const target = url ?? '<endpoint URL>';
   if (p.kind === 'header') return `curl -H '${p.name}: ${p.value}' ${target}`;
+  if (p.kind === 'path') return `curl ${target.replace(/\/$/, '')}${p.value}`;
   const h = abAudience(p);
   let extra = '';
   if (h && h.type === 'RegularExpression') {
