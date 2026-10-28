@@ -1512,13 +1512,23 @@ export async function createRouter({
     const { plan, environments } = req.body;
     if (
       !plan ||
-      !['canary', 'blueGreen', 'abTest'].includes(plan.strategy) ||
+      !['canary', 'blueGreen', 'abTest', 'mirror'].includes(plan.strategy) ||
       typeof plan.candidate?.componentName !== 'string' ||
       typeof plan.candidate?.endpoint !== 'string' ||
       !Array.isArray(environments)
     ) {
       throw new InputError(
-        'plan (strategy canary, blueGreen or abTest, and a candidate component and endpoint) and environments are required',
+        'plan (strategy canary, blueGreen, abTest or mirror, and a candidate component and endpoint) and environments are required',
+      );
+    }
+    if (
+      plan.mirrorPercent !== undefined &&
+      (!Number.isInteger(plan.mirrorPercent) ||
+        plan.mirrorPercent < 1 ||
+        plan.mirrorPercent > 100)
+    ) {
+      throw new InputError(
+        'mirrorPercent must be a whole number from 1 to 100',
       );
     }
     res.json(

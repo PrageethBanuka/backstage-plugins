@@ -99,6 +99,7 @@ function createMockServices() {
       updateEndpointTraffic: jest.fn(),
       updateEndpointReleaseBinding: jest.fn(),
       deleteEndpointReleaseBinding: jest.fn(),
+      startRollout: jest.fn(),
     },
     secretReferencesInfoService: {
       fetchSecretReferences: jest.fn(),
@@ -1544,6 +1545,54 @@ describe('createRouter', () => {
         .query(scope);
 
       expect(response.status).toBe(400);
+    });
+
+    describe('PUT /endpoint-rollout/start', () => {
+      const start = (plan: Record<string, unknown>) =>
+        request(app)
+          .put('/endpoint-rollout/start')
+          .send({
+            ...scope,
+            endpointName: 'payments-api',
+            environments: ['development'],
+            plan: {
+              candidate: { componentName: 'payments-v2', endpoint: 'http' },
+              ...plan,
+            },
+          });
+
+      it('starts a mirror rollout', async () => {
+        services.endpointInfoService.startRollout.mockResolvedValue({
+          latestRelease: 'payments-api-abc',
+          environments: [],
+        });
+
+        const response = await start({ strategy: 'mirror', mirrorPercent: 10 });
+
+        expect(response.status).toBe(200);
+        expect(services.endpointInfoService.startRollout).toHaveBeenCalledWith(
+          expect.objectContaining({
+            plan: expect.objectContaining({
+              strategy: 'mirror',
+              mirrorPercent: 10,
+            }),
+          }),
+          'mock-user-token',
+        );
+      });
+
+      it('rejects an unknown strategy or a mirror share outside 1-100', async () => {
+        expect((await start({ strategy: 'shadow' })).status).toBe(400);
+        expect(
+          (await start({ strategy: 'mirror', mirrorPercent: 0 })).status,
+        ).toBe(400);
+        expect(
+          (await start({ strategy: 'mirror', mirrorPercent: 12.5 })).status,
+        ).toBe(400);
+        expect(
+          services.endpointInfoService.startRollout,
+        ).not.toHaveBeenCalled();
+      });
     });
 
     it('PUT /update-endpoint-traffic forwards the new weights', async () => {
