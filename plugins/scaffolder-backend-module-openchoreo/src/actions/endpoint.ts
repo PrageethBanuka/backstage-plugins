@@ -210,7 +210,6 @@ export const createEndpointAction = (
             typeKind,
             visibility,
             autoDeploy: autoDeploy ?? true,
-            rules: [],
             backends: backends.map(b => ({
               component: b.componentName,
               endpoint: b.endpoint,
