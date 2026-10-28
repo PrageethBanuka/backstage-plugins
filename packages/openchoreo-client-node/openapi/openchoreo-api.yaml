@@ -11967,64 +11967,34 @@ components:
           maximum: 1000000
           default: 1
           example: 90
-
-    EndpointRule:
-      type: object
-      description: |
-        Routes the requests it matches to its backends. Rules are evaluated in order; a rule without
-        matches is the catch-all and must be last. Without one, unmatched requests follow backendRefs.
-      required: [name, backends]
-      properties:
-        name:
-          type: string
-          description: Identifies the rule
-          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
-          example: preview
-        matches:
-          type: array
-          description: A request matches when any entry matches; every condition of an entry must hold
-          maxItems: 8
-          items:
-            $ref: '#/components/schemas/EndpointMatch'
-        backends:
-          type: array
-          description: Backends (by backendRefs name) receiving the rule's requests, with relative weights
-          minItems: 1
-          items:
-            type: object
-            required: [name]
-            properties:
-              name:
-                type: string
-                example: checkout-green
-              weight:
-                type: integer
-                format: int32
-                minimum: 0
-                maximum: 1000000
-                default: 1
-        mirrors:
-          type: array
-          description: Copies a share of the rule's requests to a backend; responses are discarded
-          items:
-            type: object
-            required: [backend, percent]
-            properties:
-              backend:
-                type: string
-                example: trips-go
-              percent:
-                type: integer
-                format: int32
-                minimum: 1
-                maximum: 100
+        match:
+          $ref: '#/components/schemas/EndpointMatch'
+        mirror:
+          $ref: '#/components/schemas/EndpointMirror'
 
     EndpointMatch:
       type: object
-      description: Request conditions, all of which must hold
+      description: |
+        Conditions a request must all meet to go to this backend, whatever its weight.
+        Other requests are split by weight. The first backend whose match holds gets the request.
       properties:
+        path:
+          type: object
+          required: [value]
+          description: Path relative to where the Endpoint is served (its path prefix at the gateway, the root of its Service in the mesh)
+          properties:
+            type:
+              type: string
+              enum: [PathPrefix, Exact]
+              default: PathPrefix
+            value:
+              type: string
+              pattern: '^/[^?#]*$'
+              maxLength: 1024
+              example: /next
         headers:
           type: array
+          maxItems: 8
           items:
             type: object
             required: [name, value]
@@ -12054,16 +12024,18 @@ components:
                 type: string
                 pattern: '^[A-Za-z0-9_.-]{1,128}$'
                 example: b
-        queryParams:
-          type: array
-          items:
-            type: object
-            required: [name, value]
-            properties:
-              name:
-                type: string
-              value:
-                type: string
+
+    EndpointMirror:
+      type: object
+      description: Copies a share of the requests the Endpoint splits by weight to this backend; its responses are discarded. Only on a backend at weight 0 without a match.
+      required: [percent]
+      properties:
+        percent:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 100
+          example: 10
 
     EndpointSchema:
       type: object
@@ -12156,12 +12128,6 @@ components:
           maxItems: 16
           items:
             $ref: '#/components/schemas/EndpointBackendRef'
-        rules:
-          type: array
-          description: Header, cookie and query routing, in order. Unset routes every request by backendRefs weights.
-          maxItems: 16
-          items:
-            $ref: '#/components/schemas/EndpointRule'
         schema:
           $ref: '#/components/schemas/EndpointSchema'
         parameters:
@@ -12280,11 +12246,6 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/EndpointBackendRef'
-        rules:
-          type: array
-          description: Snapshot of Endpoint.spec.rules at release time.
-          items:
-            $ref: '#/components/schemas/EndpointRule'
         schema:
           $ref: '#/components/schemas/EndpointSchema'
         parameters:
@@ -12391,7 +12352,9 @@ components:
                 format: int32
                 minimum: 0
                 maximum: 1000000
-                description: Replaces the release's weight for this backend in this environment, in backendRefs and in rules that split between several backends
+                description: Replaces the release's weight for this backend in this environment, its share of the requests no backend's match takes
+              mirror:
+                $ref: '#/components/schemas/EndpointMirror'
 
     ResolvedEndpointBackend:
       type: object
@@ -12417,6 +12380,8 @@ components:
           format: int32
           description: Effective weight applied to this backend
           example: 90
+        mirror:
+          $ref: '#/components/schemas/EndpointMirror'
         serviceURL:
           $ref: '#/components/schemas/EndpointURL'
         resolved:

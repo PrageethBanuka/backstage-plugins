@@ -5906,39 +5906,24 @@ export interface components {
        * @example 90
        */
       weight: number;
+      match?: components['schemas']['EndpointMatch'];
+      mirror?: components['schemas']['EndpointMirror'];
     };
     /**
-     * @description Routes the requests it matches to its backends. Rules are evaluated in order; a rule without
-     *     matches is the catch-all and must be last. Without one, unmatched requests follow backendRefs.
+     * @description Conditions a request must all meet to go to this backend, whatever its weight.
+     *     Other requests are split by weight. The first backend whose match holds gets the request.
      */
-    EndpointRule: {
-      /**
-       * @description Identifies the rule
-       * @example preview
-       */
-      name: string;
-      /** @description A request matches when any entry matches; every condition of an entry must hold */
-      matches?: components['schemas']['EndpointMatch'][];
-      /** @description Backends (by backendRefs name) receiving the rule's requests, with relative weights */
-      backends: {
-        /** @example checkout-green */
-        name: string;
-        /**
-         * Format: int32
-         * @default 1
-         */
-        weight: number;
-      }[];
-      /** @description Copies a share of the rule's requests to a backend; responses are discarded */
-      mirrors?: {
-        /** @example trips-go */
-        backend: string;
-        /** Format: int32 */
-        percent: number;
-      }[];
-    };
-    /** @description Request conditions, all of which must hold */
     EndpointMatch: {
+      /** @description Path relative to where the Endpoint is served (its path prefix at the gateway, the root of its Service in the mesh) */
+      path?: {
+        /**
+         * @default PathPrefix
+         * @enum {string}
+         */
+        type: 'PathPrefix' | 'Exact';
+        /** @example /next */
+        value: string;
+      };
       headers?: {
         /** @example x-preview */
         name: string;
@@ -5956,10 +5941,14 @@ export interface components {
         /** @example b */
         value: string;
       }[];
-      queryParams?: {
-        name: string;
-        value: string;
-      }[];
+    };
+    /** @description Copies a share of the requests the Endpoint splits by weight to this backend; its responses are discarded. Only on a backend at weight 0 without a match. */
+    EndpointMirror: {
+      /**
+       * Format: int32
+       * @example 10
+       */
+      percent: number;
     };
     /** @description API definition of the Endpoint */
     EndpointSchema: {
@@ -6009,8 +5998,6 @@ export interface components {
       autoDeploy?: boolean;
       /** @description Component workload endpoints receiving traffic, with relative weights. */
       backendRefs: components['schemas']['EndpointBackendRef'][];
-      /** @description Header, cookie and query routing, in order. Unset routes every request by backendRefs weights. */
-      rules?: components['schemas']['EndpointRule'][];
       schema?: components['schemas']['EndpointSchema'];
       /** @description Values for the parameter schema declared on the referenced (Cluster)EndpointType. Validated by the controller. */
       parameters?: {
@@ -6087,8 +6074,6 @@ export interface components {
       };
       /** @description Snapshot of Endpoint.spec.backendRefs at release time. */
       backendRefs: components['schemas']['EndpointBackendRef'][];
-      /** @description Snapshot of Endpoint.spec.rules at release time. */
-      rules?: components['schemas']['EndpointRule'][];
       schema?: components['schemas']['EndpointSchema'];
       /** @description Snapshot of parameter values from Endpoint.spec at release time. */
       parameters?: {
@@ -6159,9 +6144,10 @@ export interface components {
         name: string;
         /**
          * Format: int32
-         * @description Replaces the release's weight for this backend in this environment, in backendRefs and in rules that split between several backends
+         * @description Replaces the release's weight for this backend in this environment, its share of the requests no backend's match takes
          */
         weight?: number;
+        mirror?: components['schemas']['EndpointMirror'];
       }[];
     };
     /** @description Resolution of one backendRef in the binding's environment. */
@@ -6187,6 +6173,7 @@ export interface components {
        * @example 90
        */
       weight?: number;
+      mirror?: components['schemas']['EndpointMirror'];
       serviceURL?: components['schemas']['EndpointURL'];
       /** @description Whether the backend was found deployed in this environment */
       resolved: boolean;
