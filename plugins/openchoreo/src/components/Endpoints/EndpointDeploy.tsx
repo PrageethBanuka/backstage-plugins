@@ -3,6 +3,7 @@ import { EndpointEnvironmentsList } from './EndpointEnvironmentsList';
 import { EndpointConfigurePage } from './EndpointConfigurePage';
 import { EndpointReleaseDetailsPage } from './EndpointReleaseDetailsPage';
 import { StartRolloutPage } from './StartRolloutPage';
+import { EndpointEnvironmentOverridesWrapper } from './EndpointEnvironmentOverridesWrapper';
 
 /**
  * Router for the Endpoint entity's `/environments` (Deploy) tab, the same
@@ -14,6 +15,8 @@ import { StartRolloutPage } from './StartRolloutPage';
  * - `/` — the pipeline canvas and detail panel
  * - `/configure` — Configure & Deploy, opened from the Set up tile
  * - `/add-backend` — Add a backend and choose how it gets traffic
+ * - `/overrides/:envName` — Configure overrides of the EndpointType's
+ *   environment configs for one environment
  * - `/release/:envName` — the K8s artifacts applied in one environment
  */
 export const EndpointDeploy = () => (
@@ -21,6 +24,10 @@ export const EndpointDeploy = () => (
     <Route path="/" element={<EndpointEnvironmentsList />} />
     <Route path="/configure" element={<EndpointConfigurePage />} />
     <Route path="/add-backend" element={<StartRolloutPage />} />
+    <Route
+      path="/overrides/:envName"
+      element={<EndpointEnvironmentOverridesWrapper />}
+    />
     <Route path="/release/:envName" element={<EndpointReleaseDetailsPage />} />
   </Routes>
 );

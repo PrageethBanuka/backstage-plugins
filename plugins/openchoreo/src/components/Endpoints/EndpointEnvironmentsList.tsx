@@ -524,6 +524,8 @@ export const EndpointEnvironmentsList = () => {
             onViewArtifacts: (environment: string) =>
               navigate(`release/${encodeURIComponent(environment)}`),
             onConfigureOverrides: setOverridesEnv,
+            onConfigureEnvironment: (environment: string) =>
+              navigate(`overrides/${encodeURIComponent(environment)}`),
             onRolloutAction: handleRolloutAction,
             onRollBack: handleRollBack,
             onOpenRollout: handleSelectSetup,

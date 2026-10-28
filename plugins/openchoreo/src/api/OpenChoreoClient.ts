@@ -99,6 +99,8 @@ const API_ENDPOINTS = {
   ROLLOUT_PROMOTE: '/endpoint-rollout/promote',
   ROLLOUT_FINISH: '/endpoint-rollout/finish',
   ROLLOUT_CONVERT: '/endpoint-rollout/convert',
+  ENDPOINT_RELEASE_SCHEMA: '/endpoint-release-schema',
+  UPDATE_ENDPOINT_ENVIRONMENT_CONFIGS: '/update-endpoint-environment-configs',
   UPDATE_ENDPOINT_RELEASE_BINDING: '/update-endpoint-release-binding',
   DELETE_ENDPOINT_RELEASE_BINDING: '/delete-endpoint-release-binding',
   DELETE_ENDPOINT: '/delete-endpoint',
@@ -727,6 +729,29 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
     return this.apiFetch(API_ENDPOINTS.ROLLOUT_FINISH, {
       method: 'PUT',
       body: { ...extractEndpointEntityMetadata(entity), outcome },
+    });
+  }
+
+  async fetchEndpointReleaseSchema(
+    entity: Entity,
+    releaseName: string,
+  ): Promise<Record<string, unknown>> {
+    const { namespaceName } = extractEndpointEntityMetadata(entity);
+    return this.apiFetch(API_ENDPOINTS.ENDPOINT_RELEASE_SCHEMA, {
+      params: { namespaceName, releaseName },
+    });
+  }
+
+  async updateEndpointEnvironmentConfigs(
+    entity: Entity,
+    environment: string,
+    environmentConfigs: Record<string, unknown>,
+  ): Promise<{ bindingName: string }> {
+    const { endpointName, namespaceName } =
+      extractEndpointEntityMetadata(entity);
+    return this.apiFetch(API_ENDPOINTS.UPDATE_ENDPOINT_ENVIRONMENT_CONFIGS, {
+      method: 'PUT',
+      body: { endpointName, namespaceName, environment, environmentConfigs },
     });
   }
 

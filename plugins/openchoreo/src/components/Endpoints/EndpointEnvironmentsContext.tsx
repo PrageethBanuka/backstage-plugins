@@ -35,6 +35,8 @@ export interface EndpointEnvironmentsContextValue {
   onViewArtifacts: (environment: string) => void;
   /** Set an environment's weights by hand. */
   onConfigureOverrides: (environment: string) => void;
+  /** Open the environment's overrides of the EndpointType's configs. */
+  onConfigureEnvironment: (environment: string) => void;
   /** Run a tile's next rollout step. */
   onRolloutAction: (environment: string, action: RolloutAction) => void;
   /** Send all of an environment's traffic back to the stable version. */

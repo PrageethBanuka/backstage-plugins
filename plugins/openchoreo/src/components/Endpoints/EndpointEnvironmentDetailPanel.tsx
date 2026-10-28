@@ -21,7 +21,12 @@ import ReportProblemOutlinedIcon from '@material-ui/icons/ReportProblemOutlined'
 import TuneIcon from '@material-ui/icons/Tune';
 import UndoIcon from '@material-ui/icons/Undo';
 import { StatusBadge } from '@openchoreo/backstage-design-system';
-import { useEndpointRolloutPermission } from '@openchoreo/backstage-plugin-react';
+import {
+  formatRelativeTime,
+  useEndpointRolloutPermission,
+} from '@openchoreo/backstage-plugin-react';
+import SettingsOutlinedIcon from '@material-ui/icons/SettingsOutlined';
+import DescriptionOutlinedIcon from '@material-ui/icons/DescriptionOutlined';
 import {
   rolloutStages,
   stableLabel,
@@ -77,7 +82,7 @@ export const EndpointEnvironmentDetailPanel = ({
             ) : (
               <>
                 Select an environment to view its traffic, or click{' '}
-                <strong>Rollout</strong> to see the rollout.
+                <strong>Set up</strong> to see the rollout.
               </>
             )}
           </Typography>
@@ -139,6 +144,7 @@ function DetailContent({
       </Box>
 
       <Box className={classes.body}>
+        <ReleaseSection env={env} />
         {mode === 'deploy' ? (
           <DeploySections env={env} />
         ) : (
@@ -149,7 +155,120 @@ function DetailContent({
   );
 }
 
-/** Release, traffic, configuration, actions and the danger zone. */
+/**
+ * The release the environment runs, when it was deployed, its URL and its
+ * rendered resources, in the order the Component and Resource panels use.
+ */
+function ReleaseSection({ env }: { env: EndpointEnvironment }) {
+  const classes = useResourceEnvironmentDetailPanelStyles();
+  const { endpoint, onViewArtifacts, onCopy } =
+    useEndpointEnvironmentsContext();
+  if (!env.bindingName) return null;
+  const latest = env.latestRelease ?? endpoint.latestRelease;
+  const isLatest = Boolean(latest) && env.endpointRelease === latest;
+  return (
+    <Box className={classes.section}>
+      <InfoRow
+        label="Release"
+        value={`${env.endpointRelease || '(unset)'}${
+          isLatest ? ' · latest' : ''
+        }`}
+        onCopy={
+          env.endpointRelease
+            ? () => onCopy(env.endpointRelease!, 'release name')
+            : undefined
+        }
+      />
+      {env.servingRelease && env.servingRelease !== env.endpointRelease && (
+        <InfoRow label="Serving" value={env.servingRelease} />
+      )}
+      {!isLatest && latest && (
+        <InfoRow label="Latest" value={`${latest} (not deployed here)`} />
+      )}
+      {env.deployedAt && (
+        <InfoRow label="Deployed" value={formatRelativeTime(env.deployedAt)} />
+      )}
+      {env.invokeURL && (
+        <InfoRow
+          label="URL"
+          value={env.invokeURL}
+          onCopy={() => onCopy(env.invokeURL!, 'URL')}
+        />
+      )}
+      <Box mt={1}>
+        <Button
+          variant="outlined"
+          size="small"
+          color="primary"
+          startIcon={<DescriptionOutlinedIcon fontSize="small" />}
+          onClick={() => onViewArtifacts(env.name)}
+        >
+          View K8s Artifacts
+        </Button>
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * The environment's own settings, as Configure overrides on the Component
+ * and Resource panels: the EndpointType's environment configs, and the
+ * weights of its backends.
+ */
+function ConfigurationSection({
+  env,
+  disabled,
+}: {
+  env: EndpointEnvironment;
+  disabled: boolean;
+}) {
+  const classes = useResourceEnvironmentDetailPanelStyles();
+  const { endpoint, onConfigureEnvironment, onConfigureOverrides } =
+    useEndpointEnvironmentsContext();
+  if (!env.bindingName) return null;
+  const set = Object.keys(env.environmentConfigs ?? {}).length;
+  return (
+    <Box className={classes.section}>
+      <Typography className={classes.sectionHeading}>Configuration</Typography>
+      <Box className={classes.actionsRow}>
+        <Button
+          variant="outlined"
+          size="small"
+          color="primary"
+          startIcon={<SettingsOutlinedIcon fontSize="small" />}
+          disabled={disabled}
+          onClick={() => onConfigureEnvironment(env.name)}
+        >
+          Configure overrides
+        </Button>
+        {endpoint.backends.length > 1 && (
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<TuneIcon fontSize="small" />}
+            disabled={disabled}
+            onClick={() => onConfigureOverrides(env.name)}
+          >
+            Set traffic by hand
+          </Button>
+        )}
+      </Box>
+      {set > 0 && (
+        <Typography variant="caption" color="textSecondary">
+          {set} override{set === 1 ? '' : 's'} set for {env.displayName}:{' '}
+          {Object.entries(env.environmentConfigs ?? {})
+            .map(
+              ([k, v]) =>
+                `${k} ${typeof v === 'string' ? v : JSON.stringify(v)}`,
+            )
+            .join(', ')}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
+/** Traffic, configuration, actions and the danger zone. */
 function DeploySections({ env }: { env: EndpointEnvironment }) {
   const classes = useResourceEnvironmentDetailPanelStyles();
   const {
@@ -160,9 +279,7 @@ function DeploySections({ env }: { env: EndpointEnvironment }) {
     onRollOut,
     onStopRoutingRequest,
     onViewReleases,
-    onViewArtifacts,
     onOpenRollout,
-    onCopy,
   } = useEndpointEnvironmentsContext();
   const hasBinding = Boolean(env.bindingName);
   const rolloutPerm = useEndpointRolloutPermission(env.name, hasBinding);
@@ -202,35 +319,6 @@ function DeploySections({ env }: { env: EndpointEnvironment }) {
 
   return (
     <>
-      {hasBinding && (
-        <Box className={classes.section}>
-          <InfoRow
-            label="Release"
-            value={`${env.endpointRelease || '(unset)'}${
-              isLatest ? ' · latest' : ''
-            }`}
-            onCopy={
-              env.endpointRelease
-                ? () => onCopy(env.endpointRelease!, 'release name')
-                : undefined
-            }
-          />
-          {env.servingRelease && env.servingRelease !== env.endpointRelease && (
-            <InfoRow label="Serving" value={env.servingRelease} />
-          )}
-          {!isLatest && latest && (
-            <InfoRow label="Latest" value={`${latest} (not deployed here)`} />
-          )}
-          {env.invokeURL && (
-            <InfoRow
-              label="URL"
-              value={env.invokeURL}
-              onCopy={() => onCopy(env.invokeURL!, 'URL')}
-            />
-          )}
-        </Box>
-      )}
-
       {message && (
         <Box className={classes.section}>
           <Typography
@@ -266,6 +354,11 @@ function DeploySections({ env }: { env: EndpointEnvironment }) {
       )}
 
       <UnresolvedBackends env={env} />
+
+      <ConfigurationSection
+        env={env}
+        disabled={busy || (!rolloutPerm.loading && !rolloutPerm.canRollOut)}
+      />
 
       <Box className={classes.section}>
         <Typography className={classes.sectionHeading}>Actions</Typography>
@@ -309,16 +402,6 @@ function DeploySections({ env }: { env: EndpointEnvironment }) {
           >
             Version history
           </Button>
-          {hasBinding && (
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<OpenInNewIcon fontSize="small" />}
-              onClick={() => onViewArtifacts(env.name)}
-            >
-              View K8s Artifacts
-            </Button>
-          )}
         </Box>
       </Box>
 
@@ -387,7 +470,6 @@ function RolloutSections({ env }: { env: EndpointEnvironment }) {
     pendingAction,
     onRolloutAction,
     onRollBack,
-    onConfigureOverrides,
     onViewReleases,
     onCopy,
   } = useEndpointEnvironmentsContext();
@@ -517,6 +599,8 @@ function RolloutSections({ env }: { env: EndpointEnvironment }) {
 
       <UnresolvedBackends env={env} />
 
+      <ConfigurationSection env={env} disabled={busy || denied} />
+
       {rollout && (
         <Box className={classes.section}>
           <Typography className={classes.sectionHeading}>Actions</Typography>
@@ -574,17 +658,6 @@ function RolloutSections({ env }: { env: EndpointEnvironment }) {
       <Box className={classes.section}>
         <Typography className={classes.sectionHeading}>More</Typography>
         <Box className={classes.actionsRow}>
-          {env.bindingName && endpoint.backends.length > 1 && (
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<TuneIcon fontSize="small" />}
-              disabled={busy || denied}
-              onClick={() => onConfigureOverrides(env.name)}
-            >
-              Set traffic by hand
-            </Button>
-          )}
           <Button
             variant="outlined"
             size="small"

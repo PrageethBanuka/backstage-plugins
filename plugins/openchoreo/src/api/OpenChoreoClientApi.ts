@@ -865,6 +865,25 @@ export interface OpenChoreoClientApi {
     outcome: 'complete' | 'abandon',
   ): Promise<RolloutActionResult>;
 
+  /**
+   * The JSON Schema of the environment configs a release's EndpointType
+   * snapshot declares; empty when it declares none.
+   */
+  fetchEndpointReleaseSchema(
+    entity: Entity,
+    releaseName: string,
+  ): Promise<Record<string, unknown>>;
+
+  /**
+   * Set an environment's values for the EndpointType's environment configs
+   * on its binding. No release is cut; an empty object clears them.
+   */
+  updateEndpointEnvironmentConfigs(
+    entity: Entity,
+    environment: string,
+    environmentConfigs: Record<string, unknown>,
+  ): Promise<{ bindingName: string }>;
+
   /** Turn a mirror rollout into a canary on the same backend, at 0%. */
   convertRollout(
     entity: Entity,

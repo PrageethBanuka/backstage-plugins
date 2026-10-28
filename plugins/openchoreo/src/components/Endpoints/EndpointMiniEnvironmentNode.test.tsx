@@ -114,6 +114,7 @@ function renderTile(
     onViewReleases: jest.fn(),
     onViewArtifacts: jest.fn(),
     onConfigureOverrides: jest.fn(),
+    onConfigureEnvironment: jest.fn(),
     onRolloutAction: jest.fn(),
     onRollBack: jest.fn(),
     onOpenRollout: jest.fn(),
