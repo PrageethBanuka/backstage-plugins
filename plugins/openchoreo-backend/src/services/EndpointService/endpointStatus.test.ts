@@ -3,6 +3,8 @@ import {
   applyWeights,
   deriveEndpointStatus,
   toBackendWeights,
+  toOverrides,
+  validateMatches,
 } from './endpointStatus';
 
 const binding = (
@@ -206,5 +208,110 @@ describe('applyBackends', () => {
         { componentName: 'payments-v2', endpoint: 'http', weight: 0 },
       ]),
     ).toThrow(/above 0/);
+  });
+});
+
+describe('backend matches and mirrors', () => {
+  const refs = [
+    {
+      name: 'blue',
+      kind: 'Component' as const,
+      component: { name: 'blue', endpoint: 'http' },
+      weight: 100,
+    },
+    {
+      name: 'green',
+      kind: 'Component' as const,
+      component: { name: 'green', endpoint: 'http' },
+      weight: 0,
+      match: {
+        headers: [
+          { name: 'x-preview', type: 'Exact' as const, value: 'green' },
+        ],
+      },
+    },
+  ];
+
+  it('reads a match and a mirror into the wire shape', () => {
+    expect(
+      toBackendWeights([
+        refs[1],
+        { ...refs[0], name: 'shadow', mirror: { percent: 10 } },
+      ]),
+    ).toEqual([
+      {
+        name: 'green',
+        componentName: 'green',
+        endpoint: 'http',
+        weight: 0,
+        match: {
+          headers: [{ name: 'x-preview', type: 'Exact', value: 'green' }],
+        },
+      },
+      {
+        name: 'shadow',
+        componentName: 'blue',
+        endpoint: 'http',
+        weight: 100,
+        mirror: { percent: 10 },
+      },
+    ]);
+  });
+
+  it('keeps a match on a Configure save, and replaces it when a strategy changes', () => {
+    const backends = [
+      { componentName: 'blue', endpoint: 'http', weight: 100 },
+      { componentName: 'green', endpoint: 'http', weight: 0 },
+    ];
+    expect(applyBackends(refs, backends)[1].match).toEqual(refs[1].match);
+    expect(
+      applyBackends(refs, backends, { reach: true })[1],
+    ).not.toHaveProperty('match');
+    expect(
+      applyBackends(
+        refs,
+        [backends[0], { ...backends[1], mirror: { percent: 5 } }],
+        { reach: true },
+      )[1],
+    ).toMatchObject({ mirror: { percent: 5 } });
+  });
+
+  it('reads mirror overrides and refuses a bad match or mirror', () => {
+    expect(
+      toOverrides({
+        metadata: { name: 'b' },
+        spec: {
+          owner: { projectName: 'shop', endpointName: 'payments-api' },
+          environment: 'dev',
+          backendOverrides: [
+            { name: 'blue', weight: 0 },
+            { name: 'shadow', mirror: { percent: 10 } },
+          ],
+        },
+      } as any),
+    ).toEqual([
+      { name: 'blue', weight: 0 },
+      { name: 'shadow', mirror: { percent: 10 } },
+    ]);
+    expect(() =>
+      validateMatches([
+        {
+          componentName: 'green',
+          endpoint: 'http',
+          weight: 0,
+          match: { path: { value: '/a/../b' } },
+        },
+      ]),
+    ).toThrow(/green: path \/a\/..\/b must not contain/);
+    expect(() =>
+      validateMatches([
+        {
+          componentName: 'g',
+          endpoint: 'http',
+          weight: 5,
+          mirror: { percent: 5 },
+        },
+      ]),
+    ).toThrow(/a mirror backend needs weight 0 and no match/);
   });
 });

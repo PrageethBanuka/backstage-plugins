@@ -1,10 +1,10 @@
 import { InputError } from '@backstage/errors';
-import { endpointRuleProblems } from '@openchoreo/backstage-plugin-common';
+import { backendMatchProblems } from '@openchoreo/backstage-plugin-common';
 import type {
+  EndpointBackendMatch,
   EndpointBackendStatus,
   EndpointBackendWeight,
   EndpointRoutingStatus,
-  EndpointRule,
   EndpointWeightOverride,
 } from '@openchoreo/backstage-plugin-common';
 import type { OpenChoreoComponents } from '@openchoreo/openchoreo-client-node';
@@ -13,7 +13,7 @@ type EndpointReleaseBinding =
   OpenChoreoComponents['schemas']['EndpointReleaseBinding'];
 type EndpointBackendRef = OpenChoreoComponents['schemas']['EndpointBackendRef'];
 type Condition = OpenChoreoComponents['schemas']['Condition'];
-type ApiEndpointRule = OpenChoreoComponents['schemas']['EndpointRule'];
+type ApiEndpointMatch = OpenChoreoComponents['schemas']['EndpointMatch'];
 
 export interface DerivedEndpointStatus {
   status: EndpointRoutingStatus;
@@ -69,19 +69,53 @@ export function deriveEndpointStatus(
   }
 }
 
+/** Maps an API match to the wire shape, leaving out empty parts. */
+function toMatch(
+  m: ApiEndpointMatch | undefined,
+): EndpointBackendMatch | undefined {
+  if (!m) return undefined;
+  return {
+    ...(m.path && { path: m.path }),
+    ...(m.headers?.length && { headers: m.headers }),
+    ...(m.cookies?.length && { cookies: m.cookies }),
+  };
+}
+
+/** Maps a wire match to the API shape, filling the CRD's defaults. */
+function toApiMatch(m: EndpointBackendMatch): ApiEndpointMatch {
+  return {
+    ...(m.path && {
+      path: { type: m.path.type ?? 'PathPrefix', value: m.path.value },
+    }),
+    ...(m.headers?.length && {
+      headers: m.headers.map(h => ({
+        name: h.name,
+        type: h.type ?? 'Exact',
+        value: h.value,
+      })),
+    }),
+    ...(m.cookies?.length && { cookies: m.cookies }),
+  };
+}
+
 /**
- * Maps API backendRefs to the wire shape. A missing weight means 1, as in the
- * CRD.
+ * Maps API backendRefs to the wire shape, with each backend's match and
+ * mirror. A missing weight means 1, as in the CRD.
  */
 export function toBackendWeights(
   refs: EndpointBackendRef[] | undefined,
 ): EndpointBackendWeight[] {
-  return (refs ?? []).map(ref => ({
-    componentName: ref.component?.name ?? ref.name,
-    endpoint: ref.component?.endpoint ?? '',
-    weight: ref.weight ?? 1,
-    name: ref.name,
-  }));
+  return (refs ?? []).map(ref => {
+    const match = toMatch(ref.match);
+    return {
+      componentName: ref.component?.name ?? ref.name,
+      endpoint: ref.component?.endpoint ?? '',
+      weight: ref.weight ?? 1,
+      name: ref.name,
+      ...(match && { match }),
+      ...(ref.mirror && { mirror: { percent: ref.mirror.percent } }),
+    };
+  });
 }
 
 /** Keys an API backendRef the way the wire shape is keyed. */
@@ -94,85 +128,57 @@ const refKey = (ref: EndpointBackendRef) =>
 const key = (b: { componentName: string; endpoint: string }) =>
   `${b.componentName}/${b.endpoint}`;
 
+/** A backend's match and mirror in the API shape, when it has them. */
+const reachOf = (b: EndpointBackendWeight) => ({
+  ...(b.match && { match: toApiMatch(b.match) }),
+  ...(b.mirror && { mirror: { percent: b.mirror.percent } }),
+});
+
 /** Builds the API backendRef for a backend added from the portal. */
 const toBackendRef = (b: EndpointBackendWeight): EndpointBackendRef => ({
   name: b.name ?? b.componentName,
   kind: 'Component',
   component: { name: b.componentName, endpoint: b.endpoint },
   weight: b.weight,
+  ...reachOf(b),
 });
 
-/** Maps API rules to the wire shape. */
-export function toRules(rules: ApiEndpointRule[] | undefined): EndpointRule[] {
-  return (rules ?? []).map(r => ({
-    name: r.name,
-    ...(r.matches?.length && { matches: r.matches }),
-    backends: r.backends.map(b => ({ name: b.name, weight: b.weight ?? 1 })),
-    ...(r.mirrors?.length && { mirrors: r.mirrors }),
-  }));
-}
-
-/** Maps wire rules to the API shape, filling the CRD's defaults. */
-export function toApiRules(rules: EndpointRule[]): ApiEndpointRule[] {
-  return rules.map(r => ({
-    name: r.name,
-    ...(r.matches?.length && {
-      matches: r.matches.map(m => ({
-        ...(m.headers?.length && {
-          headers: m.headers.map(h => ({
-            name: h.name,
-            type: h.type ?? 'Exact',
-            value: h.value,
-          })),
-        }),
-        ...(m.cookies?.length && { cookies: m.cookies }),
-        ...(m.queryParams?.length && { queryParams: m.queryParams }),
-      })),
-    }),
-    backends: r.backends.map(b => ({ name: b.name, weight: b.weight ?? 1 })),
-    ...(r.mirrors?.length && { mirrors: r.mirrors }),
-  }));
-}
-
-/** A binding's per-environment weights. */
+/** A binding's per-environment weights and mirror shares. */
 export function toOverrides(
   binding: EndpointReleaseBinding | undefined,
 ): EndpointWeightOverride[] {
   return (binding?.spec?.backendOverrides ?? [])
-    .filter(o => o.weight !== undefined)
-    .map(o => ({ name: o.name, weight: o.weight! }));
+    .filter(o => o.weight !== undefined || o.mirror)
+    .map(o => ({
+      name: o.name,
+      ...(o.weight !== undefined && { weight: o.weight }),
+      ...(o.mirror && { mirror: { percent: o.mirror.percent } }),
+    }));
 }
 
 /**
- * Drops rule backends and mirrors that are no longer backendRefs, and rules
- * left without backends, as the Component controller does when a backend's
- * component is deleted.
+ * Refuses backend matches the CRD or the webhook would refuse, with readable
+ * messages (see backendMatchProblems).
  */
-export function pruneRules(
-  rules: ApiEndpointRule[] | undefined,
-  refs: EndpointBackendRef[],
-): ApiEndpointRule[] {
-  const known = new Set(refs.map(r => r.name));
-  return (rules ?? [])
-    .map(r => ({
-      ...r,
-      backends: r.backends.filter(b => known.has(b.name)),
-      ...(r.mirrors && { mirrors: r.mirrors.filter(m => known.has(m.backend)) }),
-    }))
-    .filter(r => r.backends.length > 0);
-}
-
-/**
- * Refuses rules the CRD would refuse, with readable messages (see
- * endpointRuleProblems).
- */
-export function validateRules(
-  rules: EndpointRule[],
-  backendNames: string[],
-): void {
-  const problems = endpointRuleProblems(rules, backendNames);
+export function validateMatches(backends: EndpointBackendWeight[]): void {
+  const problems = backends.flatMap(b =>
+    b.match
+      ? backendMatchProblems(b.match).map(
+          p => `${b.name ?? b.componentName}: ${p}`,
+        )
+      : [],
+  );
+  for (const b of backends) {
+    if (b.mirror && (b.weight !== 0 || b.match)) {
+      problems.push(
+        `${
+          b.name ?? b.componentName
+        }: a mirror backend needs weight 0 and no match`,
+      );
+    }
+  }
   if (problems.length > 0) {
-    throw new InputError(`Invalid rules: ${problems.join('; ')}`);
+    throw new InputError(`Invalid backends: ${problems.join('; ')}`);
   }
 }
 
@@ -185,6 +191,7 @@ export function toBackendStatuses(
     endpoint: b.endpoint ?? '',
     name: b.name,
     weight: b.weight ?? 0,
+    ...(b.mirror && { mirror: { percent: b.mirror.percent } }),
     resolved: b.resolved,
     reason: b.reason,
   }));
@@ -236,10 +243,15 @@ export function applyWeights(
  * canary starts: a new backend is added (usually at weight 0) to the same
  * Endpoint, so the URL never changes. Existing backends keep their order and
  * new ones are appended. A backend left out is removed, at any weight.
+ *
+ * With `reach`, each backend's match and mirror are set to the requested
+ * ones (a strategy starting or finishing); without it they are kept, so a
+ * Configure-page save leaves a running rollout's previews alone.
  */
 export function applyBackends(
   refs: EndpointBackendRef[],
   backends: EndpointBackendWeight[],
+  opts: { reach?: boolean } = {},
 ): EndpointBackendRef[] {
   const invalid = backends.filter(
     w => !Number.isInteger(w.weight) || w.weight < 0 || w.weight > 1_000_000,
@@ -258,10 +270,15 @@ export function applyBackends(
   }
   // A backend can be removed at any weight: the new release only moves an
   // environment's traffic when that environment deploys it.
-  const requested = new Map(backends.map(b => [key(b), b.weight]));
+  const requested = new Map(backends.map(b => [key(b), b]));
   const kept = refs
     .filter(ref => requested.has(refKey(ref)))
-    .map(ref => ({ ...ref, weight: requested.get(refKey(ref))! }));
+    .map(ref => {
+      const b = requested.get(refKey(ref))!;
+      if (!opts.reach) return { ...ref, weight: b.weight };
+      const { match: _m, mirror: _r, ...rest } = ref;
+      return { ...rest, weight: b.weight, ...reachOf(b) };
+    });
   const known = new Set(refs.map(refKey));
   const added = backends.filter(b => !known.has(key(b))).map(toBackendRef);
   const updated = [...kept, ...added];

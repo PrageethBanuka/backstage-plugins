@@ -1421,41 +1421,6 @@ export async function createRouter({
     );
   });
 
-  const isRule = (r: any): boolean =>
-    !!r &&
-    typeof r.name === 'string' &&
-    Array.isArray(r.backends) &&
-    r.backends.every((b: any) => b && typeof b.name === 'string') &&
-    (r.matches === undefined || Array.isArray(r.matches)) &&
-    (r.mirrors === undefined || Array.isArray(r.mirrors));
-
-  router.put('/update-endpoint-rules', requireAuth, async (req, res) => {
-    const { endpointName, namespaceName, rules, backends } = req.body;
-    if (
-      !endpointName ||
-      !namespaceName ||
-      !Array.isArray(rules) ||
-      !rules.every(isRule) ||
-      (backends !== undefined && !Array.isArray(backends))
-    ) {
-      throw new InputError(
-        'endpointName, namespaceName and rules (each with a name and backends) are required in request body',
-      );
-    }
-    const userToken = getUserTokenFromRequest(req);
-    res.json(
-      await endpointInfoService.updateEndpointRules(
-        {
-          endpointName: endpointName as string,
-          namespaceName: namespaceName as string,
-          rules,
-          ...(backends && { backends }),
-        },
-        userToken,
-      ),
-    );
-  });
-
   router.put('/update-endpoint-overrides', requireAuth, async (req, res) => {
     const { endpointName, namespaceName, environment, overrides } = req.body;
     if (
@@ -1465,11 +1430,14 @@ export async function createRouter({
       !Array.isArray(overrides) ||
       !overrides.every(
         (o: any) =>
-          o && typeof o.name === 'string' && typeof o.weight === 'number',
+          o &&
+          typeof o.name === 'string' &&
+          (typeof o.weight === 'number' ||
+            typeof o.mirror?.percent === 'number'),
       )
     ) {
       throw new InputError(
-        'endpointName, namespaceName, environment and overrides (name and numeric weight) are required in request body',
+        'endpointName, namespaceName, environment and overrides (a name, and a numeric weight or mirror.percent) are required in request body',
       );
     }
     const userToken = getUserTokenFromRequest(req);
@@ -1538,6 +1506,23 @@ export async function createRouter({
     ]);
     res.json(
       await endpointInfoService.promoteRollout(
+        req.body,
+        getUserTokenFromRequest(req),
+      ),
+    );
+  });
+
+  router.put('/endpoint-rollout/convert', requireAuth, async (req, res) => {
+    requireFields(req.body, ['endpointName', 'namespaceName', 'projectName']);
+    const header = req.body.testerHeader;
+    if (
+      header !== undefined &&
+      (typeof header?.name !== 'string' || typeof header?.value !== 'string')
+    ) {
+      throw new InputError('testerHeader needs a name and a value');
+    }
+    res.json(
+      await endpointInfoService.convertRollout(
         req.body,
         getUserTokenFromRequest(req),
       ),

@@ -9,6 +9,7 @@ import {
 import {
   audienceProblem,
   completeSplit,
+  convertToCanary,
   currentRollout,
   finishStrategy,
   parseRollout,
@@ -21,6 +22,7 @@ import {
 } from '@openchoreo/backstage-plugin-common';
 import type {
   ComponentTrafficEntry,
+  ConvertRolloutRequest,
   EndpointBackendWeight,
   EndpointEnvironment,
   EndpointEnvironmentSummary,
@@ -37,7 +39,6 @@ import type {
   SetRolloutStageRequest,
   StartRolloutRequest,
   UpdateEndpointReleaseBindingRequest,
-  UpdateEndpointRulesRequest,
   UpdateEndpointSettingsRequest,
   UpdateEndpointTrafficRequest,
 } from '@openchoreo/backstage-plugin-common';
@@ -53,13 +54,10 @@ import {
   applyBackends,
   applyWeights,
   deriveEndpointStatus,
-  pruneRules,
-  toApiRules,
   toBackendStatuses,
   toBackendWeights,
   toOverrides,
-  toRules,
-  validateRules,
+  validateMatches,
 } from './endpointStatus';
 
 type Endpoint = OpenChoreoComponents['schemas']['Endpoint'];
@@ -79,6 +77,22 @@ const endpointProblem = (ep: Endpoint): string | undefined => {
     return undefined;
   }
   return ready.message || ready.reason;
+};
+
+/** Where an environment's binding stands in the rollout. */
+const positionOf = (
+  rollout: NonNullable<ReturnType<typeof currentRollout>['rollout']>,
+  binding: EndpointReleaseBinding,
+) => {
+  const statuses = toBackendStatuses(binding);
+  return rolloutPosition(
+    rollout,
+    Object.fromEntries(
+      statuses.map(b => [b.name ?? b.componentName, b.weight]),
+    ),
+    statuses.find(b => (b.name ?? b.componentName) === rollout.candidate)
+      ?.mirror?.percent,
+  );
 };
 
 /** How long updateEndpointTraffic waits for the controller to cut the release. */
@@ -219,11 +233,9 @@ export class EndpointInfoService {
         }))
         .sort((a, b) => a.environment.localeCompare(b.environment));
       const backends = toBackendWeights(ep.spec?.backendRefs);
-      const rules = toRules(ep.spec?.rules);
       const { rollout, source } = currentRollout(
         ep.metadata.annotations,
         backends,
-        rules,
       );
       return {
         name,
@@ -236,7 +248,6 @@ export class EndpointInfoService {
         visibility: ep.spec?.visibility ?? [],
         autoDeploy: ep.spec?.autoDeploy ?? false,
         backends,
-        rules,
         ...(rollout && { rollout }),
         rolloutSource: source,
         latestRelease: ep.status?.latestRelease?.name,
@@ -375,7 +386,6 @@ export class EndpointInfoService {
     const { rollout } = currentRollout(
       endpoint.metadata.annotations,
       toBackendWeights(endpoint.spec?.backendRefs),
-      toRules(endpoint.spec?.rules),
     );
     const bindingByEnv = new Map<string, EndpointReleaseBinding>();
     for (const b of bindings) {
@@ -383,11 +393,6 @@ export class EndpointInfoService {
         bindingByEnv.set(b.spec.environment, b);
       }
     }
-    const rulesByRelease = await this.fetchReleaseRules(
-      client,
-      request.namespaceName,
-      [...bindingByEnv.values()].map(b => b.spec?.endpointRelease),
-    );
     const envByName = new Map<string, EnvironmentResponse>(
       environments.map(e => {
         const env = transformEnvironment(e);
@@ -434,46 +439,11 @@ export class EndpointInfoService {
         invokeURL: binding?.status?.invokeURL,
         backends: toBackendStatuses(binding),
         overrides: toOverrides(binding),
-        ...(rollout &&
-          binding && {
-            rollout: rolloutPosition(
-              rollout,
-              Object.fromEntries(
-                toBackendStatuses(binding).map(b => [
-                  b.name ?? b.componentName,
-                  b.weight,
-                ]),
-              ),
-            ),
-          }),
-        rules: rulesByRelease.get(binding?.spec?.endpointRelease ?? '') ?? [],
+        ...(rollout && binding && { rollout: positionOf(rollout, binding) }),
         deployedBackends: [...(deployed.get(envName) ?? [])].sort(),
         promotionTargets: targetsByEnv.get(envName) ?? [],
       };
     });
-  }
-
-  /** The rules of each named release; a missing release has none. */
-  private async fetchReleaseRules(
-    client: ApiClient,
-    namespaceName: string,
-    names: Array<string | undefined>,
-  ): Promise<Map<string, ReturnType<typeof toRules>>> {
-    const unique = [...new Set(names.filter((n): n is string => !!n))];
-    const entries = await Promise.all(
-      unique.map(async name => {
-        const res = await client.GET(
-          '/api/v1/namespaces/{namespaceName}/endpointreleases/{endpointReleaseName}',
-          { params: { path: { namespaceName, endpointReleaseName: name } } },
-        );
-        if (res.response.status === 404) {
-          return [name, []] as const;
-        }
-        assertApiResponse(res, 'get endpoint release');
-        return [name, toRules(res.data!.spec?.rules)] as const;
-      }),
-    );
-    return new Map(entries.map(([n, r]) => [n, [...r]]));
   }
 
   /**
@@ -777,7 +747,6 @@ export class EndpointInfoService {
         name: r.metadata.name,
         createdAt: r.metadata.creationTimestamp,
         backends: toBackendWeights(r.spec?.backendRefs),
-        rules: toRules(r.spec?.rules),
       }))
       .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
   }
@@ -826,11 +795,7 @@ export class EndpointInfoService {
         },
         body: {
           metadata: endpoint.metadata,
-          spec: {
-            ...endpoint.spec!,
-            backendRefs: updatedRefs,
-            rules: pruneRules(endpoint.spec?.rules, updatedRefs),
-          },
+          spec: { ...endpoint.spec!, backendRefs: updatedRefs },
         },
       },
     );
@@ -896,55 +861,6 @@ export class EndpointInfoService {
   }
 
   /**
-   * Replaces an Endpoint's rules, and optionally its backends in the same
-   * update, so a strategy (a new backend and its rule) is one release. The
-   * controller cuts the release; it reaches an environment when its binding
-   * is pinned to it (autoDeploy does that for the first environment).
-   */
-  async updateEndpointRules(
-    request: UpdateEndpointRulesRequest,
-    token?: string,
-  ): Promise<{ latestRelease?: string; changed: boolean }> {
-    const client = this.client(token);
-    const endpoint = await this.getEndpoint(
-      client,
-      request.namespaceName,
-      request.endpointName,
-    );
-    if (request.backends) assertNoRollout(endpoint);
-    const refs = endpoint.spec?.backendRefs ?? [];
-    const backendRefs = request.backends
-      ? applyBackends(refs, request.backends)
-      : refs;
-    validateRules(
-      request.rules,
-      backendRefs.map(r => r.name),
-    );
-    const rules = toApiRules(request.rules);
-    const previous = endpoint.status?.latestRelease?.name;
-    if (
-      JSON.stringify(rules) === JSON.stringify(endpoint.spec?.rules ?? []) &&
-      JSON.stringify(backendRefs) === JSON.stringify(refs)
-    ) {
-      return { latestRelease: previous, changed: false };
-    }
-    await this.putEndpoint(client, request.namespaceName, endpoint, {
-      ...endpoint.spec!,
-      backendRefs,
-      rules,
-    });
-    return {
-      latestRelease: await this.waitForRelease(
-        client,
-        request.namespaceName,
-        request.endpointName,
-        previous,
-      ),
-      changed: true,
-    };
-  }
-
-  /**
    * Changes where an Endpoint is reachable from and whether it deploys each
    * release to the first environment. A visibility change cuts a release.
    */
@@ -986,13 +902,13 @@ export class EndpointInfoService {
   }
 
   /**
-   * Sets an environment's weights on its binding (spec.backendOverrides),
-   * which moves that environment's traffic in seconds and cuts no release.
-   * Overrides apply to backendRefs and to rules that split between several
-   * backends; a single-backend rule, such as a preview header, ignores them.
-   * An empty list clears them, so the release's weights apply again.
+   * Sets an environment's weights and mirror shares on its binding
+   * (spec.backendOverrides), which moves that environment's traffic in
+   * seconds and cuts no release. Weights split the requests no backend's
+   * match takes; matches keep working whatever the weights. An empty list
+   * clears them, so the release's values apply again.
    *
-   * Waits until the binding reports the new effective weights and the data
+   * Waits until the binding reports the new effective values and the data
    * plane has accepted the routes; `applied` is false if that took longer.
    */
   async updateEndpointOverrides(
@@ -1012,7 +928,9 @@ export class EndpointInfoService {
       );
     }
     const invalid = request.overrides.filter(
-      o => !Number.isInteger(o.weight) || o.weight < 0 || o.weight > 1_000_000,
+      o =>
+        o.weight !== undefined &&
+        (!Number.isInteger(o.weight) || o.weight < 0 || o.weight > 1_000_000),
     );
     if (invalid.length > 0) {
       throw new InputError(
@@ -1020,6 +938,23 @@ export class EndpointInfoService {
           .map(o => o.name)
           .join(', ')}`,
       );
+    }
+    const badMirror = request.overrides.filter(
+      o =>
+        o.mirror &&
+        (!Number.isInteger(o.mirror.percent) ||
+          o.mirror.percent < 0 ||
+          o.mirror.percent > 100),
+    );
+    if (badMirror.length > 0) {
+      throw new InputError(
+        `Mirror shares must be whole numbers from 0 to 100: ${badMirror
+          .map(o => o.name)
+          .join(', ')}`,
+      );
+    }
+    if (request.overrides.some(o => o.weight === undefined && !o.mirror)) {
+      throw new InputError('Each override needs a weight or a mirror');
     }
     const res = await client.PUT(
       '/api/v1/namespaces/{namespaceName}/endpointreleasebindings/{endpointReleaseBindingName}',
@@ -1038,7 +973,16 @@ export class EndpointInfoService {
     );
     assertApiResponse(res, 'update endpoint release binding');
 
-    const wanted = new Map(request.overrides.map(o => [o.name, o.weight]));
+    const wanted = new Map(
+      request.overrides
+        .filter(o => o.weight !== undefined)
+        .map(o => [o.name, o.weight!]),
+    );
+    const wantedMirror = new Map(
+      request.overrides
+        .filter(o => o.mirror)
+        .map(o => [o.name, o.mirror!.percent]),
+    );
     const deadline = Date.now() + OVERRIDES_WAIT_MS;
     while (Date.now() < deadline) {
       const current = (
@@ -1048,7 +992,10 @@ export class EndpointInfoService {
         })
       )[0];
       const weightsMatch = (current?.status?.backends ?? []).every(
-        b => !wanted.has(b.name) || (b.weight ?? 0) === wanted.get(b.name),
+        b =>
+          (!wanted.has(b.name) || (b.weight ?? 0) === wanted.get(b.name)) &&
+          (!wantedMirror.has(b.name) ||
+            (b.mirror?.percent ?? 0) === wantedMirror.get(b.name)),
       );
       const routesReady = current?.status?.conditions?.some(
         c => c.type === 'RoutesReady' && c.status === 'True',
@@ -1200,12 +1147,7 @@ export class EndpointInfoService {
       request.endpointName,
     );
     const backends = toBackendWeights(endpoint.spec?.backendRefs);
-    const rules = toRules(endpoint.spec?.rules);
-    const existing = currentRollout(
-      endpoint.metadata.annotations,
-      backends,
-      rules,
-    );
+    const existing = currentRollout(endpoint.metadata.annotations, backends);
     if (existing.source === 'annotation') {
       throw new InputError(
         `A ${existing.rollout!.strategy} rollout to ${
@@ -1213,14 +1155,12 @@ export class EndpointInfoService {
         } is already running; complete or abandon it first`,
       );
     }
-    const planned = planRollout(backends, rules, request.plan, startedBy);
+    const planned = planRollout(backends, request.plan, startedBy);
+    validateMatches(planned.backends);
     const backendRefs = applyBackends(
       endpoint.spec?.backendRefs ?? [],
       planned.backends,
-    );
-    validateRules(
-      planned.rules,
-      backendRefs.map(r => r.name),
+      { reach: true },
     );
     const previous = endpoint.status?.latestRelease?.name;
     await this.putEndpoint(
@@ -1236,7 +1176,7 @@ export class EndpointInfoService {
           },
         },
       },
-      { ...endpoint.spec!, backendRefs, rules: toApiRules(planned.rules) },
+      { ...endpoint.spec!, backendRefs },
     );
     const latestRelease = await this.waitForRelease(
       client,
@@ -1247,11 +1187,15 @@ export class EndpointInfoService {
     if (!latestRelease) {
       return { environments: [] };
     }
-    const overrides = rolloutWeights(
-      planned.rollout,
-      backendRefs.map(r => r.name),
-      0,
-    );
+    // A mirror starts at the share the plan put in the release.
+    const overrides =
+      planned.rollout.strategy === 'mirror'
+        ? []
+        : rolloutWeights(
+            planned.rollout,
+            backendRefs.map(r => r.name),
+            0,
+          );
     return {
       latestRelease,
       environments: await this.eachEnvironment(request.environments, env =>
@@ -1282,11 +1226,7 @@ export class EndpointInfoService {
       endpointName,
     );
     const backends = toBackendWeights(endpoint.spec?.backendRefs);
-    const { rollout } = currentRollout(
-      endpoint.metadata.annotations,
-      backends,
-      toRules(endpoint.spec?.rules),
-    );
+    const { rollout } = currentRollout(endpoint.metadata.annotations, backends);
     if (!rollout) {
       throw new InputError(`No rollout is running on ${endpointName}`);
     }
@@ -1353,11 +1293,7 @@ export class EndpointInfoService {
       request.endpointName,
     );
     const backends = toBackendWeights(endpoint.spec?.backendRefs);
-    const { rollout } = currentRollout(
-      endpoint.metadata.annotations,
-      backends,
-      toRules(endpoint.spec?.rules),
-    );
+    const { rollout } = currentRollout(endpoint.metadata.annotations, backends);
     return {
       latestRelease: release,
       environments: await this.eachEnvironment([request.to], env =>
@@ -1369,11 +1305,14 @@ export class EndpointInfoService {
             environment: env,
             releaseName: release,
             ...(rollout && {
-              backendOverrides: rolloutWeights(
-                rollout,
-                backends.map(b => b.name!),
-                0,
-              ),
+              backendOverrides:
+                rollout.strategy === 'mirror'
+                  ? []
+                  : rolloutWeights(
+                      rollout,
+                      backends.map(b => b.name!),
+                      0,
+                    ),
             }),
           },
           token,
@@ -1409,18 +1348,14 @@ export class EndpointInfoService {
         b.spec.endpointRelease,
     );
     if (request.outcome === 'complete') {
-      const behind = bindings.filter(b => {
-        const pos = rolloutPosition(
-          rollout,
-          Object.fromEntries(
-            toBackendStatuses(b).map(x => [
-              x.name ?? x.componentName,
-              x.weight,
-            ]),
-          ),
+      if (rollout.strategy === 'mirror') {
+        throw new InputError(
+          `${rollout.candidate} only receives copies; turn it into a canary first`,
         );
-        return pos.percent !== 100;
-      });
+      }
+      const behind = bindings.filter(
+        b => positionOf(rollout, b).percent !== 100,
+      );
       if (behind.length > 0) {
         throw new InputError(
           `Send all traffic to ${rollout.candidate} in ${behind
@@ -1438,7 +1373,6 @@ export class EndpointInfoService {
         : stableSplit(rollout);
     const change = finishStrategy(
       toBackendWeights(endpoint.spec?.backendRefs),
-      toRules(endpoint.spec?.rules),
       keep,
     );
     const kept = new Set(keep.map(k => k.name));
@@ -1447,6 +1381,7 @@ export class EndpointInfoService {
         kept.has(r.name) ? r : { ...r, weight: 0 },
       ),
       change.backends,
+      { reach: true },
     );
     const annotations = { ...(endpoint.metadata.annotations ?? {}) };
     delete annotations[ROLLOUT_ANNOTATION];
@@ -1455,7 +1390,7 @@ export class EndpointInfoService {
       client,
       request.namespaceName,
       { ...endpoint, metadata: { ...endpoint.metadata, annotations } },
-      { ...endpoint.spec!, backendRefs, rules: toApiRules(change.rules) },
+      { ...endpoint.spec!, backendRefs },
     );
     const latestRelease = await this.waitForRelease(
       client,
@@ -1479,6 +1414,95 @@ export class EndpointInfoService {
               environment: env,
               releaseName: latestRelease,
               backendOverrides: [],
+            },
+            token,
+          ),
+      ),
+    };
+  }
+
+  /**
+   * Turns a mirror rollout into a canary on the same backend: its mirror
+   * goes, the testers header (if any) becomes its match, and every
+   * environment that ran the mirror gets the new release with the canary at
+   * 0%, so no user traffic moves until an environment advances.
+   */
+  async convertRollout(
+    request: ConvertRolloutRequest,
+    token?: string,
+  ): Promise<RolloutActionResult> {
+    const client = this.client(token);
+    const { endpoint, rollout, backendNames } = await this.requireRollout(
+      client,
+      request.namespaceName,
+      request.endpointName,
+    );
+    if (rollout.strategy !== 'mirror') {
+      throw new InputError(
+        `${request.endpointName} is running a ${rollout.strategy} rollout, not a mirror`,
+      );
+    }
+    const converted = convertToCanary(
+      toBackendWeights(endpoint.spec?.backendRefs),
+      rollout,
+      request.testerHeader,
+    );
+    validateMatches(converted.backends);
+    const backendRefs = applyBackends(
+      endpoint.spec?.backendRefs ?? [],
+      converted.backends,
+      { reach: true },
+    );
+    const bindings = (
+      await this.listBindings(client, request.namespaceName, {
+        endpoint: request.endpointName,
+      })
+    ).filter(
+      b =>
+        b.spec?.owner.projectName === request.projectName &&
+        toBackendStatuses(b).some(
+          x => (x.name ?? x.componentName) === rollout.candidate,
+        ),
+    );
+    const previous = endpoint.status?.latestRelease?.name;
+    await this.putEndpoint(
+      client,
+      request.namespaceName,
+      {
+        ...endpoint,
+        metadata: {
+          ...endpoint.metadata,
+          annotations: {
+            ...(endpoint.metadata.annotations ?? {}),
+            [ROLLOUT_ANNOTATION]: serializeRollout(converted.rollout),
+          },
+        },
+      },
+      { ...endpoint.spec!, backendRefs },
+    );
+    const latestRelease = await this.waitForRelease(
+      client,
+      request.namespaceName,
+      request.endpointName,
+      previous,
+    );
+    if (!latestRelease) {
+      return { environments: [] };
+    }
+    const overrides = rolloutWeights(converted.rollout, backendNames, 0);
+    return {
+      latestRelease,
+      environments: await this.eachEnvironment(
+        bindings.map(b => b.spec!.environment),
+        env =>
+          this.updateEndpointReleaseBinding(
+            {
+              namespaceName: request.namespaceName,
+              projectName: request.projectName,
+              endpointName: request.endpointName,
+              environment: env,
+              releaseName: latestRelease,
+              backendOverrides: overrides,
             },
             token,
           ),

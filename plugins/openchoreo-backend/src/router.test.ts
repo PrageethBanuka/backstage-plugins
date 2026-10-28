@@ -1567,7 +1567,12 @@ describe('createRouter', () => {
       expect(
         services.endpointInfoService.updateEndpointTraffic,
       ).toHaveBeenCalledWith(
-        { namespaceName: 'default', endpointName: 'payments-api', backends },
+        {
+          namespaceName: 'default',
+          endpointName: 'payments-api',
+          backends,
+          replaceBackends: false,
+        },
         'mock-user-token',
       );
     });

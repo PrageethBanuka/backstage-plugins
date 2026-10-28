@@ -45,15 +45,9 @@ const endpoint = (weights: [number, number], latest = 'payments-api-aaa') => ({
         kind: 'Component',
         component: { name: 'payments-v2', endpoint: 'http' },
         weight: weights[1],
-      },
-    ],
-    rules: [
-      {
-        name: 'testers',
-        matches: [
-          { headers: [{ name: 'x-canary', type: 'Exact', value: 'true' }] },
-        ],
-        backends: [{ name: 'payments-v2', weight: 1 }],
+        match: {
+          headers: [{ name: 'x-canary', type: 'Exact', value: 'true' }],
+        },
       },
     ],
   },
@@ -168,6 +162,9 @@ describe('EndpointInfoService', () => {
           endpoint: 'http',
           weight: 10,
           name: 'payments-v2',
+          match: {
+            headers: [{ name: 'x-canary', type: 'Exact', value: 'true' }],
+          },
         },
       ]);
       expect(result[0].environments.map(e => e.environment)).toEqual([
@@ -177,7 +174,9 @@ describe('EndpointInfoService', () => {
       expect(result[0].environments[0].status).toBe('Routing');
       expect(result[0].visibility).toEqual(['external']);
       expect(result[0].autoDeploy).toBe(true);
-      expect(result[0].rules.map(r => r.name)).toEqual(['testers']);
+      expect(result[0].backends[1].match).toEqual({
+        headers: [{ name: 'x-canary', type: 'Exact', value: 'true' }],
+      });
     });
   });
 
@@ -416,8 +415,6 @@ describe('EndpointInfoService', () => {
       expect(result[0].overrides).toEqual([
         { name: 'payments-v2', weight: 50 },
       ]);
-      expect(result[0].rules.map(r => r.name)).toEqual(['testers']);
-      expect(result[1].rules).toEqual([]);
       expect(result[2].isProduction).toBe(true);
       expect(result.map(e => e.promotionTargets)).toEqual([
         [{ name: 'staging' }],
@@ -641,88 +638,6 @@ describe('EndpointInfoService', () => {
 
       expect(seen[0]).toMatchObject({ group: 'gateway.networking.k8s.io' });
       expect(seen[1]).not.toHaveProperty('group');
-    });
-  });
-
-  describe('updateEndpointRules', () => {
-    it('adds a backend and its rule in one update, and returns the new release', async () => {
-      let reads = 0;
-      routeGET({
-        [`${NS}/endpoints/{endpointName}`]: () =>
-          createOkResponse(
-            reads++ === 0
-              ? endpoint([100, 0])
-              : endpoint([100, 0], 'payments-api-bbb'),
-          ),
-      });
-      mockPUT.mockResolvedValue(createOkResponse({}));
-
-      const result = await service.updateEndpointRules(
-        {
-          namespaceName: 'default',
-          endpointName: 'payments-api',
-          backends: [
-            { componentName: 'payments-v1', endpoint: 'http', weight: 100 },
-            { componentName: 'payments-v2', endpoint: 'http', weight: 0 },
-            { componentName: 'payments-v3', endpoint: 'http', weight: 0 },
-          ],
-          rules: [
-            {
-              name: 'preview',
-              matches: [{ headers: [{ name: 'x-preview', value: 'green' }] }],
-              backends: [{ name: 'payments-v3' }],
-            },
-          ],
-        },
-        'token',
-      );
-
-      expect(result).toEqual({
-        latestRelease: 'payments-api-bbb',
-        changed: true,
-      });
-      const body = mockPUT.mock.calls[0][1].body;
-      expect(body.spec.backendRefs.map((r: any) => r.name)).toEqual([
-        'payments-v1',
-        'payments-v2',
-        'payments-v3',
-      ]);
-      expect(body.spec.rules).toEqual([
-        {
-          name: 'preview',
-          matches: [
-            { headers: [{ name: 'x-preview', type: 'Exact', value: 'green' }] },
-          ],
-          backends: [{ name: 'payments-v3', weight: 1 }],
-        },
-      ]);
-    });
-
-    it('refuses a rule naming an unknown backend, and a catch-all that is not last', async () => {
-      routeGET({
-        [`${NS}/endpoints/{endpointName}`]: () =>
-          createOkResponse(endpoint([90, 10])),
-      });
-      await expect(
-        service.updateEndpointRules(
-          {
-            namespaceName: 'default',
-            endpointName: 'payments-api',
-            rules: [
-              { name: 'everyone', backends: [{ name: 'payments-v1' }] },
-              {
-                name: 'testers',
-                matches: [{ headers: [{ name: 'x-canary', value: 'true' }] }],
-                backends: [{ name: 'payments-v9' }],
-              },
-            ],
-          },
-          'token',
-        ),
-      ).rejects.toThrow(
-        /only the last rule may have no matches.*unknown backend payments-v9/,
-      );
-      expect(mockPUT).not.toHaveBeenCalled();
     });
   });
 
