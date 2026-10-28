@@ -12,10 +12,11 @@ import {
   serializeRollout,
   abAudience,
   completeSplit,
+  convertToCanary,
   stableLabel,
   untouchedSplit,
 } from './endpointRollout';
-import { finishStrategy } from './endpointRules';
+import { finishStrategy } from './endpointStrategies';
 
 const canary: EndpointRollout = {
   strategy: 'canary',
@@ -26,7 +27,12 @@ const canary: EndpointRollout = {
 
 describe('rolloutStages', () => {
   it('starts every strategy at 0% and ends at 100%', () => {
-    for (const strategy of ['canary', 'blueGreen', 'abTest'] as const) {
+    for (const strategy of [
+      'canary',
+      'blueGreen',
+      'abTest',
+      'mirror',
+    ] as const) {
       const stages = rolloutStages({ ...canary, strategy });
       expect(stages[0].percent).toBe(0);
       expect(stages[stages.length - 1].percent).toBe(100);
@@ -101,7 +107,7 @@ describe('rolloutWeights', () => {
       expect(
         rolloutPosition(
           split,
-          Object.fromEntries(out.map(w => [w.name, w.weight])),
+          Object.fromEntries(out.map(w => [w.name, w.weight ?? 0])),
         ).percent,
       ).toBe(percent);
     });
@@ -159,7 +165,6 @@ describe('the rollout annotation', () => {
       currentRollout(
         { [ROLLOUT_ANNOTATION]: serializeRollout(canary) },
         backends,
-        [],
       ).source,
     ).toBe('none');
   });
@@ -169,7 +174,6 @@ describe('planRollout', () => {
   it('adds the new version at 0% and records the rollout', () => {
     const plan = planRollout(
       [{ componentName: 'trips-python', endpoint: 'http', weight: 100 }],
-      [],
       {
         strategy: 'canary',
         candidate: { componentName: 'trips-go', endpoint: 'http' },
@@ -193,7 +197,6 @@ describe('planRollout', () => {
         { componentName: 'trips-legacy', endpoint: 'http', weight: 30 },
         { componentName: 'trips-python', endpoint: 'http', weight: 70 },
       ],
-      [],
       {
         strategy: 'canary',
         candidate: { componentName: 'trips-go', endpoint: 'http' },
@@ -212,7 +215,7 @@ describe('planRollout', () => {
       { componentName: 'trips-python', endpoint: 'http', weight: 70 },
     ];
     const plan = (replaces?: string) =>
-      planRollout(backends, [], {
+      planRollout(backends, {
         strategy: 'canary',
         candidate: { componentName: 'trips-go', endpoint: 'http' },
         replaces,
@@ -223,18 +226,12 @@ describe('planRollout', () => {
 });
 
 describe('finishStrategy with several backends kept', () => {
-  it('restores their weights and keeps the rules that name them', () => {
+  it('restores their weights', () => {
     const change = finishStrategy(
       [
         { componentName: 'a', endpoint: 'http', weight: 50 },
         { componentName: 'b', endpoint: 'http', weight: 50 },
         { componentName: 'c', endpoint: 'http', weight: 0 },
-      ],
-      [
-        {
-          name: 'default',
-          backends: [{ name: 'a' }, { name: 'b' }, { name: 'c' }],
-        },
       ],
       [
         { name: 'a', weight: 70 },
@@ -245,7 +242,58 @@ describe('finishStrategy with several backends kept', () => {
       ['a', 70],
       ['b', 30],
     ]);
-    expect(change.rules[0].backends).toEqual([{ name: 'a' }, { name: 'b' }]);
+  });
+});
+
+describe('mirror rollouts', () => {
+  const mirror: EndpointRollout = {
+    strategy: 'mirror',
+    stable: 'trips-python',
+    candidate: 'trips-go',
+    steps: [5, 10, 25, 50, 100],
+  };
+
+  it('steps the copy share, read from the candidate mirror', () => {
+    expect(rolloutStages(mirror).map(s => s.percent)).toEqual([
+      0, 5, 10, 25, 50, 100,
+    ]);
+    expect(rolloutWeights(mirror, ['trips-python', 'trips-go'], 10)).toEqual([
+      { name: 'trips-go', mirror: { percent: 10 } },
+    ]);
+    expect(rolloutPosition(mirror, { 'trips-python': 1 }, 10)).toMatchObject({
+      percent: 10,
+      manual: false,
+    });
+  });
+
+  it('plans the candidate as a mirror and turns it into a canary', () => {
+    const backends = [
+      { componentName: 'trips-python', endpoint: 'http', weight: 100 },
+    ];
+    const plan = planRollout(backends, {
+      strategy: 'mirror',
+      candidate: { componentName: 'trips-go', endpoint: 'http' },
+      mirrorPercent: 30,
+    });
+    expect(plan.backends[1]).toMatchObject({
+      componentName: 'trips-go',
+      weight: 0,
+      mirror: { percent: 30 },
+    });
+    expect(plan.rollout.steps).toEqual([5, 10, 25, 30, 50, 100]);
+
+    const canaryNow = convertToCanary(plan.backends, plan.rollout, {
+      name: 'x-canary',
+      value: 'true',
+    });
+    expect(canaryNow.backends[1].mirror).toBeUndefined();
+    expect(canaryNow.backends[1].match).toEqual({
+      headers: [{ name: 'x-canary', value: 'true', type: 'Exact' }],
+    });
+    expect(canaryNow.rollout).toMatchObject({
+      strategy: 'canary',
+      steps: [5, 25, 50, 100],
+    });
   });
 });
 

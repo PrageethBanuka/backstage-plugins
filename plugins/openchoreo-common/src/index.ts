@@ -172,25 +172,25 @@ export {
   type ComponentTypeMapping,
 } from './utils/componentTypeUtils';
 export {
-  endpointRuleProblems,
+  backendMatchProblems,
   detectEndpointStrategy,
   buildCanary,
   buildBlueGreen,
   buildABTest,
+  buildMirror,
   finishStrategy,
-  MAX_ENDPOINT_RULES,
   MOBILE_USER_AGENT,
   audienceProblem,
-  STRATEGY_RULES,
-} from './utils/endpointRules';
+} from './utils/endpointStrategies';
 export type {
   EndpointStrategy,
   StrategyTarget,
   StrategyChange,
-} from './utils/endpointRules';
+} from './utils/endpointStrategies';
 export {
   ROLLOUT_ANNOTATION,
   DEFAULT_CANARY_STEPS,
+  MIRROR_STEPS,
   rolloutStages,
   rolloutPosition,
   nextRolloutStage,
@@ -204,6 +204,7 @@ export {
   serializeRollout,
   currentRollout,
   planRollout,
+  convertToCanary,
   completionBlockers,
 } from './utils/endpointRollout';
 export type { RolloutStage } from './utils/endpointRollout';
@@ -314,10 +315,8 @@ export type {
   EndpointVisibility,
   EndpointHeaderMatch,
   EndpointNameValueMatch,
-  EndpointMatch,
-  EndpointRuleBackend,
+  EndpointBackendMatch,
   EndpointMirror,
-  EndpointRule,
   EndpointWeightOverride,
   EndpointTypeDetails,
   EndpointEnvironmentSummary,
@@ -327,7 +326,7 @@ export type {
   ComponentTrafficEntry,
   UpdateEndpointTrafficRequest,
   UpdateEndpointReleaseBindingRequest,
-  UpdateEndpointRulesRequest,
+  ConvertRolloutRequest,
   UpdateEndpointOverridesRequest,
   UpdateEndpointSettingsRequest,
   RolloutStrategy,

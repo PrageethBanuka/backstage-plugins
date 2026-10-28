@@ -34,66 +34,53 @@ export interface EndpointBackendWeight {
   weight: number;
   /** The backend's name in the Endpoint (Endpoint.spec.backendRefs[].name). */
   name?: string;
+  /**
+   * Requests that meet all of these conditions go to this backend, whatever
+   * the weights (Endpoint.spec.backendRefs[].match).
+   */
+  match?: EndpointBackendMatch;
+  /** This backend gets a copy of a share of the weighted traffic. */
+  mirror?: EndpointMirror;
 }
 
 /** Where an Endpoint is reachable from (Endpoint.spec.visibility). */
 export type EndpointVisibility = 'namespace' | 'internal' | 'external';
 
-/** A header condition of a rule match. */
+/** A header condition of a backend's match. */
 export interface EndpointHeaderMatch {
   name: string;
   type?: 'Exact' | 'RegularExpression';
   value: string;
 }
 
-/** An exact cookie or query parameter condition of a rule match. */
+/** An exact cookie condition of a backend's match. */
 export interface EndpointNameValueMatch {
   name: string;
   value: string;
 }
 
 /**
- * Request conditions, all of which must hold. A rule matches when any of its
- * matches does.
+ * The conditions a request must all meet to go to a backend, whatever the
+ * weights. The path is relative to where the Endpoint is served.
  */
-export interface EndpointMatch {
+export interface EndpointBackendMatch {
+  path?: { type?: 'PathPrefix' | 'Exact'; value: string };
   headers?: EndpointHeaderMatch[];
-  /** At most one cookie per match. */
+  /** At most one cookie. */
   cookies?: EndpointNameValueMatch[];
-  queryParams?: EndpointNameValueMatch[];
 }
 
-/** A backend of a rule, by its backendRefs name, with the rule's weight. */
-export interface EndpointRuleBackend {
-  name: string;
-  /** Defaults to 1. */
-  weight?: number;
-}
-
-/** Copies a share of a rule's requests to a backend. */
+/** A copy of a share of the weighted traffic, for a backend at weight 0. */
 export interface EndpointMirror {
-  backend: string;
   percent: number;
 }
 
-/**
- * Endpoint.spec.rules[]: routes the requests it matches to its backends.
- * Rules are evaluated in order; a rule without matches is the catch-all and
- * must be last. Without one, unmatched requests follow backendRefs.
- */
-export interface EndpointRule {
-  name: string;
-  matches?: EndpointMatch[];
-  backends: EndpointRuleBackend[];
-  mirrors?: EndpointMirror[];
-}
-
 /** The strategies a rollout can run. */
-export type RolloutStrategy = 'canary' | 'blueGreen' | 'abTest';
+export type RolloutStrategy = 'canary' | 'blueGreen' | 'abTest' | 'mirror';
 
-/** How a person reaches the new version before it gets traffic. */
+/** How a person reaches the new backend before it gets traffic. */
 export interface RolloutPreview {
-  kind: 'header' | 'cookie';
+  kind: 'header' | 'cookie' | 'path';
   name: string;
   value: string;
   /**
@@ -139,13 +126,15 @@ export interface RolloutPosition {
   manual: boolean;
 }
 
-/** What to start: the strategy, the new version and its preview. */
+/** What to start: the strategy, the new backend and its preview. */
 export interface RolloutPlan {
   strategy: RolloutStrategy;
   candidate: { componentName: string; endpoint: string };
   /** Canary only; defaults to 5, 25, 50, 100. */
   steps?: number[];
   preview?: RolloutPreview;
+  /** Mirror only: the share of traffic to copy; defaults to 100. */
+  mirrorPercent?: number;
   /**
    * The backend the new version replaces; defaults to the one with the most
    * traffic. Other backends keep their weights.
@@ -153,11 +142,15 @@ export interface RolloutPlan {
   replaces?: string;
 }
 
-/** A per-environment weight on an EndpointReleaseBinding. */
+/**
+ * A per-environment value on an EndpointReleaseBinding: a backend's weight,
+ * or a mirror backend's copy share.
+ */
 export interface EndpointWeightOverride {
   /** The backend's name in the Endpoint. */
   name: string;
-  weight: number;
+  weight?: number;
+  mirror?: EndpointMirror;
 }
 
 /**
@@ -209,15 +202,13 @@ export interface EndpointSummary {
   visibility: EndpointVisibility[];
   /** Whether each new release is bound to the pipeline's first environment. */
   autoDeploy: boolean;
-  /** The latest split (Endpoint.spec.backendRefs). */
+  /** The latest backends, with their matches and mirrors (spec.backendRefs). */
   backends: EndpointBackendWeight[];
-  /** Header, cookie and query routing (Endpoint.spec.rules). */
-  rules: EndpointRule[];
   /** The rollout running on the Endpoint, if any. */
   rollout?: EndpointRollout;
   /**
    * Where `rollout` comes from: recorded by the portal, detected from the
-   * backends and rules, or none running.
+   * backends, or none running.
    */
   rolloutSource: 'annotation' | 'detected' | 'none';
   latestRelease?: string;
@@ -255,10 +246,8 @@ export interface EndpointEnvironment {
   invokeURL?: string;
   /** Backends of the pinned release as resolved in this environment. */
   backends: EndpointBackendStatus[];
-  /** The binding's per-environment weights (spec.backendOverrides). */
+  /** The binding's per-environment values (spec.backendOverrides). */
   overrides: EndpointWeightOverride[];
-  /** Rules of the pinned release. */
-  rules: EndpointRule[];
   /** Where this environment stands in the Endpoint's rollout, if any. */
   rollout?: RolloutPosition;
   /**
@@ -276,7 +265,6 @@ export interface EndpointReleaseSummary {
   name: string;
   createdAt?: string;
   backends: EndpointBackendWeight[];
-  rules: EndpointRule[];
 }
 
 /** One Endpoint routing to a component in one environment (Traffic card). */
@@ -339,18 +327,6 @@ export interface UpdateEndpointReleaseBindingRequest {
   releaseName: string;
 }
 
-/** Request body of PUT /update-endpoint-rules. Cuts a new release. */
-export interface UpdateEndpointRulesRequest {
-  namespaceName: string;
-  endpointName: string;
-  rules: EndpointRule[];
-  /**
-   * Optional full backend set, applied with the rules in the same update, so
-   * a strategy (a new backend and its rule) is one release.
-   */
-  backends?: EndpointBackendWeight[];
-}
-
 /**
  * Request body of PUT /update-endpoint-overrides: per-environment weights on
  * the environment's binding. No release is cut.
@@ -359,7 +335,7 @@ export interface UpdateEndpointOverridesRequest {
   namespaceName: string;
   endpointName: string;
   environment: string;
-  /** An empty list clears the overrides, so the release's weights apply. */
+  /** An empty list clears the overrides, so the release's values apply. */
   overrides: EndpointWeightOverride[];
 }
 
@@ -399,6 +375,15 @@ export interface PromoteRolloutRequest {
   from: string;
   /** Environment it goes to, at the rollout's first stage. */
   to: string;
+}
+
+/** Request body of PUT /endpoint-rollout/convert: a mirror becomes a canary. */
+export interface ConvertRolloutRequest {
+  namespaceName: string;
+  projectName: string;
+  endpointName: string;
+  /** A header testers send to reach the canary early, if any. */
+  testerHeader?: { name: string; value: string };
 }
 
 /** Request body of PUT /endpoint-rollout/finish. */

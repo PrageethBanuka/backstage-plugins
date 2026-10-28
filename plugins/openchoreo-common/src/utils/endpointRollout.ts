@@ -2,7 +2,6 @@ import type {
   EndpointBackendWeight,
   EndpointHeaderMatch,
   EndpointRollout,
-  EndpointRule,
   EndpointWeightOverride,
   RolloutPlan,
   RolloutPosition,
@@ -12,10 +11,11 @@ import {
   buildABTest,
   buildBlueGreen,
   buildCanary,
+  buildMirror,
   detectEndpointStrategy,
   MOBILE_USER_AGENT,
   type StrategyChange,
-} from './endpointRules';
+} from './endpointStrategies';
 
 /** The Endpoint annotation that records the rollout the portal started. */
 export const ROLLOUT_ANNOTATION = 'openchoreo.dev/rollout';
@@ -39,7 +39,7 @@ export interface RolloutStage {
 export function stableSplit(
   rollout: EndpointRollout,
 ): EndpointWeightOverride[] {
-  const kept = (rollout.baseline ?? []).filter(b => b.weight > 0);
+  const kept = (rollout.baseline ?? []).filter(b => (b.weight ?? 0) > 0);
   return kept.length > 0 ? kept : [{ name: rollout.stable, weight: 100 }];
 }
 
@@ -83,9 +83,9 @@ function shareOut(
   weights: EndpointWeightOverride[],
   total: number,
 ): EndpointWeightOverride[] {
-  const sum = weights.reduce((acc, w) => acc + w.weight, 0);
+  const sum = weights.reduce((acc, w) => acc + (w.weight ?? 0), 0);
   if (sum <= 0) return weights.map(w => ({ ...w, weight: 0 }));
-  const exact = weights.map(w => (w.weight / sum) * total);
+  const exact = weights.map(w => ((w.weight ?? 0) / sum) * total);
   const out = exact.map(Math.floor);
   let left = total - out.reduce((acc, w) => acc + w, 0);
   exact
@@ -114,9 +114,27 @@ export function abAudience(
 /** The default canary steps. */
 export const DEFAULT_CANARY_STEPS = [5, 25, 50, 100];
 
+/** The copy shares a mirror rollout steps through. */
+export const MIRROR_STEPS = [5, 10, 25, 50, 100];
+
 /** The stages of a rollout, in order; the first is always 0%. */
 export function rolloutStages(rollout: EndpointRollout): RolloutStage[] {
   switch (rollout.strategy) {
+    case 'mirror':
+      return [
+        {
+          id: 'mirror-0',
+          percent: 0,
+          label: 'Not copying',
+          action: 'Stop copying',
+        },
+        ...rollout.steps.map(p => ({
+          id: `mirror-${p}`,
+          percent: p,
+          label: `Copying ${p}%`,
+          action: `Copy ${p}%`,
+        })),
+      ];
     case 'blueGreen':
       return [
         {
@@ -170,18 +188,21 @@ export function rolloutStages(rollout: EndpointRollout): RolloutStage[] {
 }
 
 /**
- * Finds an environment's stage from the weights it serves (backend name to
- * effective weight). Weights that match no stage are "set by hand".
+ * Finds an environment's stage from what it serves: the effective weight of
+ * each backend by name, and for a mirror rollout the candidate's effective
+ * copy share. Values that match no stage are "set by hand".
  */
 export function rolloutPosition(
   rollout: EndpointRollout,
   weights: Record<string, number>,
+  mirrorPercent?: number,
 ): RolloutPosition {
-  // The candidate's share of the traffic it and the replaced version get;
+  // The candidate's share of the traffic it and the replaced backend get;
   // untouched backends are outside the rollout.
   const candidate = weights[rollout.candidate] ?? 0;
   const total = candidate + (weights[rollout.stable] ?? 0);
-  const percent = total > 0 ? Math.round((candidate / total) * 100) : 0;
+  let percent = total > 0 ? Math.round((candidate / total) * 100) : 0;
+  if (rollout.strategy === 'mirror') percent = mirrorPercent ?? 0;
   const index = rolloutStages(rollout).findIndex(s => s.percent === percent);
   return { index, percent, manual: index < 0 };
 }
@@ -213,18 +234,24 @@ export function rolloutWeights(
   backendNames: string[],
   percent: number,
 ): EndpointWeightOverride[] {
+  if (rollout.strategy === 'mirror') {
+    return [{ name: rollout.candidate, mirror: { percent } }];
+  }
   const untouched = untouchedSplit(rollout).filter(b =>
     backendNames.includes(b.name),
   );
   const replaced =
     stableSplit(rollout).find(b => b.name === rollout.stable)?.weight ?? 0;
-  const untouchedTotal = untouched.reduce((sum, b) => sum + b.weight, 0);
+  const untouchedTotal = untouched.reduce((sum, b) => sum + (b.weight ?? 0), 0);
   let slice = 100;
   let others = new Map<string, number>();
   if (untouched.length > 0 && replaced > 0) {
     slice = Math.round((SHARED_TOTAL * replaced) / (replaced + untouchedTotal));
     others = new Map(
-      shareOut(untouched, SHARED_TOTAL - slice).map(b => [b.name, b.weight]),
+      shareOut(untouched, SHARED_TOTAL - slice).map(b => [
+        b.name,
+        b.weight ?? 0,
+      ]),
     );
   }
   const candidate = Math.round((slice * percent) / 100);
@@ -260,7 +287,7 @@ export function parseRollout(
   try {
     const r = JSON.parse(raw);
     if (
-      ['canary', 'blueGreen', 'abTest'].includes(r?.strategy) &&
+      ['canary', 'blueGreen', 'abTest', 'mirror'].includes(r?.strategy) &&
       typeof r.stable === 'string' &&
       typeof r.candidate === 'string' &&
       Array.isArray(r.steps)
@@ -285,12 +312,11 @@ export function serializeRollout(rollout: EndpointRollout): string {
 
 /**
  * The rollout an Endpoint is running: the recorded one, or one detected from
- * its backends and rules for Endpoints changed outside the portal.
+ * its backends for Endpoints changed outside the portal.
  */
 export function currentRollout(
   annotations: Record<string, string> | undefined,
   backends: EndpointBackendWeight[],
-  rules: EndpointRule[],
 ): { rollout?: EndpointRollout; source: 'annotation' | 'detected' | 'none' } {
   const recorded = parseRollout(annotations);
   const names = new Set(backends.map(b => b.name ?? b.componentName));
@@ -301,8 +327,19 @@ export function currentRollout(
       source: 'annotation',
     };
   }
-  const detected = detectEndpointStrategy(backends, rules);
+  const detected = detectEndpointStrategy(backends);
   switch (detected.kind) {
+    case 'mirror':
+      return {
+        rollout: {
+          strategy: 'mirror',
+          stable: detected.stable,
+          candidate: detected.shadow,
+          baseline: baselineOf(backends, detected.shadow),
+          steps: MIRROR_STEPS,
+        },
+        source: 'detected',
+      };
     case 'canary':
       return {
         rollout: {
@@ -311,17 +348,6 @@ export function currentRollout(
           candidate: detected.canary,
           baseline: baselineOf(backends, detected.canary),
           steps: DEFAULT_CANARY_STEPS,
-        },
-        source: 'detected',
-      };
-    case 'blueGreen':
-      return {
-        rollout: {
-          strategy: 'blueGreen',
-          stable: detected.blue,
-          candidate: detected.green,
-          baseline: baselineOf(backends, detected.green),
-          steps: [100],
         },
         source: 'detected',
       };
@@ -342,12 +368,11 @@ export function currentRollout(
 }
 
 /**
- * The backends, rules and annotation that start a rollout, written in one
- * update: the candidate joins at 0% with the rule its preview needs.
+ * The backends and note that start a rollout, written in one update: the
+ * candidate joins at 0% with the match its preview needs, or its mirror.
  */
 export function planRollout(
   backends: EndpointBackendWeight[],
-  rules: EndpointRule[],
   plan: RolloutPlan,
   startedBy?: string,
 ): StrategyChange & { rollout: EndpointRollout } {
@@ -355,15 +380,25 @@ export function planRollout(
   let change: StrategyChange;
   switch (plan.strategy) {
     case 'blueGreen':
-      change = buildBlueGreen(backends, rules, plan.candidate, {
-        name: preview?.name || 'x-preview',
-        value: preview?.value || 'green',
-      });
+      change = buildBlueGreen(
+        backends,
+        plan.candidate,
+        preview?.kind === 'path' && preview.value
+          ? { path: preview.value }
+          : {
+              header: {
+                name: preview?.name || 'x-preview',
+                value: preview?.value || 'green',
+              },
+            },
+      );
+      break;
+    case 'mirror':
+      change = buildMirror(backends, plan.candidate, plan.mirrorPercent ?? 100);
       break;
     case 'abTest':
       change = buildABTest(
         backends,
-        rules,
         plan.candidate,
         { name: preview?.name || 'exp_group', value: preview?.value || 'b' },
         abAudience(preview),
@@ -372,7 +407,6 @@ export function planRollout(
     default:
       change = buildCanary(
         backends,
-        rules,
         plan.candidate,
         preview?.kind === 'header' && preview.name && preview.value
           ? { name: preview.name, value: preview.value }
@@ -385,16 +419,20 @@ export function planRollout(
         b.componentName === plan.candidate.componentName &&
         b.endpoint === plan.candidate.endpoint,
     ) ?? change.backends[change.backends.length - 1];
-  const steps =
-    plan.strategy === 'canary'
-      ? [
-          ...new Set(
-            (plan.steps?.length ? plan.steps : DEFAULT_CANARY_STEPS).filter(
-              p => p > 0 && p <= 100,
-            ),
-          ),
-        ].sort((a, b) => a - b)
-      : [100];
+  let steps = [100];
+  if (plan.strategy === 'canary') {
+    steps = [
+      ...new Set(
+        (plan.steps?.length ? plan.steps : DEFAULT_CANARY_STEPS).filter(
+          p => p > 0 && p <= 100,
+        ),
+      ),
+    ].sort((a, b) => a - b);
+  } else if (plan.strategy === 'mirror') {
+    steps = [...new Set([...MIRROR_STEPS, plan.mirrorPercent ?? 100])]
+      .filter(p => p > 0 && p <= 100)
+      .sort((a, b) => a - b);
+  }
   if (steps[steps.length - 1] !== 100) steps.push(100);
   const candidateName = candidate.name ?? candidate.componentName;
   // The rollout replaces one version, the picked one or else the one with
@@ -402,8 +440,8 @@ export function planRollout(
   // the whole split for abandoning).
   const baseline = baselineOf(backends, candidateName);
   const stable =
-    baseline.find(b => b.name === plan.replaces && b.weight > 0)?.name ??
-    [...baseline].sort((a, b) => b.weight - a.weight)[0]?.name ??
+    baseline.find(b => b.name === plan.replaces && (b.weight ?? 0) > 0)?.name ??
+    [...baseline].sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))[0]?.name ??
     candidateName;
   return {
     ...change,
@@ -431,4 +469,31 @@ export function completionBlockers<
   return environments.filter(
     e => e.bindingName && (positions[e.name]?.percent ?? 0) !== 100,
   );
+}
+
+/**
+ * Turns a mirror rollout into a canary on the same backend: the mirror goes,
+ * the testers header (if any) becomes its match, and the note restarts at
+ * the canary's first stage.
+ */
+export function convertToCanary(
+  backends: EndpointBackendWeight[],
+  rollout: EndpointRollout,
+  testerHeader?: { name: string; value: string },
+): StrategyChange & { rollout: EndpointRollout } {
+  const candidate = backends.find(
+    b => (b.name ?? b.componentName) === rollout.candidate,
+  );
+  const change = candidate
+    ? buildCanary(backends, candidate, testerHeader)
+    : { backends };
+  return {
+    ...change,
+    rollout: {
+      ...rollout,
+      strategy: 'canary',
+      steps: DEFAULT_CANARY_STEPS,
+      preview: testerHeader && { kind: 'header', ...testerHeader },
+    },
+  };
 }
