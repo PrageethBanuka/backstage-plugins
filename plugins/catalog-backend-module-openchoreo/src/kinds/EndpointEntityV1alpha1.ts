@@ -40,8 +40,6 @@ export interface EndpointEntityV1alpha1 extends Entity {
     visibility: string[];
     /** Whether each new release is bound to the pipeline's first environment. */
     autoDeploy: boolean;
-    /** Names of the Endpoint's routing rules, in evaluation order. */
-    rules: string[];
     /** Component endpoints receiving traffic, in spec order. */
     backends: EndpointBackend[];
     [key: string]: JsonValue | undefined;

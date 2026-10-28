@@ -957,8 +957,6 @@ export function translateEndpointToEntity(
     visibility?: string[];
     /** Whether each new release is bound to the pipeline's first environment. */
     autoDeploy?: boolean;
-    /** Names of the Endpoint's routing rules, in order. */
-    rules?: string[];
     backends: Array<{
       component: string;
       endpoint: string;
@@ -1005,7 +1003,6 @@ export function translateEndpointToEntity(
       system: endpoint.projectName,
       visibility: endpoint.visibility ?? [],
       autoDeploy: endpoint.autoDeploy ?? false,
-      rules: endpoint.rules ?? [],
       backends: endpoint.backends,
     },
   };
@@ -2239,7 +2236,6 @@ export function translateNewEndpointToEntity(
       typeKind,
       visibility: spec?.visibility,
       autoDeploy: spec?.autoDeploy,
-      rules: (spec?.rules ?? []).map(r => r.name),
       backends: (spec?.backendRefs ?? []).map(ref => ({
         component: ref.component?.name ?? ref.name,
         endpoint: ref.component?.endpoint ?? '',

@@ -1018,13 +1018,7 @@ describe('translateNewEndpointToEntity', () => {
               name: 'payments-v2',
               component: { name: 'payments-v2', endpoint: 'http' },
               weight: 10,
-            },
-          ],
-          rules: [
-            {
-              name: 'testers',
-              matches: [{ headers: [{ name: 'x-canary', value: 'true' }] }],
-              backends: [{ name: 'payments-v2' }],
+              match: { headers: [{ name: 'x-canary', value: 'true' }] },
             },
           ],
         } as any,
@@ -1047,7 +1041,6 @@ describe('translateNewEndpointToEntity', () => {
     expect(entity.spec).toMatchObject({
       visibility: ['external'],
       autoDeploy: true,
-      rules: ['testers'],
     });
     expect(entity.spec?.backends).toEqual([
       { component: 'payments-v1', endpoint: 'http', weight: 90 },
