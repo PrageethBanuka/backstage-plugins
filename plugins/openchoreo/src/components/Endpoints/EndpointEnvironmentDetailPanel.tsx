@@ -4,7 +4,6 @@ import {
   AccordionSummary,
   Box,
   Button,
-  Chip,
   IconButton,
   Tooltip,
   Typography,
@@ -15,11 +14,9 @@ import CloudIcon from '@material-ui/icons/Cloud';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import FileCopyOutlinedIcon from '@material-ui/icons/FileCopyOutlined';
 import HistoryIcon from '@material-ui/icons/History';
-import OpenInNewIcon from '@material-ui/icons/OpenInNew';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import ReportProblemOutlinedIcon from '@material-ui/icons/ReportProblemOutlined';
 import TuneIcon from '@material-ui/icons/Tune';
-import UndoIcon from '@material-ui/icons/Undo';
 import { StatusBadge } from '@openchoreo/backstage-design-system';
 import {
   formatRelativeTime,
@@ -27,26 +24,16 @@ import {
 } from '@openchoreo/backstage-plugin-react';
 import SettingsOutlinedIcon from '@material-ui/icons/SettingsOutlined';
 import DescriptionOutlinedIcon from '@material-ui/icons/DescriptionOutlined';
-import {
-  rolloutStages,
-  stableLabel,
-  type EndpointEnvironment,
-} from '@openchoreo/backstage-plugin-common';
+import type { EndpointEnvironment } from '@openchoreo/backstage-plugin-common';
 import { useResourceEnvironmentDetailPanelStyles } from '../ResourceEnvironments/styles';
 import {
   releaseBackends,
   useEndpointEnvironmentsContext,
 } from './EndpointEnvironmentsContext';
 import { deriveEndpointBadgeStatus, ENDPOINT_BADGE_LABEL } from './badgeStatus';
-import { describeReach, missingBackends, statusMessage } from './endpointUi';
-import {
-  completionEnvironment,
-  inRollout,
-  previewCommand,
-  rolloutAction,
-  servedSplit,
-  stageText,
-} from './endpointRolloutUi';
+import { missingBackends, statusMessage } from './endpointUi';
+import { inRollout, rolloutPromotion, servedSplit } from './endpointRolloutUi';
+import { RolloutLine } from './RolloutLine';
 import { TrafficSplitBar } from './TrafficSplitBar';
 
 interface EndpointEnvironmentDetailPanelProps {
@@ -55,18 +42,17 @@ interface EndpointEnvironmentDetailPanelProps {
 }
 
 /**
- * Right pane for a selected environment, built on the Resource detail panel
- * (ResourceEnvironmentDetailPanel) and its styles. With no rollout running it
- * shows the version of the routing the environment runs and the Resource
- * actions; while one runs it shows the environment's traffic, how to preview
- * the new backend, and the rollout steps.
+ * Right pane for a selected environment, laid out like the Component and
+ * Project panels: the release the environment runs, its traffic, and
+ * Actions with Promote and Configure overrides. A running rollout takes
+ * one line under the traffic bar; its steps open in the Manage rollout
+ * dialog.
  */
 export const EndpointEnvironmentDetailPanel = ({
   env,
   onClose,
 }: EndpointEnvironmentDetailPanelProps) => {
   const classes = useResourceEnvironmentDetailPanelStyles();
-  const { mode } = useEndpointEnvironmentsContext();
 
   if (!env) {
     return (
@@ -74,17 +60,8 @@ export const EndpointEnvironmentDetailPanel = ({
         <Box className={classes.emptyState}>
           <AllInboxOutlinedIcon className={classes.emptyIcon} />
           <Typography variant="body2">
-            {mode === 'deploy' ? (
-              <>
-                Select an environment to view details, or click{' '}
-                <strong>Set up</strong> to change the Endpoint.
-              </>
-            ) : (
-              <>
-                Select an environment to view its traffic, or click{' '}
-                <strong>Set up</strong> to see the rollout.
-              </>
-            )}
+            Select an environment to view details, or click{' '}
+            <strong>Set up</strong> to change the Endpoint.
           </Typography>
         </Box>
       </Box>
@@ -102,7 +79,7 @@ function DetailContent({
   onClose: () => void;
 }) {
   const classes = useResourceEnvironmentDetailPanelStyles();
-  const { mode, refetch } = useEndpointEnvironmentsContext();
+  const { refetch } = useEndpointEnvironmentsContext();
 
   return (
     <Box className={classes.panel}>
@@ -145,11 +122,7 @@ function DetailContent({
 
       <Box className={classes.body}>
         <ReleaseSection env={env} />
-        {mode === 'deploy' ? (
-          <DeploySections env={env} />
-        ) : (
-          <RolloutSections env={env} />
-        )}
+        <EnvironmentSections env={env} />
       </Box>
     </Box>
   );
@@ -211,91 +184,72 @@ function ReleaseSection({ env }: { env: EndpointEnvironment }) {
 }
 
 /**
- * The environment's own settings, as Configure overrides on the Component
- * and Resource panels: the EndpointType's environment configs, and the
- * weights of its backends.
+ * Promote, as on the Component and Project panels: this environment's
+ * release goes to the next one. While a rollout runs here and not there,
+ * it brings the rollout with the new version at 0%.
  */
-function ConfigurationSection({
-  env,
-  disabled,
-}: {
-  env: EndpointEnvironment;
-  disabled: boolean;
-}) {
-  const classes = useResourceEnvironmentDetailPanelStyles();
-  const { endpoint, onConfigureEnvironment, onConfigureOverrides } =
+function usePromote(env: EndpointEnvironment) {
+  const { endpoint, environments, pendingAction, onRollOut, onRolloutAction } =
     useEndpointEnvironmentsContext();
-  if (!env.bindingName) return null;
-  const set = Object.keys(env.environmentConfigs ?? {}).length;
-  return (
-    <Box className={classes.section}>
-      <Typography className={classes.sectionHeading}>Configuration</Typography>
-      <Box className={classes.actionsRow}>
-        <Button
-          variant="outlined"
-          size="small"
-          color="primary"
-          startIcon={<SettingsOutlinedIcon fontSize="small" />}
-          disabled={disabled}
-          onClick={() => onConfigureEnvironment(env.name)}
-        >
-          Configure overrides
-        </Button>
-        {endpoint.backends.length > 1 && (
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<TuneIcon fontSize="small" />}
-            disabled={disabled}
-            onClick={() => onConfigureOverrides(env.name)}
-          >
-            Set traffic by hand
-          </Button>
-        )}
-      </Box>
-      {set > 0 && (
-        <Typography variant="caption" color="textSecondary">
-          {set} override{set === 1 ? '' : 's'} set for {env.displayName}:{' '}
-          {Object.entries(env.environmentConfigs ?? {})
-            .map(
-              ([k, v]) =>
-                `${k} ${typeof v === 'string' ? v : JSON.stringify(v)}`,
-            )
-            .join(', ')}
-        </Typography>
-      )}
-    </Box>
-  );
+  const promotion = rolloutPromotion(env, endpoint, environments);
+  const target =
+    promotion?.to ??
+    environments.find(e => e.name === env.promotionTargets?.[0]?.name);
+  if (!target || !env.endpointRelease || env.status !== 'Routing') {
+    return undefined;
+  }
+  const busy = pendingAction !== null;
+  if (promotion) {
+    return {
+      target,
+      done: false,
+      busy,
+      withRollout: true,
+      run: () => onRolloutAction(target.name, promotion.action),
+    };
+  }
+  const rollout = endpoint.rollout;
+  return {
+    target,
+    done:
+      target.endpointRelease === env.endpointRelease ||
+      Boolean(rollout && inRollout(env, rollout) && inRollout(target, rollout)),
+    busy,
+    withRollout: false,
+    run: () => void onRollOut(target.name, env.endpointRelease!),
+  };
 }
 
-/** Traffic, configuration, actions and the danger zone. */
-function DeploySections({ env }: { env: EndpointEnvironment }) {
+/** Traffic, actions, version history and the danger zone. */
+function EnvironmentSections({ env }: { env: EndpointEnvironment }) {
   const classes = useResourceEnvironmentDetailPanelStyles();
   const {
     endpoint,
-    environments,
     releases,
     pendingAction,
     onRollOut,
     onStopRoutingRequest,
     onViewReleases,
-    onOpenRollout,
+    onConfigureEnvironment,
+    onConfigureOverrides,
   } = useEndpointEnvironmentsContext();
   const hasBinding = Boolean(env.bindingName);
   const rolloutPerm = useEndpointRolloutPermission(env.name, hasBinding);
+  const promote = usePromote(env);
 
   const latest = env.latestRelease ?? endpoint.latestRelease;
   const latestBackends = releaseBackends(releases, latest) ?? endpoint.backends;
   const missing = missingBackends(env, latestBackends);
   const isLatest = Boolean(latest) && env.endpointRelease === latest;
   const busy = pendingAction?.env === env.name;
+  const denied = !rolloutPerm.loading && !rolloutPerm.canRollOut;
   const message = statusMessage(env);
   const split = servedSplit(env, endpoint);
   const rollout = endpoint.rollout;
-  const running = Boolean(rollout && inRollout(env, rollout));
+  const configs = Object.entries(env.environmentConfigs ?? {});
 
   let deployTooltip = '';
-  if (!rolloutPerm.loading && !rolloutPerm.canRollOut) {
+  if (denied) {
     deployTooltip = rolloutPerm.rollOutDeniedTooltip;
   } else if (missing.length > 0) {
     deployTooltip = `${missing.join(', ')} ${
@@ -308,14 +262,6 @@ function DeploySections({ env }: { env: EndpointEnvironment }) {
     !busy &&
     !rolloutPerm.loading &&
     deployTooltip === '';
-
-  const target = env.promotionTargets?.[0];
-  const targetEnv = environments.find(e => e.name === target?.name);
-  const canPromote =
-    Boolean(target) &&
-    Boolean(env.endpointRelease) &&
-    env.status === 'Routing' &&
-    targetEnv?.endpointRelease !== env.endpointRelease;
 
   return (
     <>
@@ -330,70 +276,125 @@ function DeploySections({ env }: { env: EndpointEnvironment }) {
         </Box>
       )}
 
-      {hasBinding && (running || split.length > 1) && (
+      {hasBinding && (rollout || split.length > 1) && (
         <Box className={classes.section}>
-          <Box className={classes.sectionTitleRow}>
-            <Typography className={classes.sectionHeading}>Traffic</Typography>
-            <Button
-              size="small"
-              color="primary"
-              endIcon={<OpenInNewIcon fontSize="small" />}
-              onClick={onOpenRollout}
-            >
-              Open rollout
-            </Button>
-          </Box>
+          <Typography className={classes.sectionHeading}>Traffic</Typography>
           <TrafficSplitBar backends={split} showLegend height={12} />
-          {!running && (
-            <Typography variant="caption" color="textSecondary">
-              Serves several versions without a rollout. Start a rollout, or
-              reconfigure the Endpoint to one version and deploy it here.
-            </Typography>
-          )}
+          <RolloutLine env={env} />
+        </Box>
+      )}
+
+      {!hasBinding && rollout && (
+        <Box className={classes.section}>
+          <RolloutLine env={env} />
         </Box>
       )}
 
       <UnresolvedBackends env={env} />
 
-      <ConfigurationSection
-        env={env}
-        disabled={busy || (!rolloutPerm.loading && !rolloutPerm.canRollOut)}
-      />
-
       <Box className={classes.section}>
-        <Typography className={classes.sectionHeading}>Actions</Typography>
-        <Box className={classes.actionsRow}>
-          {latest && !isLatest && (
-            <Tooltip
-              title={deployTooltip}
-              disableHoverListener={!deployTooltip}
-            >
-              <span>
+        <Box className={classes.sectionTitleRow}>
+          <Typography className={classes.sectionHeading}>Actions</Typography>
+          <Box className={classes.actionsRow}>
+            {promote &&
+              (promote.done ? (
+                <Button size="small" variant="contained" disabled>
+                  Promoted
+                </Button>
+              ) : (
                 <Button
+                  size="small"
                   variant="contained"
                   color="primary"
-                  size="small"
-                  disabled={!canDeploy}
-                  onClick={() => void onRollOut(env.name, latest)}
+                  disabled={promote.busy}
+                  onClick={promote.run}
                 >
-                  {busy && pendingAction?.kind === 'rollout'
-                    ? 'Deploying...'
-                    : 'Deploy latest version'}
+                  Promote
                 </Button>
-              </span>
-            </Tooltip>
-          )}
-          {canPromote && target && env.endpointRelease && (
-            <Button
-              variant="contained"
-              color="primary"
-              size="small"
-              disabled={pendingAction !== null}
-              onClick={() => void onRollOut(target.name, env.endpointRelease!)}
-            >
-              Promote to {targetEnv?.displayName ?? target.name}
-            </Button>
-          )}
+              ))}
+            {hasBinding && (
+              <Tooltip
+                title={denied ? rolloutPerm.rollOutDeniedTooltip : ''}
+                disableHoverListener={!denied}
+              >
+                <span>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="primary"
+                    startIcon={<SettingsOutlinedIcon fontSize="small" />}
+                    disabled={busy || denied}
+                    onClick={() => onConfigureEnvironment(env.name)}
+                    style={{ textTransform: 'none' }}
+                  >
+                    Configure overrides
+                  </Button>
+                </span>
+              </Tooltip>
+            )}
+          </Box>
+        </Box>
+        {((latest && !isLatest) ||
+          (hasBinding && endpoint.backends.length > 1)) && (
+          <Box className={classes.actionsRow}>
+            {latest && !isLatest && (
+              <Tooltip
+                title={deployTooltip}
+                disableHoverListener={!deployTooltip}
+              >
+                <span>
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    size="small"
+                    disabled={!canDeploy}
+                    onClick={() => void onRollOut(env.name, latest)}
+                  >
+                    {busy && pendingAction?.kind === 'rollout'
+                      ? 'Deploying...'
+                      : 'Deploy latest version'}
+                  </Button>
+                </span>
+              </Tooltip>
+            )}
+            {hasBinding && endpoint.backends.length > 1 && (
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<TuneIcon fontSize="small" />}
+                disabled={busy || denied}
+                onClick={() => onConfigureOverrides(env.name)}
+              >
+                Set traffic by hand
+              </Button>
+            )}
+          </Box>
+        )}
+        {promote && !promote.done && (
+          <Typography variant="caption" color="textSecondary">
+            Promote sends {env.endpointRelease} to {promote.target.displayName}
+            {promote.withRollout && rollout
+              ? `, with ${rollout.candidate} at 0%`
+              : ''}
+            .
+          </Typography>
+        )}
+        {configs.length > 0 && (
+          <Typography variant="caption" color="textSecondary">
+            Overrides:{' '}
+            {configs
+              .map(
+                ([k, v]) =>
+                  `${k} ${typeof v === 'string' ? v : JSON.stringify(v)}`,
+              )
+              .join(', ')}
+          </Typography>
+        )}
+      </Box>
+
+      <Box className={classes.section}>
+        <Typography className={classes.sectionHeading}>More</Typography>
+        <Box className={classes.actionsRow}>
           <Button
             variant="outlined"
             size="small"
@@ -457,217 +458,6 @@ function DeploySections({ env }: { env: EndpointEnvironment }) {
           </Accordion>
         </Box>
       )}
-    </>
-  );
-}
-
-/** Traffic and steps, the preview command, and the rollout actions. */
-function RolloutSections({ env }: { env: EndpointEnvironment }) {
-  const classes = useResourceEnvironmentDetailPanelStyles();
-  const {
-    endpoint,
-    environments,
-    pendingAction,
-    onRolloutAction,
-    onRollBack,
-    onViewReleases,
-    onCopy,
-  } = useEndpointEnvironmentsContext();
-  const perm = useEndpointRolloutPermission(env.name, Boolean(env.bindingName));
-  const rollout = endpoint.rollout;
-  const split = servedSplit(env, endpoint);
-  const running = Boolean(rollout && inRollout(env, rollout));
-  const action = rolloutAction(env, endpoint, environments);
-  const completeFrom = completionEnvironment(environments);
-  const busy = pendingAction !== null;
-  const denied = !perm.loading && !perm.canRollOut;
-  const preview =
-    rollout && running ? previewCommand(rollout, env.invokeURL) : undefined;
-  const candidate = rollout
-    ? endpoint.backends.find(
-        b => (b.name ?? b.componentName) === rollout.candidate,
-      )
-    : undefined;
-  const candidateReach = candidate
-    ? describeReach({
-        ...candidate,
-        ...(candidate.mirror && {
-          mirror:
-            env.backends.find(
-              b => (b.name ?? b.componentName) === rollout!.candidate,
-            )?.mirror ?? candidate.mirror,
-        }),
-      })
-    : '';
-
-  return (
-    <>
-      {env.bindingName ? (
-        <Box className={classes.section}>
-          <Typography className={classes.sectionHeading}>Traffic</Typography>
-          <TrafficSplitBar backends={split} showLegend height={12} />
-          {rollout && running && env.rollout && (
-            <Box display="flex" flexWrap="wrap" gridGap={4} mt={1}>
-              {rolloutStages(rollout)
-                .slice(1)
-                .map((s, i) => {
-                  const index = i + 1;
-                  const now =
-                    !env.rollout!.manual && env.rollout!.index === index;
-                  const done = env.rollout!.percent > s.percent;
-                  return (
-                    <Chip
-                      key={s.id}
-                      size="small"
-                      label={`${s.percent}%`}
-                      color={now || done ? 'primary' : 'default'}
-                      variant={now ? 'default' : 'outlined'}
-                    />
-                  );
-                })}
-            </Box>
-          )}
-          {rollout && (
-            <Typography variant="caption" color="textSecondary">
-              {stageText(env, rollout)}
-            </Typography>
-          )}
-          {running && candidateReach && (
-            <Typography variant="caption" className={classes.statusMessage}>
-              {rollout!.strategy === 'mirror'
-                ? `${rollout!.candidate} gets ${candidateReach}`
-                : `${candidateReach} → ${rollout!.candidate}`}
-            </Typography>
-          )}
-        </Box>
-      ) : (
-        <Box className={classes.section}>
-          <Typography variant="body2" color="textSecondary">
-            This Endpoint is not routed in {env.displayName} yet. Promote it
-            here from the environment before it.
-          </Typography>
-        </Box>
-      )}
-
-      {rollout &&
-        running &&
-        env.rollout?.percent === 100 &&
-        completeFrom &&
-        completeFrom.name !== env.name && (
-          <Box className={classes.section}>
-            <Typography variant="body2" color="textSecondary">
-              {env.displayName} sends all traffic to {rollout.candidate}.
-              Complete the rollout from {completeFrom.displayName} once every
-              environment is at 100%.
-            </Typography>
-          </Box>
-        )}
-
-      {rollout && env.bindingName && !running && (
-        <Box className={classes.section}>
-          <Typography variant="body2" color="textSecondary">
-            The rollout has not reached {env.displayName}.
-            {action?.kind === 'promote'
-              ? ' Promote it here; the new version starts at 0%, so no traffic moves.'
-              : ''}
-          </Typography>
-        </Box>
-      )}
-
-      {preview && (
-        <Box className={classes.section}>
-          <Box className={classes.sectionTitleRow}>
-            <Typography className={classes.sectionHeading}>Preview</Typography>
-            <Tooltip title="Copy command">
-              <IconButton
-                size="small"
-                aria-label="Copy preview command"
-                onClick={() => onCopy(preview, 'preview command')}
-              >
-                <FileCopyOutlinedIcon fontSize="inherit" />
-              </IconButton>
-            </Tooltip>
-          </Box>
-          <Typography variant="caption" className={classes.statusMessage}>
-            {preview}
-          </Typography>
-          <Typography variant="caption" color="textSecondary">
-            Anyone who sends this reaches {rollout?.candidate}.
-          </Typography>
-        </Box>
-      )}
-
-      <UnresolvedBackends env={env} />
-
-      <ConfigurationSection env={env} disabled={busy || denied} />
-
-      {rollout && (
-        <Box className={classes.section}>
-          <Typography className={classes.sectionHeading}>Actions</Typography>
-          <Box className={classes.actionsRow}>
-            {running && (
-              <Tooltip
-                title={denied ? perm.rollOutDeniedTooltip : ''}
-                disableHoverListener={!denied}
-              >
-                <span>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<UndoIcon fontSize="small" />}
-                    disabled={
-                      busy || denied || (env.rollout?.percent ?? 0) === 0
-                    }
-                    onClick={() => onRollBack(env.name)}
-                  >
-                    {rollout.strategy === 'mirror'
-                      ? 'Stop copying'
-                      : `Roll back to ${stableLabel(rollout)}`}
-                  </Button>
-                </span>
-              </Tooltip>
-            )}
-            {action && (
-              <Tooltip
-                title={denied ? perm.rollOutDeniedTooltip : ''}
-                disableHoverListener={!denied}
-              >
-                <span>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    size="small"
-                    disabled={busy || denied || perm.loading}
-                    onClick={() => onRolloutAction(env.name, action)}
-                  >
-                    {action.label}
-                  </Button>
-                </span>
-              </Tooltip>
-            )}
-          </Box>
-          {running && env.bindingName && (
-            <Typography variant="caption" color="textSecondary">
-              Steps here write EndpointReleaseBinding {env.bindingName}{' '}
-              spec.backendOverrides; no new release is cut.
-            </Typography>
-          )}
-        </Box>
-      )}
-
-      <Box className={classes.section}>
-        <Typography className={classes.sectionHeading}>More</Typography>
-        <Box className={classes.actionsRow}>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<HistoryIcon fontSize="small" />}
-            onClick={() => onViewReleases(env.name)}
-          >
-            Version history
-          </Button>
-        </Box>
-      </Box>
     </>
   );
 }

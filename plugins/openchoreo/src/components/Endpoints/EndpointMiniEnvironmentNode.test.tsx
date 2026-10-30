@@ -117,7 +117,7 @@ function renderTile(
     onConfigureEnvironment: jest.fn(),
     onRolloutAction: jest.fn(),
     onRollBack: jest.fn(),
-    onOpenRollout: jest.fn(),
+    onOpenRolloutDialog: jest.fn(),
     onCopy: jest.fn(),
     ...ctx,
   };
@@ -143,31 +143,37 @@ describe('EndpointMiniEnvironmentNode', () => {
     expect(ctx.onRollOut).toHaveBeenCalledWith('staging', 'rel-1');
   });
 
-  it('links to the Rollout tab from the Deploy tab while a rollout runs', () => {
+  it('opens Manage rollout from the stage chip while a rollout runs', () => {
     const ctx = renderTile(dev(25), { endpoint: endpoint(canary) });
-    fireEvent.click(screen.getByRole('button', { name: /open the rollout/i }));
-    expect(ctx.onOpenRollout).toHaveBeenCalled();
+    expect(screen.getByText('Canary 25%')).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: /manage the rollout/i }),
+    );
+    expect(ctx.onOpenRolloutDialog).toHaveBeenCalledWith('development');
     expect(screen.queryByText('Advance to 50%')).not.toBeInTheDocument();
   });
 
-  it('shows the stage and the next step on the Rollout tab', () => {
-    const env = dev(25);
-    const ctx = renderTile(env, {
+  it('keeps no rollout step on the tile on the Rollout tab', () => {
+    renderTile(dev(25), { mode: 'rollout', endpoint: endpoint(canary) });
+    expect(screen.getByText('Canary 25%')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Advance to 50%' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Keep only trips-go' }),
+    ).toBeNull();
+  });
+
+  it('promotes the rollout from the environment it comes from, at 0%', () => {
+    const ctx = renderTile(dev(25), {
       mode: 'rollout',
       endpoint: endpoint(canary),
     });
-    expect(screen.getByText('Canary 25%')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Advance to 50%' }));
-    expect(ctx.onRolloutAction).toHaveBeenCalledWith(
-      'development',
-      expect.objectContaining({ kind: 'stage', percent: 50 }),
+    fireEvent.click(
+      screen.getByRole('button', { name: /promote development/i }),
     );
-  });
-
-  it('offers Keep only once every environment is at 100%', () => {
-    renderTile(dev(100), { mode: 'rollout', endpoint: endpoint(canary) });
-    expect(
-      screen.getByRole('button', { name: 'Keep only trips-go' }),
-    ).toBeInTheDocument();
+    expect(ctx.onRolloutAction).toHaveBeenCalledWith(
+      'staging',
+      expect.objectContaining({ kind: 'promote', from: 'development' }),
+    );
+    expect(ctx.onRollOut).not.toHaveBeenCalled();
   });
 });

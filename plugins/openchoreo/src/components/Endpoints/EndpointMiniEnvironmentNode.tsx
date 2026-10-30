@@ -20,17 +20,12 @@ import HistoryIcon from '@material-ui/icons/History';
 import OpenInNewIcon from '@material-ui/icons/OpenInNew';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import RefreshIcon from '@material-ui/icons/Refresh';
-import UndoIcon from '@material-ui/icons/Undo';
 import TuneIcon from '@material-ui/icons/Tune';
 import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
 import clsx from 'clsx';
 import { StatusBadge } from '@openchoreo/backstage-design-system';
 import { useEndpointRolloutPermission } from '@openchoreo/backstage-plugin-react';
-import {
-  stableLabel,
-  untouchedSplit,
-  type EndpointEnvironment,
-} from '@openchoreo/backstage-plugin-common';
+import type { EndpointEnvironment } from '@openchoreo/backstage-plugin-common';
 import { useResourceMiniEnvironmentNodeStyles } from '../ResourceEnvironments/styles';
 import {
   releaseBackends,
@@ -40,7 +35,7 @@ import { deriveEndpointBadgeStatus, ENDPOINT_BADGE_LABEL } from './badgeStatus';
 import { missingBackends } from './endpointUi';
 import {
   inRollout,
-  rolloutAction,
+  rolloutPromotion,
   servedSplit,
   stageText,
 } from './endpointRolloutUi';
@@ -59,8 +54,8 @@ const ICON_STYLE = { marginRight: 8 };
  * tile (ResourceMiniEnvironmentNode) and its styles.
  *
  * With no rollout running it is the Resource tile: status, a "newer" badge
- * and Promote. While one runs it shows the split the environment serves, its
- * stage, and the next step in the slot where Promote sits.
+ * and Promote. While one runs it shows the split the environment serves and
+ * its stage, which opens the Manage rollout dialog; Promote stays in its slot.
  */
 export const EndpointMiniEnvironmentNode = ({
   env,
@@ -71,13 +66,11 @@ export const EndpointMiniEnvironmentNode = ({
   const {
     mode,
     endpoint,
-    pendingAction,
     refetch,
     onViewReleases,
     onViewArtifacts,
     onConfigureOverrides,
-    onRollBack,
-    onOpenRollout,
+    onOpenRolloutDialog,
   } = useEndpointEnvironmentsContext();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
@@ -125,15 +118,6 @@ export const EndpointMiniEnvironmentNode = ({
       </span>
     </Tooltip>
   );
-
-  let rollBackBlock = '';
-  if (rollout && (env.rollout?.percent ?? 0) === 0) {
-    rollBackBlock = `${stableLabel(rollout)} already gets all ${
-      untouchedSplit(rollout).length > 0 ? 'of its traffic' : 'traffic'
-    } here`;
-  } else if (pendingAction?.env === env.name) {
-    rollBackBlock = 'Wait for the current change to finish';
-  }
 
   return (
     <Box
@@ -230,9 +214,9 @@ export const EndpointMiniEnvironmentNode = ({
                 label={stageText(env, rollout)}
                 onClick={e => {
                   e.stopPropagation();
-                  onOpenRollout();
+                  onOpenRolloutDialog(env.name);
                 }}
-                aria-label={`Open the rollout, ${stageText(env, rollout)}`}
+                aria-label={`Manage the rollout, ${stageText(env, rollout)}`}
               />
             </Box>
           )}
@@ -252,15 +236,17 @@ export const EndpointMiniEnvironmentNode = ({
                 color={running ? 'primary' : 'default'}
                 variant={env.rollout?.manual ? 'outlined' : 'default'}
                 label={stageText(env, rollout)}
+                clickable
+                onClick={e => {
+                  e.stopPropagation();
+                  onOpenRolloutDialog(env.name);
+                }}
+                aria-label={`Manage the rollout, ${stageText(env, rollout)}`}
               />
             </Box>
           )}
 
-          {mode === 'deploy' ? (
-            <DeployPrimary env={env} />
-          ) : (
-            <RolloutPrimary env={env} />
-          )}
+          <PrimaryAction env={env} />
         </Box>
       </Box>
 
@@ -279,17 +265,7 @@ export const EndpointMiniEnvironmentNode = ({
           <RefreshIcon fontSize="small" style={ICON_STYLE} />,
           () => void refetch(),
         )}
-        {mode === 'rollout' &&
-          rollout &&
-          running &&
-          menuItem(
-            `Roll back to ${stableLabel(rollout)}`,
-            <UndoIcon fontSize="small" style={ICON_STYLE} />,
-            () => onRollBack(env.name),
-            rollBackBlock,
-          )}
-        {mode === 'rollout' &&
-          env.bindingName &&
+        {env.bindingName &&
           menuItem(
             'Set traffic by hand',
             <TuneIcon fontSize="small" style={ICON_STYLE} />,
@@ -416,73 +392,32 @@ function DeployPrimary({ env }: { env: EndpointEnvironment }) {
   );
 }
 
-/** The rollout's next step, in the slot where Promote sits. */
-function RolloutPrimary({ env }: { env: EndpointEnvironment }) {
+/**
+ * The tile's primary button: Promote, as on the Resource tile. While a
+ * rollout runs and the next environment hasn't got it, Promote brings it
+ * there with the new version at 0%. Rollout steps live in the Manage rollout
+ * dialog, which the stage chip opens.
+ */
+function PrimaryAction({ env }: { env: EndpointEnvironment }) {
   const classes = useResourceMiniEnvironmentNodeStyles();
   const { endpoint, environments, pendingAction, onRolloutAction } =
     useEndpointEnvironmentsContext();
-  const action = rolloutAction(env, endpoint, environments);
-  if (!action) return null;
-  const busy = pendingAction !== null;
-  const run = () => onRolloutAction(env.name, action);
-
+  const promotion = rolloutPromotion(env, endpoint, environments);
+  if (!promotion) return <DeployPrimary env={env} />;
+  const isPromoting =
+    pendingAction?.kind === 'rollout' &&
+    pendingAction.env === promotion.to.name;
   return (
     <Box className={classes.actionRow}>
-      {action.kind === 'promote' ? (
-        <PromoteButton
-          envName={action.from}
-          target={env.name}
-          label={action.label}
-          disabled={busy}
-          onClick={run}
-        />
-      ) : (
-        <StepButton
-          env={env}
-          label={action.label}
-          disabled={busy}
-          onClick={run}
-        />
-      )}
+      <PromoteButton
+        envName={env.displayName}
+        target={promotion.to.name}
+        releaseName={env.endpointRelease}
+        label={isPromoting ? 'Promoting...' : 'Promote'}
+        disabled={pendingAction !== null}
+        onClick={() => onRolloutAction(promotion.to.name, promotion.action)}
+      />
     </Box>
-  );
-}
-
-interface StepButtonProps {
-  env: EndpointEnvironment;
-  label: string;
-  disabled: boolean;
-  onClick: () => void;
-}
-
-/** A rollout step in an environment; needs the binding permission there. */
-function StepButton({ env, label, disabled, onClick }: StepButtonProps) {
-  const classes = useResourceMiniEnvironmentNodeStyles();
-  const perm = useEndpointRolloutPermission(env.name, Boolean(env.bindingName));
-  const tooltip =
-    !perm.loading && !perm.canRollOut ? perm.rollOutDeniedTooltip : '';
-  return (
-    <Tooltip
-      title={tooltip}
-      disableHoverListener={!tooltip}
-      PopperProps={{ disablePortal: true }}
-    >
-      <span>
-        <Button
-          size="small"
-          variant="contained"
-          color="primary"
-          className={classes.primaryButton}
-          disabled={disabled || perm.loading || Boolean(tooltip)}
-          onClick={e => {
-            e.stopPropagation();
-            onClick();
-          }}
-        >
-          {label}
-        </Button>
-      </span>
-    </Tooltip>
   );
 }
 

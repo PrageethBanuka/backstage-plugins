@@ -11,6 +11,7 @@ import {
   type RolloutPreview,
   type RolloutStrategy,
 } from '@openchoreo/backstage-plugin-common';
+import { describeMatch } from './endpointUi';
 
 /** How each strategy is named and explained on screen. */
 export const STRATEGY_COPY: Record<
@@ -146,11 +147,12 @@ export function readyToComplete(
 }
 
 /**
- * The one next step in an environment: bring the rollout here from the
- * nearest environment before it that has it, or move to the next stage.
- * Once every environment running the Endpoint sends all traffic to the new
- * version, the last one offers Complete. A blue/green switch or an A/B ship
- * only moves traffic; completing is always its own step, as for a canary.
+ * The one next step in an environment the rollout has reached: the next
+ * stage, or, once every environment running the Endpoint sends all traffic
+ * to the new version, Complete on the last one. A blue/green switch or an
+ * A/B ship only moves traffic; completing is always its own step, as for a
+ * canary. Bringing the rollout to another environment is Promote, on the
+ * environment it comes from (see rolloutPromotion).
  */
 export function rolloutAction(
   env: EndpointEnvironment,
@@ -158,25 +160,7 @@ export function rolloutAction(
   environments: EndpointEnvironment[],
 ): RolloutAction | undefined {
   const rollout = endpoint.rollout;
-  if (!rollout) return undefined;
-  if (!inRollout(env, rollout)) {
-    const source = environments
-      .slice(0, Math.max(0, environments.indexOf(env)))
-      .reverse()
-      .find(e => inRollout(e, rollout));
-    // An environment that does not run the Endpoint only gets the rollout
-    // from the environment right before it, as Promote does elsewhere.
-    const adjacent =
-      environments[environments.indexOf(env) - 1]?.name === source?.name;
-    if (source && (env.bindingName || adjacent)) {
-      return {
-        kind: 'promote',
-        label: `Promote from ${source.displayName}`,
-        from: source.name,
-      };
-    }
-    return undefined;
-  }
+  if (!rollout || !inRollout(env, rollout)) return undefined;
   if (
     rollout.strategy !== 'mirror' &&
     environments.every(e => doneForCompletion(e, rollout))
@@ -191,6 +175,63 @@ export function rolloutAction(
   );
   if (!next) return undefined;
   return { kind: 'stage', label: next.action, percent: next.percent };
+}
+
+/**
+ * Promote while a rollout runs, on the environment it comes from, as the
+ * Component and Project panels promote: when this environment runs the
+ * rollout and its next environment doesn't, Promote brings it there with
+ * the new version at 0%.
+ */
+export function rolloutPromotion(
+  env: EndpointEnvironment,
+  endpoint: EndpointSummary,
+  environments: EndpointEnvironment[],
+): { to: EndpointEnvironment; action: RolloutAction } | undefined {
+  const rollout = endpoint.rollout;
+  if (!rollout || !inRollout(env, rollout)) return undefined;
+  const to = environments.find(e => e.name === env.promotionTargets?.[0]?.name);
+  if (!to || inRollout(to, rollout)) return undefined;
+  return {
+    to,
+    action: {
+      kind: 'promote',
+      label: `Promote to ${to.displayName}`,
+      from: env.name,
+    },
+  };
+}
+
+/**
+ * How the new version is reached in an environment, in a few words: who
+ * gets it whatever the weights, or how much it is copied.
+ */
+export function rolloutReachText(
+  rollout: EndpointRollout,
+  endpoint: EndpointSummary,
+  env: EndpointEnvironment,
+): string {
+  const candidate = endpoint.backends.find(
+    b => nameOf(b) === rollout.candidate,
+  );
+  if (rollout.strategy === 'mirror') {
+    const share =
+      env.backends.find(b => nameOf(b) === rollout.candidate)?.mirror
+        ?.percent ?? candidate?.mirror?.percent;
+    return `copies ${share ?? 0}% of requests; ${
+      rollout.candidate
+    } answers nobody`;
+  }
+  if (!candidate?.match) return '';
+  const who = describeMatch(candidate.match);
+  switch (rollout.strategy) {
+    case 'blueGreen':
+      return `preview with ${who}`;
+    case 'abTest':
+      return `${who} gets ${rollout.candidate}`;
+    default:
+      return `${who} always reaches ${rollout.candidate}`;
+  }
 }
 
 /** Who takes part in an A/B test besides the cookie group, on screen. */

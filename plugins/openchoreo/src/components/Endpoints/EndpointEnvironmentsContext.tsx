@@ -41,8 +41,8 @@ export interface EndpointEnvironmentsContextValue {
   onRolloutAction: (environment: string, action: RolloutAction) => void;
   /** Send all of an environment's traffic back to the stable version. */
   onRollBack: (environment: string) => void;
-  /** Show the rollout summary (the Set up pane). */
-  onOpenRollout: () => void;
+  /** Open the Manage rollout dialog for an environment. */
+  onOpenRolloutDialog: (environment: string) => void;
   onCopy: (text: string, label: string) => void;
 }
 

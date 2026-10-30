@@ -12,6 +12,8 @@ import {
   inRollout,
   previewCommand,
   rolloutAction,
+  rolloutPromotion,
+  rolloutReachText,
   servedSplit,
   restoredSummary,
   stableKeeps,
@@ -101,12 +103,12 @@ describe('rolloutAction', () => {
     });
   });
 
-  it('offers to promote into the next environment the rollout has not reached', () => {
+  it('has no step in an environment the rollout has not reached', () => {
     const dev = env('development', 25);
     const staging = env('staging', undefined);
     expect(
       rolloutAction(staging, summary(canary), [dev, staging]),
-    ).toMatchObject({ kind: 'promote', from: 'development' });
+    ).toBeUndefined();
   });
 
   it('offers Complete on the last environment only, once every environment is at 100%', () => {
@@ -140,9 +142,6 @@ describe('rolloutAction', () => {
     const dev = env('development', 100);
     const staging = env('staging', undefined);
     expect(rolloutAction(dev, summary(canary), [dev, staging])).toBeUndefined();
-    expect(
-      rolloutAction(staging, summary(canary), [dev, staging]),
-    ).toMatchObject({ kind: 'promote', from: 'development' });
   });
 
   it('offers Complete when the only environments left do not run the Endpoint', () => {
@@ -152,30 +151,6 @@ describe('rolloutAction', () => {
       kind: 'complete',
       label: 'Keep only trips-go',
     });
-  });
-
-  it('promotes a bound environment from the nearest one that has the rollout', () => {
-    const dev = env('development', 25);
-    const staging = env('staging', undefined, { bindingName: undefined });
-    const prod = env('production', undefined);
-    const all = [dev, staging, prod];
-    expect(rolloutAction(prod, summary(canary), all)).toMatchObject({
-      kind: 'promote',
-      from: 'development',
-    });
-    expect(rolloutAction(staging, summary(canary), all)).toMatchObject({
-      kind: 'promote',
-      from: 'development',
-    });
-  });
-
-  it('does not offer to promote into an unrouted environment past a gap', () => {
-    const dev = env('development', 25);
-    const staging = env('staging', undefined);
-    const prod = env('production', undefined, { bindingName: undefined });
-    expect(
-      rolloutAction(prod, summary(canary), [dev, staging, prod]),
-    ).toBeUndefined();
   });
 
   it('does not let the last switch complete while a bound environment lacks the rollout', () => {
@@ -194,6 +169,112 @@ describe('rolloutAction', () => {
   it('has no step without a rollout', () => {
     const dev = env('development', undefined);
     expect(rolloutAction(dev, summary(), [dev])).toBeUndefined();
+  });
+});
+
+describe('rolloutPromotion', () => {
+  it('promotes from where the rollout runs to the next environment', () => {
+    const dev = env('development', 25, {
+      promotionTargets: [{ name: 'staging' }],
+    });
+    const staging = env('staging', undefined);
+    expect(rolloutPromotion(dev, summary(canary), [dev, staging])).toEqual({
+      to: staging,
+      action: {
+        kind: 'promote',
+        label: 'Promote to staging',
+        from: 'development',
+      },
+    });
+  });
+
+  it('offers nothing once the next environment has the rollout, or without one', () => {
+    const dev = env('development', 25, {
+      promotionTargets: [{ name: 'staging' }],
+    });
+    const staging = env('staging', 0);
+    expect(
+      rolloutPromotion(dev, summary(canary), [dev, staging]),
+    ).toBeUndefined();
+    expect(
+      rolloutPromotion(staging, summary(canary), [dev, staging]),
+    ).toBeUndefined();
+    expect(rolloutPromotion(dev, summary(), [dev, staging])).toBeUndefined();
+  });
+});
+
+describe('rolloutReachText', () => {
+  const withCandidate = (
+    rollout: EndpointRollout,
+    extra: Partial<EndpointBackendWeight>,
+  ): EndpointSummary => ({
+    ...summary(rollout),
+    backends: [
+      { componentName: 'trips-python', endpoint: 'http', weight: 100 },
+      { componentName: 'trips-go', endpoint: 'http', weight: 0, ...extra },
+    ],
+  });
+  const header = { headers: [{ name: 'x-canary', value: 'true' }] };
+
+  it('says who reaches the new version for each strategy', () => {
+    const dev = env('development', 25);
+    expect(
+      rolloutReachText(canary, withCandidate(canary, { match: header }), dev),
+    ).toBe('x-canary: true always reaches trips-go');
+    const bg: EndpointRollout = {
+      ...canary,
+      strategy: 'blueGreen',
+      steps: [100],
+    };
+    expect(
+      rolloutReachText(
+        bg,
+        withCandidate(bg, {
+          match: { path: { value: '/next', type: 'PathPrefix' } },
+        }),
+        dev,
+      ),
+    ).toBe('preview with path /next/…');
+    const ab: EndpointRollout = { ...canary, strategy: 'abTest', steps: [100] };
+    expect(
+      rolloutReachText(
+        ab,
+        withCandidate(ab, {
+          match: { cookies: [{ name: 'exp', value: 'b' }] },
+        }),
+        dev,
+      ),
+    ).toBe('cookie exp=b gets trips-go');
+    expect(rolloutReachText(canary, summary(canary), dev)).toBe('');
+  });
+
+  it("reads a mirror's share in the environment", () => {
+    const mirror: EndpointRollout = { ...canary, strategy: 'mirror' };
+    const dev = {
+      ...env('development', undefined),
+      backends: [
+        {
+          componentName: 'trips-python',
+          endpoint: 'http',
+          weight: 100,
+          resolved: true,
+        },
+        {
+          componentName: 'trips-go',
+          endpoint: 'http',
+          weight: 0,
+          resolved: true,
+          mirror: { percent: 25 },
+        },
+      ],
+    };
+    expect(
+      rolloutReachText(
+        mirror,
+        withCandidate(mirror, { mirror: { percent: 10 } }),
+        dev,
+      ),
+    ).toBe('copies 25% of requests; trips-go answers nobody');
   });
 });
 

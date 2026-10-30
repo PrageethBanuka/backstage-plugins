@@ -32,6 +32,7 @@ import {
 } from './EndpointEnvironmentsContext';
 import { EndpointReleasesDialog } from './EndpointReleasesDialog';
 import { EndpointRolloutPane } from './EndpointRolloutPane';
+import { RolloutDialog } from './RolloutDialog';
 import { EndpointSetupCard } from './EndpointSetupCard';
 import { EndpointSetupPane } from './EndpointSetupPane';
 import { EnvironmentWeightsDialog } from './EnvironmentWeightsDialog';
@@ -43,6 +44,7 @@ import {
 import { backendKey } from './endpointUi';
 import {
   STRATEGY_COPY,
+  inRollout,
   restoredSummary,
   stableKeeps,
   untouchedSummary,
@@ -103,6 +105,7 @@ export const EndpointEnvironmentsList = () => {
   const [selectedSetup, setSelectedSetup] = useState(false);
   const [releasesEnv, setReleasesEnv] = useState<string | null>(null);
   const [overridesEnv, setOverridesEnv] = useState<string | null>(null);
+  const [rolloutEnv, setRolloutEnv] = useState<string | null>(null);
   const [stopTarget, setStopTarget] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<TrafficConfirmation | null>(
     null,
@@ -528,7 +531,7 @@ export const EndpointEnvironmentsList = () => {
               navigate(`overrides/${encodeURIComponent(environment)}`),
             onRolloutAction: handleRolloutAction,
             onRollBack: handleRollBack,
-            onOpenRollout: handleSelectSetup,
+            onOpenRolloutDialog: setRolloutEnv,
             onCopy: (text: string, label: string) => void copy(text, label),
           }
         : null,
@@ -544,7 +547,6 @@ export const EndpointEnvironmentsList = () => {
       handleRollBack,
       copy,
       navigate,
-      handleSelectSetup,
     ],
   );
 
@@ -583,6 +585,7 @@ export const EndpointEnvironmentsList = () => {
   const selectedEnv = envs.find(e => e.name === selectedEnvName) ?? null;
   const releasesEnvironment = envs.find(e => e.name === releasesEnv) ?? null;
   const overridesEnvironment = envs.find(e => e.name === overridesEnv) ?? null;
+  const rolloutEnvironment = envs.find(e => e.name === rolloutEnv) ?? null;
   let changeBlocked = '';
   if (!trafficPerm.loading && !trafficPerm.canChangeTraffic) {
     changeBlocked =
@@ -605,10 +608,14 @@ export const EndpointEnvironmentsList = () => {
 
   const setupPane = rollout ? (
     <EndpointRolloutPane
-      changeBlocked={changeBlocked}
-      onKeep={() => finish('complete')}
-      onConvert={convert}
-      onRemove={() => finish('abandon')}
+      onManage={() =>
+        setRolloutEnv(
+          (
+            envs.find(e => inRollout(e, rollout)) ??
+            envs.find(e => e.bindingName)
+          )?.name ?? null,
+        )
+      }
       onClose={handleClearSelection}
     />
   ) : (
@@ -685,6 +692,15 @@ export const EndpointEnvironmentsList = () => {
         </Box>
       </Box>
 
+      <RolloutDialog
+        env={rolloutEnvironment}
+        changeBlocked={changeBlocked}
+        onClose={() => setRolloutEnv(null)}
+        onSetStage={setStage}
+        onKeep={() => finish('complete')}
+        onConvert={convert}
+        onRemove={() => finish('abandon')}
+      />
       <ConfirmTrafficDialog
         confirmation={confirmation}
         onClose={() => setConfirmation(null)}
