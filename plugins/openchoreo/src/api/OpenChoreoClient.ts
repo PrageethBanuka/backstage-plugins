@@ -14,6 +14,11 @@ import {
   type ComponentEndpointInput,
   type ComponentEndpointSummary,
   type EndpointTypeKind,
+  type EndpointRolloutInfo,
+  type EndpointWeightOverride,
+  type RolloutActionResult,
+  type RolloutPlan,
+  type RolloutSettings,
 } from '@openchoreo/backstage-plugin-common';
 import { CLUSTER_SCOPED_RESOURCE_KINDS } from './OpenChoreoClientApi';
 import type {
@@ -120,6 +125,8 @@ const API_ENDPOINTS = {
   COMPONENT_ENDPOINTS: '/component-endpoints',
   RELEASE_LINE_ENDPOINT_DRAFTS: '/release-line-endpoint-drafts',
   ENDPOINT_BACKENDS: '/endpoint-backends',
+  ENDPOINT_ROLLOUT: '/endpoint-rollout',
+  UPDATE_ENDPOINT_OVERRIDES: '/update-endpoint-overrides',
   COMPONENT_TRAITS: '/component-traits',
   RELEASE_LINE: '/release-line',
   COMPONENT_CONFIG: '/component-config',
@@ -695,6 +702,93 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
             }
           : {}),
       },
+    });
+  }
+
+  async fetchEndpointRollout(entity: Entity): Promise<EndpointRolloutInfo> {
+    const { namespaceName, endpointName } =
+      extractEndpointEntityMetadata(entity);
+    return this.apiFetch<EndpointRolloutInfo>(API_ENDPOINTS.ENDPOINT_ROLLOUT, {
+      params: { namespaceName, endpointName },
+    });
+  }
+
+  async updateEndpointOverrides(
+    entity: Entity,
+    environment: string,
+    overrides: EndpointWeightOverride[],
+  ): Promise<{ bindingName: string; applied: boolean }> {
+    const { namespaceName, endpointName } =
+      extractEndpointEntityMetadata(entity);
+    return this.apiFetch(API_ENDPOINTS.UPDATE_ENDPOINT_OVERRIDES, {
+      method: 'PUT',
+      body: { namespaceName, endpointName, environment, overrides },
+    });
+  }
+
+  async startRollout(
+    entity: Entity,
+    plan: RolloutPlan,
+  ): Promise<RolloutActionResult> {
+    return this.apiFetch(`${API_ENDPOINTS.ENDPOINT_ROLLOUT}/start`, {
+      method: 'PUT',
+      body: { ...extractEndpointEntityMetadata(entity), plan },
+    });
+  }
+
+  async setRolloutStage(
+    entity: Entity,
+    environment: string,
+    percent: number,
+  ): Promise<{ bindingName: string; applied: boolean }> {
+    return this.apiFetch(`${API_ENDPOINTS.ENDPOINT_ROLLOUT}/stage`, {
+      method: 'PUT',
+      body: { ...extractEndpointEntityMetadata(entity), environment, percent },
+    });
+  }
+
+  async deployEndpointRelease(
+    entity: Entity,
+    environment: string,
+    releaseName: string,
+  ): Promise<RolloutActionResult> {
+    return this.apiFetch(`${API_ENDPOINTS.ENDPOINT_ROLLOUT}/deploy`, {
+      method: 'PUT',
+      body: {
+        ...extractEndpointEntityMetadata(entity),
+        environment,
+        releaseName,
+      },
+    });
+  }
+
+  async convertRollout(
+    entity: Entity,
+    testerHeader?: { name: string; value: string },
+  ): Promise<RolloutActionResult> {
+    return this.apiFetch(`${API_ENDPOINTS.ENDPOINT_ROLLOUT}/convert`, {
+      method: 'PUT',
+      body: { ...extractEndpointEntityMetadata(entity), testerHeader },
+    });
+  }
+
+  async updateRolloutSettings(
+    entity: Entity,
+    settings: RolloutSettings,
+  ): Promise<RolloutActionResult> {
+    return this.apiFetch(`${API_ENDPOINTS.ENDPOINT_ROLLOUT}/settings`, {
+      method: 'PUT',
+      body: { ...extractEndpointEntityMetadata(entity), settings },
+    });
+  }
+
+  async finishRollout(
+    entity: Entity,
+    outcome: 'complete' | 'abandon',
+  ): Promise<RolloutActionResult> {
+    return this.apiFetch(`${API_ENDPOINTS.ENDPOINT_ROLLOUT}/finish`, {
+      method: 'PUT',
+      body: { ...extractEndpointEntityMetadata(entity), outcome },
     });
   }
 

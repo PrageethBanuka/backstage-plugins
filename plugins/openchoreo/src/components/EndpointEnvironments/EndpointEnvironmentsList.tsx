@@ -36,6 +36,8 @@ import {
   envResourceName,
   type EndpointReleaseDriftInfo,
 } from './endpointEnvironmentUtils';
+import { ProgressiveDeliveryProvider } from './progressive/ProgressiveDeliveryContext';
+import { useProgressiveDeliveryState } from './progressive/useProgressiveDeliveryState';
 
 // An Endpoint tile has a Backends row the default tile height has no room
 // for, which pushed the Promote button onto the tile's border.
@@ -132,10 +134,19 @@ export const EndpointEnvironmentsList = () => {
     fetchEnvs,
   );
 
+  const progressive = useProgressiveDeliveryState({
+    entity,
+    client,
+    environments: envs,
+    notification,
+    refresh: fetchEnvs,
+  });
+
   const handlePromote = useCallback(
     async (environment: string, releaseName: string) => {
       setPendingAction({ env: environment, kind: 'promote' });
       try {
+        if (await progressive.promote(environment, releaseName)) return;
         await client.updateEndpointReleaseBinding(entity, environment, {
           endpointRelease: releaseName,
         });
@@ -151,7 +162,7 @@ export const EndpointEnvironmentsList = () => {
         if (!cancelledRef.current) setPendingAction(null);
       }
     },
-    [client, entity, notification, fetchEnvs],
+    [client, entity, notification, fetchEnvs, progressive],
   );
 
   const handleUndeployRequest = useCallback(
@@ -268,60 +279,63 @@ export const EndpointEnvironmentsList = () => {
 
   return (
     <EndpointEnvironmentsProvider value={contextValue}>
-      <NotificationBanner notification={notification.notification} />
-      <Box className={canvasClasses.splitContainer}>
-        <PipelineDeployCanvas
-          environments={envs}
-          selectedEnvName={selectedEnvName}
-          selectedSetup={selectedSetup}
-          onSelectEnv={setSelectedEnvName}
-          onSelectSetup={handleSelectSetup}
-          onClearSelection={handleClearSelection}
-          testId="endpoint-deploy-flow-canvas"
-          environmentNodeHeight={ENDPOINT_ENV_NODE_HEIGHT}
-          renderSetup={selected => <EndpointSetupCard selected={selected} />}
-          renderEnvironment={(env, selected, onSelect) => (
-            <EndpointMiniEnvironmentNode
-              env={env}
-              selected={selected}
-              onSelect={onSelect}
-            />
-          )}
-        />
-        <Box className={canvasClasses.detailPanelFrame}>
-          {selectedSetup ? (
-            // The view orders environments by the pipeline, so the first is
-            // where a new release enters.
-            <EndpointSetupDetailPane
-              firstEnvironment={envs[0]}
-              onClose={handleClearSelection}
-            />
-          ) : (
-            <EndpointEnvironmentDetailPanel
-              env={selectedEnv}
-              onClose={() => setSelectedEnvName(null)}
-            />
-          )}
+      <ProgressiveDeliveryProvider value={progressive.context}>
+        <NotificationBanner notification={notification.notification} />
+        <Box className={canvasClasses.splitContainer}>
+          <PipelineDeployCanvas
+            environments={envs}
+            selectedEnvName={selectedEnvName}
+            selectedSetup={selectedSetup}
+            onSelectEnv={setSelectedEnvName}
+            onSelectSetup={handleSelectSetup}
+            onClearSelection={handleClearSelection}
+            testId="endpoint-deploy-flow-canvas"
+            environmentNodeHeight={ENDPOINT_ENV_NODE_HEIGHT}
+            renderSetup={selected => <EndpointSetupCard selected={selected} />}
+            renderEnvironment={(env, selected, onSelect) => (
+              <EndpointMiniEnvironmentNode
+                env={env}
+                selected={selected}
+                onSelect={onSelect}
+              />
+            )}
+          />
+          <Box className={canvasClasses.detailPanelFrame}>
+            {selectedSetup ? (
+              // The view orders environments by the pipeline, so the first is
+              // where a new release enters.
+              <EndpointSetupDetailPane
+                firstEnvironment={envs[0]}
+                onClose={handleClearSelection}
+              />
+            ) : (
+              <EndpointEnvironmentDetailPanel
+                env={selectedEnv}
+                onClose={() => setSelectedEnvName(null)}
+              />
+            )}
+          </Box>
         </Box>
-      </Box>
-      <EndpointRemoveDeploymentDialog
-        open={undeployTarget !== null}
-        environmentName={undeployTarget?.name ?? ''}
-        isRemoving={
-          pendingAction?.kind === 'undeploy' &&
-          undeployTarget !== null &&
-          pendingAction.env === envResourceName(undeployTarget)
-        }
-        onCancel={() => setUndeployTarget(null)}
-        onConfirm={handleUndeployConfirm}
-      />
-      <ReleaseManifestDialog
-        open={manifestTarget !== null}
-        onClose={() => setManifestTarget(null)}
-        releaseName={manifestTarget?.endpointRelease}
-        environmentName={manifestTarget?.name ?? ''}
-        loadRelease={loadEndpointRelease}
-      />
+        <EndpointRemoveDeploymentDialog
+          open={undeployTarget !== null}
+          environmentName={undeployTarget?.name ?? ''}
+          isRemoving={
+            pendingAction?.kind === 'undeploy' &&
+            undeployTarget !== null &&
+            pendingAction.env === envResourceName(undeployTarget)
+          }
+          onCancel={() => setUndeployTarget(null)}
+          onConfirm={handleUndeployConfirm}
+        />
+        <ReleaseManifestDialog
+          open={manifestTarget !== null}
+          onClose={() => setManifestTarget(null)}
+          releaseName={manifestTarget?.endpointRelease}
+          environmentName={manifestTarget?.name ?? ''}
+          loadRelease={loadEndpointRelease}
+        />
+        {progressive.dialogs}
+      </ProgressiveDeliveryProvider>
     </EndpointEnvironmentsProvider>
   );
 };

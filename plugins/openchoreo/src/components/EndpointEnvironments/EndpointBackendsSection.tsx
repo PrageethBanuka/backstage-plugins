@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Box,
   Button,
+  Chip,
   IconButton,
   Tooltip,
   Typography,
@@ -9,17 +10,16 @@ import {
 import { Alert } from '@material-ui/lab';
 import AddIcon from '@material-ui/icons/Add';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
-import EditOutlinedIcon from '@material-ui/icons/EditOutlined';
 import { useAsyncEntity, useEntity } from '@backstage/plugin-catalog-react';
+import { useNavigate } from 'react-router-dom';
 import {
   EndpointBackendList,
   type EndpointBackend,
 } from '../EndpointOverview/EndpointBackendList';
-import { AddEndpointBackendDialog } from './AddEndpointBackendDialog';
-import {
-  EditBackendWeightDialog,
-  RemoveBackendDialog,
-} from './EndpointBackendDialogs';
+import { ProgressiveDeliveryEntry } from './progressive/ProgressiveDeliveryEntry';
+import { useProgressiveDelivery } from './progressive/ProgressiveDeliveryContext';
+import { servingEnvironments } from './progressive/endpointRolloutUi';
+import { RemoveBackendDialog } from './EndpointBackendDialogs';
 
 /** The most backends an Endpoint takes, as the Endpoint CRD allows. */
 const MAX_BACKENDS = 16;
@@ -43,8 +43,7 @@ export const EndpointBackendsSection = ({
 }) => {
   const { entity } = useEntity();
   const { refresh } = useAsyncEntity();
-  const [addOpen, setAddOpen] = useState(false);
-  const [editing, setEditing] = useState<EndpointBackend | null>(null);
+  const navigate = useNavigate();
   const [removing, setRemoving] = useState<EndpointBackend | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -60,7 +59,20 @@ export const EndpointBackendsSection = ({
     backends?: EndpointBackend[];
     managedByComponent?: string;
   };
-  const backends = spec.backends ?? [];
+  // The Endpoint's own backends when progressive delivery has read them:
+  // the catalog entity follows the Endpoint only after a refresh.
+  const pd = useProgressiveDelivery();
+  const live = pd?.endpoint.backends;
+  const rollout = pd?.endpoint.rollout;
+  const backends: EndpointBackend[] = live
+    ? live.map(b => ({
+        name: b.name ?? b.componentName,
+        kind: 'Component',
+        component: b.componentName,
+        endpoint: b.endpoint,
+        releaseLine: b.releaseLine,
+      }))
+    : spec.backends ?? [];
   const namespace = entity.metadata.namespace ?? 'default';
 
   const handleSaved = (message: string) => {
@@ -100,7 +112,7 @@ export const EndpointBackendsSection = ({
               size="small"
               color="primary"
               startIcon={<AddIcon />}
-              onClick={() => setAddOpen(true)}
+              onClick={() => navigate('add-backend')}
               disabled={backends.length >= MAX_BACKENDS}
             >
               Add backend
@@ -125,60 +137,66 @@ export const EndpointBackendsSection = ({
         <EndpointBackendList
           backends={backends}
           namespace={namespace}
-          renderActions={backend => (
-            <>
-              <Tooltip title={`Weight ${backend.weight ?? 1}. Edit`}>
-                <IconButton
-                  size="small"
-                  aria-label={`Edit weight of ${backend.name}`}
-                  onClick={() => setEditing(backend)}
-                >
-                  <EditOutlinedIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Tooltip
-                title={
-                  backends.length === 1
-                    ? 'An Endpoint needs at least one backend.'
-                    : 'Remove backend'
-                }
-              >
-                <span>
-                  <IconButton
+          showShares={false}
+          renderActions={backend => {
+            // During a rollout, removing either version finishes it.
+            const isNew = backend.name === rollout?.candidate;
+            const isCurrent = backend.name === rollout?.stable;
+            let removeBlocked =
+              backends.length === 1
+                ? 'An Endpoint needs at least one backend.'
+                : '';
+            const serving =
+              pd && (isNew || isCurrent)
+                ? servingEnvironments(pd.environments, backend.name)
+                : [];
+            if (isCurrent && rollout?.strategy === 'mirror') {
+              removeBlocked =
+                'The new version only gets copies. Convert it to a canary first.';
+            } else if (serving.length > 0) {
+              removeBlocked = `It still gets traffic in ${serving
+                .map(e => e.displayName)
+                .join(', ')}. Move it to 0% there first.`;
+            }
+            let removeTitle = removeBlocked || 'Remove backend';
+            if (!removeBlocked && isNew) removeTitle = 'Remove the new version';
+            if (!removeBlocked && isCurrent)
+              removeTitle = 'Keep only the new version';
+            const remove = () => {
+              if (isNew) pd?.onFinish?.('abandon');
+              else if (isCurrent) pd?.onFinish?.('complete');
+              else setRemoving(backend);
+            };
+            return (
+              <>
+                {(isNew || isCurrent) && (
+                  <Chip
                     size="small"
-                    aria-label={`Remove ${backend.name}`}
-                    onClick={() => setRemoving(backend)}
-                    disabled={backends.length === 1}
-                  >
-                    <DeleteOutlineIcon fontSize="small" />
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </>
-          )}
+                    variant="outlined"
+                    color={isNew ? 'primary' : 'default'}
+                    label={isNew ? 'New' : 'Current'}
+                  />
+                )}
+                <Tooltip title={removeTitle}>
+                  <span>
+                    <IconButton
+                      size="small"
+                      aria-label={`Remove ${backend.name}`}
+                      onClick={remove}
+                      disabled={Boolean(removeBlocked)}
+                    >
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </>
+            );
+          }}
         />
       )}
 
-      <AddEndpointBackendDialog
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onAdded={() =>
-          handleSaved(
-            spec.managedByComponent
-              ? 'Backend added. The Endpoint belongs to its project now.'
-              : 'Backend added.',
-          )
-        }
-        entity={entity}
-        backends={backends}
-        managedByComponent={spec.managedByComponent}
-      />
-      <EditBackendWeightDialog
-        backend={editing}
-        entity={entity}
-        onClose={() => setEditing(null)}
-        onSaved={handleSaved}
-      />
+      <ProgressiveDeliveryEntry />
+
       <RemoveBackendDialog
         backend={removing}
         entity={entity}

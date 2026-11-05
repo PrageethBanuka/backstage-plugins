@@ -62,10 +62,12 @@ export const EndpointBackendList = ({
   backends,
   namespace,
   renderActions,
+  showShares = true,
 }: {
   backends: EndpointBackend[];
   namespace: string;
   renderActions?: (backend: EndpointBackend) => ReactNode;
+  showShares?: boolean;
 }) => {
   const classes = useStyles();
   const shares = trafficShares(backends);
@@ -106,18 +108,22 @@ export const EndpointBackendList = ({
               )}
             </Typography>
             <Box className={classes.backendActions}>
-              <Typography variant="body2" color="textSecondary">
-                {formatShare(shares[i])}
-              </Typography>
+              {showShares && (
+                <Typography variant="body2" color="textSecondary">
+                  {formatShare(shares[i])}
+                </Typography>
+              )}
               {renderActions?.(backend)}
             </Box>
           </Box>
-          <LinearProgress
-            variant="determinate"
-            value={shares[i]}
-            className={classes.share}
-            aria-label={`${backend.name} traffic share`}
-          />
+          {showShares && (
+            <LinearProgress
+              variant="determinate"
+              value={shares[i]}
+              className={classes.share}
+              aria-label={`${backend.name} traffic share`}
+            />
+          )}
         </Box>
       ))}
     </>

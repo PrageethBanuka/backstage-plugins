@@ -38,6 +38,7 @@ import { URLRow } from '../Environments/components/InvokeUrlsDialog';
 import { buildUrl } from '../Environments/utils/invokeUrlUtils';
 import { useResourceEnvironmentDetailPanelStyles } from '../ResourceEnvironments/styles';
 import { useEndpointEnvironmentsContext } from './EndpointEnvironmentsContext';
+import { TrafficBlock } from './progressive/TrafficBlock';
 import {
   deriveEndpointEnvBadgeStatus,
   envResourceName,
@@ -277,6 +278,8 @@ function EndpointEnvironmentDetailContent({
             </Box>
 
             <InvokeUrlsSection urls={env.urls} />
+
+            <TrafficBlock env={env} />
 
             <BackendsSection backends={env.backends ?? []} />
 
