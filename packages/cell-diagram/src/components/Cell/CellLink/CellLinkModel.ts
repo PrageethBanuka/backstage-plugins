@@ -14,6 +14,7 @@ export class CellLinkModel extends SharedLinkModel {
   targetNode!: LinkOrigins;
   isExternalConsumerLink!: boolean;
   destinationNode!: ComponentModel;
+  label?: string;
 
   constructor(id: string) {
     super(id, 'cellLink');
@@ -25,6 +26,10 @@ export class CellLinkModel extends SharedLinkModel {
 
   setDestinationNode(destinationNode: ComponentModel) {
     this.destinationNode = destinationNode;
+  }
+
+  setLabel(label: string) {
+    this.label = label;
   }
 
   setSourceNode(nodeId: string) {

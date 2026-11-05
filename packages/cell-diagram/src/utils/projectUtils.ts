@@ -754,6 +754,7 @@ function generateCellLinks(
     if (targetComponent) {
       let isExposed = false;
       let tooltip = '';
+      const labels = new Set<string>();
       const observations: Observations[] = [];
       let observationOnly = false;
       for (const serviceId in component.services) {
@@ -763,6 +764,7 @@ function generateCellLinks(
           const service = component.services[serviceId];
           const internet = service.deploymentMetadata?.gateways.internet;
           isExposed = isExposed || !!internet?.isExposed;
+          if (internet?.label) labels.add(internet.label);
           // capture service exposed link observations
           if (internet?.observations && internet.observations.length > 0) {
             observations.push(
@@ -806,6 +808,9 @@ function generateCellLinks(
           if (tooltip) {
             link.setTooltip(tooltip);
           }
+          if (labels.size > 0) {
+            link.setLabel([...labels].join(', '));
+          }
         }
       }
     }
@@ -813,6 +818,7 @@ function generateCellLinks(
     if (targetComponent) {
       let isExposed = false;
       let tooltip = '';
+      const labels = new Set<string>();
       const observations: Observations[] = [];
       let observationOnly = false;
       for (const serviceId in component.services) {
@@ -822,6 +828,7 @@ function generateCellLinks(
           const service = component.services[serviceId];
           const intranet = service.deploymentMetadata?.gateways.intranet;
           isExposed = isExposed || !!intranet?.isExposed;
+          if (intranet?.label) labels.add(intranet.label);
           // capture service exposed link observations
           if (intranet?.observations && intranet.observations.length > 0) {
             observations.push(...intranet.observations);
@@ -857,6 +864,9 @@ function generateCellLinks(
           }
           if (tooltip) {
             link.setTooltip(tooltip);
+          }
+          if (labels.size > 0) {
+            link.setLabel([...labels].join(', '));
           }
         }
       }

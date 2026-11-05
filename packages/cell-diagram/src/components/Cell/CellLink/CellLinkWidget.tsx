@@ -4,7 +4,12 @@ import {
   PortModelAlignment,
 } from '@projectstorm/react-diagrams';
 import { CellLinkModel } from './CellLinkModel';
-import { CELL_LINK, LINK_WIDTH, WarningIcon } from '../../../resources';
+import {
+  CELL_LINK,
+  LABEL_FONT_SIZE,
+  LINK_WIDTH,
+  WarningIcon,
+} from '../../../resources';
 import { ObservationLabel } from '../../ObservationLabel/ObservationLabel';
 import { TooltipLabel } from '../../TooltipLabel/TooltipLabel';
 import { DiagramContext } from '../../DiagramContext/DiagramContext';
@@ -239,6 +244,15 @@ export function CellLinkWidget(props: WidgetProps) {
               : ''
           }
         />
+        {link.label && hasArchitectureLayer && !hideLink && !previewMode && (
+          <LinkLabel
+            x={midPoint.x}
+            y={midPoint.y}
+            text={link.label}
+            fill={colors.PRIMARY_CONTAINER}
+            color={colors.PRIMARY}
+          />
+        )}
         {hasDiffLayer && link.observationOnly && !previewMode && (
           <WarningIcon
             x={midPoint.x - 10}
@@ -258,12 +272,50 @@ export function CellLinkWidget(props: WidgetProps) {
             }
           >
             {link.tooltip && <TooltipLabel tooltip={link.tooltip} />}
-            {link.observations?.length > 0 && !link.tooltip && (
+            {link.observations?.length > 0 && (
               <ObservationLabel observations={link.observations} />
             )}
           </Box>
         </Popper>
       )}
     </>
+  );
+}
+
+const LINK_LABEL_FONT_SIZE = LABEL_FONT_SIZE * 0.7;
+
+/** A gateway link's label, drawn like a component's release-line badge. */
+function LinkLabel(props: {
+  x: number;
+  y: number;
+  text: string;
+  fill: string;
+  color: string;
+}) {
+  const { x, y, text, fill, color } = props;
+  const height = LINK_LABEL_FONT_SIZE * 1.6;
+  const width = text.length * LINK_LABEL_FONT_SIZE * 0.6 + 16;
+  return (
+    <g pointerEvents="none">
+      <rect
+        x={x - width / 2}
+        y={y - height / 2}
+        width={width}
+        height={height}
+        rx={height / 2}
+        fill={fill}
+        stroke={color}
+      />
+      <text
+        x={x}
+        y={y}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={LINK_LABEL_FONT_SIZE}
+        fill={color}
+      >
+        {text}
+      </text>
+    </g>
   );
 }

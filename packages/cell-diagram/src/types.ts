@@ -131,12 +131,15 @@ export interface DeploymentMetadata {
   gateways: {
     internet: {
       isExposed: boolean;
+      /** Short text shown on the gateway link, e.g. the Endpoint that routes here. */
+      label?: string;
       tooltip?: string;
       observations?: Observations[];
       observationOnly?: boolean;
     };
     intranet: {
       isExposed: boolean;
+      label?: string;
       tooltip?: string;
       observations?: Observations[];
       observationOnly?: boolean;
