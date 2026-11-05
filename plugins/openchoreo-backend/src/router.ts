@@ -31,6 +31,7 @@ import {
   EndpointInfoService,
   type EndpointReleaseSchemaSection,
 } from './services/EndpointService/EndpointInfoService';
+import { EndpointRolloutService } from './services/EndpointService/EndpointRolloutService';
 import {
   ProjectReleaseInfoService,
   type ProjectReleaseSchemaSection,
@@ -118,6 +119,14 @@ function requestReleaseLine(req: express.Request): string | undefined {
 const MAX_BACKEND_WEIGHT = 1_000_000;
 const BACKEND_WEIGHT_ERROR = `weight must be an integer from 0 to ${MAX_BACKEND_WEIGHT}`;
 
+const isPercent = (value: unknown): value is number =>
+  typeof value === 'number' &&
+  Number.isInteger(value) &&
+  value >= 0 &&
+  value <= 100;
+
+const PERCENT_ERROR = 'Give a whole percentage from 0 to 100';
+
 function isBackendWeight(weight: unknown): weight is number {
   return (
     typeof weight === 'number' &&
@@ -125,6 +134,11 @@ function isBackendWeight(weight: unknown): weight is number {
     weight >= 0 &&
     weight <= MAX_BACKEND_WEIGHT
   );
+}
+
+/** A rollout step or copy share: a whole percent from 1 to 100. */
+function isRolloutPercent(p: unknown): p is number {
+  return Number.isInteger(p) && (p as number) > 0 && (p as number) <= 100;
 }
 
 export async function createRouter({
@@ -142,6 +156,7 @@ export async function createRouter({
   clusterResourceTypeInfoService,
   resourceReleaseInfoService,
   endpointInfoService,
+  endpointRolloutService,
   projectReleaseInfoService,
   secretReferencesInfoService,
   secretsService,
@@ -175,6 +190,7 @@ export async function createRouter({
   clusterResourceTypeInfoService: ClusterResourceTypeInfoService;
   resourceReleaseInfoService: ResourceReleaseInfoService;
   endpointInfoService: EndpointInfoService;
+  endpointRolloutService: EndpointRolloutService;
   projectReleaseInfoService: ProjectReleaseInfoService;
   secretReferencesInfoService: SecretReferencesService;
   secretsService: SecretsService;
@@ -1762,6 +1778,11 @@ export async function createRouter({
     if (weight !== undefined && !isBackendWeight(weight)) {
       throw new InputError(BACKEND_WEIGHT_ERROR);
     }
+    await endpointRolloutService.dropUnusedOverrides(
+      namespaceName,
+      endpointName,
+      getUserTokenFromRequest(req),
+    );
     res.json(
       await endpointInfoService.addEndpointBackend(
         {
@@ -1805,12 +1826,262 @@ export async function createRouter({
         'namespaceName, endpointName and backendName are required in request body',
       );
     }
+    const removed = await endpointInfoService.removeEndpointBackend(
+      { namespaceName, endpointName, backendName },
+      getUserTokenFromRequest(req),
+    );
+    endpointRolloutService.dropUnusedOverridesLater(
+      namespaceName,
+      endpointName,
+      getUserTokenFromRequest(req),
+    );
+    res.json(removed);
+  });
+
+  router.get('/endpoint-rollout', async (req, res) => {
+    const { namespaceName, endpointName } = req.query;
+    if (!namespaceName || !endpointName) {
+      throw new InputError(
+        'namespaceName and endpointName are required query parameters',
+      );
+    }
     res.json(
-      await endpointInfoService.removeEndpointBackend(
-        { namespaceName, endpointName, backendName },
+      await endpointRolloutService.fetchEndpointRollout(
+        namespaceName as string,
+        endpointName as string,
         getUserTokenFromRequest(req),
       ),
     );
+  });
+
+  router.put('/update-endpoint-overrides', requireAuth, async (req, res) => {
+    const { endpointName, namespaceName, environment, overrides } = req.body;
+    if (
+      !endpointName ||
+      !namespaceName ||
+      !environment ||
+      !Array.isArray(overrides) ||
+      !overrides.every(
+        (o: any) =>
+          o &&
+          typeof o.name === 'string' &&
+          (typeof o.weight === 'number' ||
+            typeof o.mirror?.percent === 'number'),
+      )
+    ) {
+      throw new InputError(
+        'endpointName, namespaceName, environment and overrides (a name, and a numeric weight or mirror.percent) are required in request body',
+      );
+    }
+    res.json(
+      await endpointRolloutService.updateEndpointOverrides(
+        { endpointName, namespaceName, environment, overrides },
+        getUserTokenFromRequest(req),
+      ),
+    );
+  });
+
+  const requireFields = (body: any, fields: string[]) => {
+    const missing = fields.filter(f => !body?.[f]);
+    if (missing.length > 0) {
+      throw new InputError(`${missing.join(', ')} required in request body`);
+    }
+  };
+
+  router.put('/endpoint-rollout/start', requireAuth, async (req, res) => {
+    requireFields(req.body, ['endpointName', 'namespaceName', 'projectName']);
+    const { plan } = req.body;
+    if (
+      !plan ||
+      !['canary', 'blueGreen', 'abTest', 'mirror'].includes(plan.strategy) ||
+      typeof plan.candidate?.componentName !== 'string' ||
+      typeof plan.candidate?.endpoint !== 'string' ||
+      (plan.candidate.releaseLine !== undefined &&
+        typeof plan.candidate.releaseLine !== 'string')
+    ) {
+      throw new InputError(
+        'plan (strategy canary, blueGreen, abTest or mirror, and a candidate component and endpoint) is required',
+      );
+    }
+    if (
+      plan.candidate.name !== undefined &&
+      (typeof plan.candidate.name !== 'string' ||
+        !/^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/.test(plan.candidate.name))
+    ) {
+      throw new InputError(
+        'candidate.name must be a lowercase name of letters, digits and -, up to 63 characters',
+      );
+    }
+    if (
+      plan.mirrorPercent !== undefined &&
+      (!Number.isInteger(plan.mirrorPercent) ||
+        plan.mirrorPercent < 1 ||
+        plan.mirrorPercent > 100)
+    ) {
+      throw new InputError(
+        'mirrorPercent must be a whole number from 1 to 100',
+      );
+    }
+    res.json(
+      await endpointRolloutService.startRollout(
+        req.body,
+        getUserTokenFromRequest(req),
+      ),
+    );
+  });
+
+  router.put('/endpoint-rollout/backend', requireAuth, async (req, res) => {
+    requireFields(req.body, ['endpointName', 'namespaceName', 'projectName']);
+    const { backend, share } = req.body;
+    if (share !== undefined && !isPercent(share)) {
+      throw new InputError(PERCENT_ERROR);
+    }
+    if (
+      typeof backend?.componentName !== 'string' ||
+      typeof backend?.endpoint !== 'string' ||
+      (backend.releaseLine !== undefined &&
+        typeof backend.releaseLine !== 'string') ||
+      !isBackendWeight(backend.weight) ||
+      (backend.match !== undefined &&
+        (backend.match === null || typeof backend.match !== 'object')) ||
+      backend.mirror !== undefined
+    ) {
+      throw new InputError(
+        'backend (a component, an endpoint and a weight; a match is optional) is required',
+      );
+    }
+    if (
+      backend.name !== undefined &&
+      (typeof backend.name !== 'string' ||
+        !/^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/.test(backend.name))
+    ) {
+      throw new InputError(
+        'backend.name must be a lowercase name of letters, digits and -, up to 63 characters',
+      );
+    }
+    res.json(
+      await endpointRolloutService.addBackend(
+        req.body,
+        getUserTokenFromRequest(req),
+      ),
+    );
+  });
+
+  router.put('/endpoint-rollout/share', requireAuth, async (req, res) => {
+    requireFields(req.body, [
+      'endpointName',
+      'namespaceName',
+      'projectName',
+      'backendName',
+    ]);
+    if (!isPercent(req.body.percent)) {
+      throw new InputError(PERCENT_ERROR);
+    }
+    res.json(
+      await endpointRolloutService.setBackendShare(
+        req.body,
+        getUserTokenFromRequest(req),
+      ),
+    );
+  });
+
+  router.put('/endpoint-rollout/stage', requireAuth, async (req, res) => {
+    requireFields(req.body, ['endpointName', 'namespaceName', 'environment']);
+    if (typeof req.body.percent !== 'number') {
+      throw new InputError('percent is required in request body');
+    }
+    res.json(
+      await endpointRolloutService.setRolloutStage(
+        req.body,
+        getUserTokenFromRequest(req),
+      ),
+    );
+  });
+
+  router.put('/endpoint-rollout/deploy', requireAuth, async (req, res) => {
+    requireFields(req.body, [
+      'endpointName',
+      'namespaceName',
+      'projectName',
+      'environment',
+      'releaseName',
+    ]);
+    res.json(
+      await endpointRolloutService.deployRelease(
+        req.body,
+        getUserTokenFromRequest(req),
+      ),
+    );
+  });
+
+  router.put('/endpoint-rollout/convert', requireAuth, async (req, res) => {
+    requireFields(req.body, ['endpointName', 'namespaceName', 'projectName']);
+    const header = req.body.testerHeader;
+    if (
+      header !== undefined &&
+      (typeof header?.name !== 'string' || typeof header?.value !== 'string')
+    ) {
+      throw new InputError('testerHeader needs a name and a value');
+    }
+    const steps = req.body.steps;
+    if (
+      steps !== undefined &&
+      !(Array.isArray(steps) && steps.every(isRolloutPercent))
+    ) {
+      throw new InputError('steps must be whole percentages from 1 to 100');
+    }
+    res.json(
+      await endpointRolloutService.convertRollout(
+        req.body,
+        getUserTokenFromRequest(req),
+      ),
+    );
+  });
+
+  router.put('/endpoint-rollout/settings', requireAuth, async (req, res) => {
+    requireFields(req.body, ['endpointName', 'namespaceName', 'projectName']);
+    const { steps, preview, mirrorPercent } = req.body.settings ?? {};
+    if (
+      steps !== undefined &&
+      !(Array.isArray(steps) && steps.every(isRolloutPercent))
+    ) {
+      throw new InputError('steps must be whole percentages from 1 to 100');
+    }
+    if (mirrorPercent !== undefined && !isRolloutPercent(mirrorPercent)) {
+      throw new InputError(
+        'mirrorPercent must be a whole number from 1 to 100',
+      );
+    }
+    if (
+      preview !== undefined &&
+      (!['header', 'cookie', 'path'].includes(preview?.kind) ||
+        typeof preview?.value !== 'string')
+    ) {
+      throw new InputError('preview needs a kind and a value');
+    }
+    res.json(
+      await endpointRolloutService.updateRolloutSettings(
+        req.body,
+        getUserTokenFromRequest(req),
+      ),
+    );
+  });
+
+  router.put('/endpoint-rollout/finish', requireAuth, async (req, res) => {
+    requireFields(req.body, ['endpointName', 'namespaceName', 'projectName']);
+    if (!['complete', 'abandon'].includes(req.body.outcome)) {
+      throw new InputError('outcome must be complete or abandon');
+    }
+    const finished = await endpointRolloutService.finishRollout(
+      req.body,
+      getUserTokenFromRequest(req),
+    );
+    endpointRolloutService.dropUnusedOverridesLater(
+      req.body.namespaceName,
+      req.body.endpointName,
+      getUserTokenFromRequest(req),
+    );
+    res.json(finished);
   });
 
   router.delete('/component-endpoints', requireAuth, async (req, res) => {

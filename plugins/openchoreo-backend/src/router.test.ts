@@ -99,6 +99,22 @@ function createMockServices() {
       fetchEndpointTypeSchema: jest.fn(),
       fetchClusterEndpointTypeSchema: jest.fn(),
       fetchReleaseLineEndpointDrafts: jest.fn(),
+      addEndpointBackend: jest.fn(),
+      removeEndpointBackend: jest.fn(),
+    },
+    endpointRolloutService: {
+      fetchEndpointRollout: jest.fn(),
+      updateEndpointOverrides: jest.fn(),
+      startRollout: jest.fn(),
+      addBackend: jest.fn(),
+      setBackendShare: jest.fn(),
+      dropUnusedOverrides: jest.fn(),
+      dropUnusedOverridesLater: jest.fn(),
+      setRolloutStage: jest.fn(),
+      convertRollout: jest.fn(),
+      updateRolloutSettings: jest.fn(),
+      deployRelease: jest.fn(),
+      finishRollout: jest.fn(),
     },
     projectReleaseInfoService: {
       fetchProjectRelease: jest.fn(),
@@ -399,6 +415,274 @@ describe('createRouter', () => {
       expect(response.body).toMatchObject({
         error: expect.objectContaining({ message }),
       });
+    });
+  });
+
+  describe('PUT /endpoint-rollout/start', () => {
+    const start = async (plan: unknown) => {
+      const local = createMockServices();
+      (
+        local.endpointRolloutService.startRollout as jest.Mock
+      ).mockResolvedValue({ environments: [] });
+      const localApp = express();
+      localApp.use(express.json());
+      localApp.use(await createRouter(local as any));
+      localApp.use(mockErrorHandler());
+      const body = {
+        endpointName: 'trips-api',
+        namespaceName: 'default',
+        projectName: 'default',
+        plan,
+      };
+      const response = await request(localApp)
+        .put('/endpoint-rollout/start')
+        .send(body);
+      return { response, local, body };
+    };
+
+    it('starts a canary with a named candidate', async () => {
+      const { response, local, body } = await start({
+        strategy: 'canary',
+        candidate: {
+          componentName: 'trips-python',
+          endpoint: 'http',
+          name: 'trips-next',
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(local.endpointRolloutService.startRollout).toHaveBeenCalledWith(
+        body,
+        expect.anything(),
+      );
+    });
+
+    it('refuses a candidate name the Endpoint cannot take', async () => {
+      const { response, local } = await start({
+        strategy: 'canary',
+        candidate: {
+          componentName: 'trips-python',
+          endpoint: 'http',
+          name: 'Trips_Next',
+        },
+      });
+
+      expect(response.status).toBe(400);
+      expect(local.endpointRolloutService.startRollout).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('PUT /endpoint-rollout/backend', () => {
+    const add = async (backend: unknown) => {
+      const local = createMockServices();
+      (local.endpointRolloutService.addBackend as jest.Mock).mockResolvedValue({
+        environments: [],
+      });
+      const localApp = express();
+      localApp.use(express.json());
+      localApp.use(await createRouter(local as any));
+      localApp.use(mockErrorHandler());
+      const body = {
+        endpointName: 'trips-api',
+        namespaceName: 'default',
+        projectName: 'default',
+        backend,
+      };
+      const response = await request(localApp)
+        .put('/endpoint-rollout/backend')
+        .send(body);
+      return { response, local, body };
+    };
+
+    it('adds a backend by a match at weight 0', async () => {
+      const { response, local, body } = await add({
+        componentName: 'trips-go',
+        endpoint: 'http',
+        weight: 0,
+        match: { headers: [{ name: 'x-beta', value: 'true' }] },
+      });
+
+      expect(response.status).toBe(200);
+      expect(local.endpointRolloutService.addBackend).toHaveBeenCalledWith(
+        body,
+        expect.anything(),
+      );
+    });
+
+    it.each([
+      ['no weight', { componentName: 'trips-go', endpoint: 'http' }],
+      [
+        'a mirror',
+        { componentName: 'trips-go', endpoint: 'http', weight: 0, mirror: 100 },
+      ],
+      [
+        'a null match',
+        { componentName: 'trips-go', endpoint: 'http', weight: 1, match: null },
+      ],
+      [
+        'a bad name',
+        { componentName: 'trips-go', endpoint: 'http', weight: 1, name: 'Go' },
+      ],
+    ])('refuses a backend with %s', async (_, backend) => {
+      const { response, local } = await add(backend);
+
+      expect(response.status).toBe(400);
+      expect(local.endpointRolloutService.addBackend).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('PUT /endpoint-rollout/share', () => {
+    const setShare = async (percent: unknown) => {
+      const local = createMockServices();
+      (
+        local.endpointRolloutService.setBackendShare as jest.Mock
+      ).mockResolvedValue({ environments: [] });
+      const localApp = express();
+      localApp.use(express.json());
+      localApp.use(await createRouter(local as any));
+      localApp.use(mockErrorHandler());
+      const body = {
+        endpointName: 'trips',
+        namespaceName: 'default',
+        projectName: 'default',
+        backendName: 'trips-stale',
+        percent,
+      };
+      const response = await request(localApp)
+        .put('/endpoint-rollout/share')
+        .send(body);
+      return { response, local, body };
+    };
+
+    it('passes a whole percentage on', async () => {
+      const { response, local, body } = await setShare(30);
+
+      expect(response.status).toBe(200);
+      expect(local.endpointRolloutService.setBackendShare).toHaveBeenCalledWith(
+        body,
+        expect.anything(),
+      );
+    });
+
+    it.each([[-1], [101], [2.5], ['30']])(
+      'refuses %p as a share',
+      async percent => {
+        const { response, local } = await setShare(percent);
+
+        expect(response.status).toBe(400);
+        expect(
+          local.endpointRolloutService.setBackendShare,
+        ).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  describe('ignored overrides around backend changes', () => {
+    const appFor = async () => {
+      const local = createMockServices();
+      const localApp = express();
+      localApp.use(express.json());
+      localApp.use(await createRouter(local as any));
+      localApp.use(mockErrorHandler());
+      return { local, localApp };
+    };
+    const endpoint = { namespaceName: 'default', endpointName: 'trips' };
+
+    it('drops them before a backend is added', async () => {
+      const { local, localApp } = await appFor();
+      const order: string[] = [];
+      (
+        local.endpointRolloutService.dropUnusedOverrides as jest.Mock
+      ).mockImplementation(async () => order.push('drop'));
+      (
+        local.endpointInfoService.addEndpointBackend as jest.Mock
+      ).mockImplementation(async () => order.push('add'));
+
+      const response = await request(localApp)
+        .post('/endpoint-backends')
+        .send({
+          ...endpoint,
+          component: 'storefront',
+          workloadEndpoint: 'http',
+        });
+
+      expect(response.status).toBe(200);
+      expect(order).toEqual(['drop', 'add']);
+    });
+
+    it('drops them once a removed backend has left', async () => {
+      const { local, localApp } = await appFor();
+      (
+        local.endpointInfoService.removeEndpointBackend as jest.Mock
+      ).mockResolvedValue({ success: true });
+
+      const response = await request(localApp)
+        .delete('/endpoint-backends')
+        .send({ ...endpoint, backendName: 'storefront' });
+
+      expect(response.status).toBe(200);
+      expect(
+        local.endpointRolloutService.dropUnusedOverridesLater,
+      ).toHaveBeenCalledWith('default', 'trips', expect.anything());
+    });
+
+    it('drops them once a rollout is finished', async () => {
+      const { local, localApp } = await appFor();
+      (
+        local.endpointRolloutService.finishRollout as jest.Mock
+      ).mockResolvedValue({ environments: [] });
+
+      const response = await request(localApp)
+        .put('/endpoint-rollout/finish')
+        .send({ ...endpoint, projectName: 'default', outcome: 'complete' });
+
+      expect(response.status).toBe(200);
+      expect(
+        local.endpointRolloutService.dropUnusedOverridesLater,
+      ).toHaveBeenCalledWith('default', 'trips', expect.anything());
+    });
+  });
+
+  describe('PUT /endpoint-rollout/convert', () => {
+    const convert = async (steps: unknown) => {
+      const local = createMockServices();
+      (
+        local.endpointRolloutService.convertRollout as jest.Mock
+      ).mockResolvedValue({ environments: [] });
+      const localApp = express();
+      localApp.use(express.json());
+      localApp.use(await createRouter(local as any));
+      localApp.use(mockErrorHandler());
+      const body = {
+        endpointName: 'trips-api',
+        namespaceName: 'default',
+        projectName: 'default',
+        testerHeader: { name: 'x-canary', value: 'true' },
+        steps,
+      };
+      const response = await request(localApp)
+        .put('/endpoint-rollout/convert')
+        .send(body);
+      return { response, local, body };
+    };
+
+    it('passes the chosen steps on', async () => {
+      const { response, local, body } = await convert([10, 50, 100]);
+
+      expect(response.status).toBe(200);
+      expect(local.endpointRolloutService.convertRollout).toHaveBeenCalledWith(
+        body,
+        expect.anything(),
+      );
+    });
+
+    it('refuses a step that is not a whole percent', async () => {
+      const { response, local } = await convert([0, 100]);
+
+      expect(response.status).toBe(400);
+      expect(
+        local.endpointRolloutService.convertRollout,
+      ).not.toHaveBeenCalled();
     });
   });
 
