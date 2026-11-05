@@ -126,6 +126,94 @@ describe('openchoreo:endpoint:create', () => {
     );
   });
 
+  it('creates the Endpoint with a canary to the second backend at 0%', async () => {
+    const action = createEndpointAction(buildConfig(), immediateCatalog as any);
+    await action.handler(buildCtx({ strategy: 'canary' }) as any);
+
+    const body = mockPOST.mock.calls[0][1].body;
+    expect(body.spec.backendRefs).toEqual([
+      {
+        name: 'primary',
+        kind: 'Component',
+        component: { name: 'orders', endpoint: 'http' },
+        weight: 100,
+      },
+      {
+        name: 'canary',
+        kind: 'Component',
+        component: { name: 'orders-v2', endpoint: 'http' },
+        weight: 0,
+        match: {
+          headers: [{ name: 'x-canary', type: 'Exact', value: 'true' }],
+        },
+      },
+    ]);
+    expect(body.spec.rollout).toMatchObject({
+      strategy: 'canary',
+      stable: 'primary',
+      candidates: [{ name: 'canary' }],
+    });
+  });
+
+  it('uses the steps and header chosen on Create Endpoint', async () => {
+    const action = createEndpointAction(buildConfig(), immediateCatalog as any);
+    await action.handler(
+      buildCtx({
+        strategy: {
+          strategy: 'canary',
+          steps: [10, 100],
+          preview: { kind: 'header', name: 'x-test', value: 'yes' },
+        },
+      }) as any,
+    );
+
+    const body = mockPOST.mock.calls[0][1].body;
+    expect(body.spec.backendRefs[1].match).toEqual({
+      headers: [{ name: 'x-test', type: 'Exact', value: 'yes' }],
+    });
+    expect(body.spec.rollout.canary.steps).toEqual([
+      { backends: [{ name: 'canary', percent: 10 }] },
+      { backends: [{ name: 'canary', percent: 100 }] },
+    ]);
+  });
+
+  it('routes to a release line of the same component', async () => {
+    const action = createEndpointAction(buildConfig(), immediateCatalog as any);
+    await action.handler(
+      buildCtx({
+        strategy: 'canary',
+        backends: [
+          { name: 'orders-http', component: 'orders', endpoint: 'http' },
+          {
+            name: 'orders-v2-http',
+            component: 'orders',
+            releaseLine: 'v2',
+            endpoint: 'http',
+          },
+        ],
+      }) as any,
+    );
+
+    const refs = mockPOST.mock.calls[0][1].body.spec.backendRefs;
+    expect(refs.map((r: any) => [r.name, r.component, r.weight])).toEqual([
+      ['orders-http', { name: 'orders', endpoint: 'http' }, 100],
+      [
+        'orders-v2-http',
+        { name: 'orders', releaseLine: 'v2', endpoint: 'http' },
+        0,
+      ],
+    ]);
+  });
+
+  it('keeps the weights when the strategy is weight', async () => {
+    const action = createEndpointAction(buildConfig(), immediateCatalog as any);
+    await action.handler(buildCtx({ strategy: 'weight' }) as any);
+
+    const body = mockPOST.mock.calls[0][1].body;
+    expect(body.spec.backendRefs.map((r: any) => r.weight)).toEqual([90, 10]);
+    expect(body.spec.rollout).toBeUndefined();
+  });
+
   it('sends a schema only when it has content', async () => {
     const action = createEndpointAction(buildConfig(), immediateCatalog as any);
 

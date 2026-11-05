@@ -12,7 +12,6 @@ import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import type { FieldValidation } from '@rjsf/utils';
 import { FieldExtensionComponentProps } from '@backstage/plugin-scaffolder-react';
 import {
-  isRoutable,
   readProjectNamespace,
   useProjectWorkloadEndpoints,
 } from './useProjectWorkloadEndpoints';
@@ -21,6 +20,8 @@ import {
 export interface EndpointBackendValue {
   name: string;
   component: string;
+  /** The component's release line; absent for its main line. */
+  releaseLine?: string;
   endpoint: string;
   weight?: number;
 }
@@ -39,6 +40,11 @@ const useStyles = makeStyles(theme => ({
     flex: 1,
     maxWidth: 120,
   },
+  role: {
+    display: 'block',
+    color: theme.palette.text.secondary,
+    marginBottom: theme.spacing(0.5),
+  },
   hint: {
     color: theme.palette.text.secondary,
     marginBottom: theme.spacing(1),
@@ -47,16 +53,31 @@ const useStyles = makeStyles(theme => ({
 
 const BACKEND_NAME_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 
+/** A component, or one of its release lines, that backends can route to. */
+const targetKey = (b: { component: string; releaseLine?: string }) =>
+  `${b.component}@${b.releaseLine ?? ''}`;
+
+/** The workload endpoint a backend routes to. */
+const backendKey = (b: {
+  component: string;
+  releaseLine?: string;
+  endpoint: string;
+}) => `${targetKey(b)}/${b.endpoint}`;
+
 /**
- * Derives a backend's name from its component and workload endpoint, made
- * unique within the list. Backend names key the Endpoint's backendRefs.
+ * Derives a backend's name from its component, release line and workload
+ * endpoint, made unique within the list. Backend names key the Endpoint's
+ * backendRefs.
  */
 export function deriveBackendName(
   component: string,
   endpoint: string,
   taken: string[],
+  releaseLine?: string,
 ): string {
-  const base = `${component}-${endpoint}`
+  const base = [component, releaseLine, endpoint]
+    .filter(Boolean)
+    .join('-')
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, '-')
     .replace(/^-+|-+$/g, '')
@@ -92,10 +113,24 @@ export const EndpointBackendsField = ({
   const { options, loading, error } = useProjectWorkloadEndpoints(
     namespace,
     project,
+    { includeReleaseLines: true },
   );
-  const routable = options.filter(isRoutable);
-  const components = [...new Set(routable.map(o => o.component))];
+  // Any workload endpoint can be a backend: the Endpoint carries the
+  // visibility, so the workload endpoint needs none of its own.
+  const routable = options;
+  const targets = [...new Map(routable.map(o => [targetKey(o), o])).values()];
   const backends = formData ?? [];
+  const takenElsewhere = (index: number) =>
+    new Set(
+      backends
+        .filter((b, i) => i !== index && b.component && b.endpoint)
+        .map(backendKey),
+    );
+  // With a progressive delivery strategy, the first backend is the current
+  // version and the second the new one at 0%: no weights to give.
+  const strategy = formContext?.formData?.strategy as string | undefined;
+  const byStrategy =
+    backends.length === 2 && Boolean(strategy) && strategy !== 'weight';
 
   const update = (next: EndpointBackendValue[]) => onChange(next);
 
@@ -107,6 +142,7 @@ export const EndpointBackendsField = ({
         row.component,
         row.endpoint,
         next.filter((_, i) => i !== index).map(b => b.name),
+        row.releaseLine,
       );
     }
     update(next);
@@ -134,9 +170,8 @@ export const EndpointBackendsField = ({
   return (
     <Box>
       <Typography variant="body2" className={classes.hint}>
-        Route traffic to internal or external workload endpoints of components
-        in {project}. Weights are relative; a backend with weight 0 gets no
-        traffic.
+        Route traffic to workload endpoints of components in {project}. Weights
+        are relative; a backend with weight 0 gets no traffic.
       </Typography>
       {error && (
         <Typography variant="body2" color="error">
@@ -145,82 +180,116 @@ export const EndpointBackendsField = ({
       )}
       {!loading && !error && routable.length === 0 && (
         <Typography variant="body2" color="error">
-          No component in {project} has an internal or external workload
-          endpoint to route to.
+          No component in {project} has a workload endpoint to route to.
         </Typography>
       )}
 
       {backends.map((backend, index) => {
-        const endpointsOfComponent = routable.filter(
-          o => o.component === backend.component,
+        const taken = takenElsewhere(index);
+        const endpointsOfTarget = routable.filter(
+          o => targetKey(o) === targetKey(backend),
         );
+        const free = (o: { component: string; releaseLine?: string }) =>
+          routable.some(
+            e => targetKey(e) === targetKey(o) && !taken.has(backendKey(e)),
+          );
         return (
-          <Box key={index} className={classes.row}>
-            <TextField
-              select
-              label="Component"
-              variant="outlined"
-              size="small"
-              className={classes.select}
-              value={backend.component}
-              disabled={loading}
-              SelectProps={{
-                SelectDisplayProps: {
-                  'aria-label': `Component for backend ${index + 1}`,
-                } as any,
-              }}
-              onChange={e =>
-                setRow(index, { component: e.target.value, endpoint: '' })
-              }
-            >
-              {components.map(c => (
-                <MenuItem key={c} value={c}>
-                  {c}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              label="Workload endpoint"
-              variant="outlined"
-              size="small"
-              className={classes.select}
-              value={backend.endpoint}
-              disabled={!backend.component}
-              SelectProps={{
-                SelectDisplayProps: {
-                  'aria-label': `Workload endpoint for backend ${index + 1}`,
-                } as any,
-              }}
-              onChange={e => setRow(index, { endpoint: e.target.value })}
-            >
-              {endpointsOfComponent.map(o => (
-                <MenuItem key={o.endpoint} value={o.endpoint}>
-                  {`${o.endpoint} (${o.visibility.join(', ')})`}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              label="Weight"
-              type="number"
-              variant="outlined"
-              size="small"
-              className={classes.weight}
-              inputProps={{ min: 0, step: 1 }}
-              value={backend.weight ?? ''}
-              onChange={e =>
-                setRow(index, {
-                  weight:
-                    e.target.value === '' ? undefined : Number(e.target.value),
-                })
-              }
-            />
-            <IconButton
-              aria-label={`Remove backend ${index + 1}`}
-              onClick={() => update(backends.filter((_, i) => i !== index))}
-            >
-              <DeleteOutlineIcon fontSize="small" />
-            </IconButton>
+          <Box key={index}>
+            {byStrategy && (
+              <Typography variant="caption" className={classes.role}>
+                {index === 0 ? 'Current' : 'New version'}
+              </Typography>
+            )}
+            <Box className={classes.row}>
+              <TextField
+                select
+                label="Component"
+                variant="outlined"
+                size="small"
+                className={classes.select}
+                value={backend.component ? targetKey(backend) : ''}
+                disabled={loading}
+                SelectProps={{
+                  SelectDisplayProps: {
+                    'aria-label': `Component for backend ${index + 1}`,
+                  } as any,
+                }}
+                onChange={e => {
+                  const target = targets.find(
+                    t => targetKey(t) === e.target.value,
+                  );
+                  setRow(index, {
+                    component: target?.component ?? '',
+                    releaseLine: target?.releaseLine,
+                    endpoint: '',
+                  });
+                }}
+              >
+                {targets.map(t => (
+                  <MenuItem
+                    key={targetKey(t)}
+                    value={targetKey(t)}
+                    disabled={!free(t)}
+                  >
+                    {t.releaseLine
+                      ? `${t.component} @ ${t.releaseLine}`
+                      : t.component}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                label="Workload endpoint"
+                variant="outlined"
+                size="small"
+                className={classes.select}
+                value={backend.endpoint}
+                disabled={!backend.component}
+                SelectProps={{
+                  SelectDisplayProps: {
+                    'aria-label': `Workload endpoint for backend ${index + 1}`,
+                  } as any,
+                }}
+                onChange={e => setRow(index, { endpoint: e.target.value })}
+              >
+                {endpointsOfTarget.map(o => (
+                  <MenuItem
+                    key={o.endpoint}
+                    value={o.endpoint}
+                    disabled={taken.has(backendKey(o))}
+                  >
+                    {o.visibility.length
+                      ? `${o.endpoint} (${o.visibility.join(', ')})`
+                      : o.endpoint}
+                  </MenuItem>
+                ))}
+              </TextField>
+              {!byStrategy && (
+                <TextField
+                  label="Weight"
+                  type="number"
+                  variant="outlined"
+                  size="small"
+                  className={classes.weight}
+                  inputProps={{ min: 0, step: 1 }}
+                  value={backend.weight ?? ''}
+                  onChange={e =>
+                    setRow(index, {
+                      weight:
+                        e.target.value === ''
+                          ? undefined
+                          : Number(e.target.value),
+                    })
+                  }
+                />
+              )}
+              <IconButton
+                aria-label={`Remove backend ${index + 1}`}
+                onClick={() => update(backends.filter((_, i) => i !== index))}
+              >
+                <DeleteOutlineIcon fontSize="small" />
+              </IconButton>
+            </Box>
           </Box>
         );
       })}
@@ -264,12 +333,20 @@ export const endpointBackendsFieldValidation = (
     return;
   }
   const names = new Set<string>();
+  const routed = new Map<string, number>();
   backends.forEach((b, i) => {
     const row = `Backend ${i + 1}`;
     if (!b.component || !b.endpoint) {
       validation.addError(`${row}: pick a component and a workload endpoint.`);
       return;
     }
+    const first = routed.get(backendKey(b));
+    if (first !== undefined) {
+      validation.addError(
+        `${row}: routes to the same workload endpoint as backend ${first + 1}.`,
+      );
+    }
+    routed.set(backendKey(b), first ?? i);
     if (!BACKEND_NAME_PATTERN.test(b.name)) {
       validation.addError(`${row}: name "${b.name}" is not a valid name.`);
     } else if (names.has(b.name)) {

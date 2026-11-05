@@ -57,7 +57,10 @@ export async function buildEndpointTypeTemplate(opts: {
         displayName: getDisplayName(type),
         description: getDescription(type),
       },
-      spec: { parameters: { openAPIV3Schema: schema as any } },
+      spec: {
+        parameters: { openAPIV3Schema: schema as any },
+        capabilities: type.spec?.capabilities,
+      },
     };
     const template = namespaceName
       ? converter.convertEtdToTemplateEntity(crd, namespaceName)

@@ -267,6 +267,16 @@ export const scaffolderFieldExtensions = [
     }),
   ),
   makeFormFieldExtension(
+    'endpoint-strategy-field',
+    () => import('./EndpointStrategyField/EndpointStrategyField'),
+    m => ({
+      name: 'EndpointStrategyField',
+      component: m.EndpointStrategyField,
+      schema: m.EndpointStrategyFieldSchema,
+      validation: m.endpointStrategyFieldValidation,
+    }),
+  ),
+  makeFormFieldExtension(
     'endpoint-schema-field',
     () => import('./EndpointSchemaField/EndpointSchemaField'),
     m => ({
