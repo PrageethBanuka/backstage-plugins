@@ -23,7 +23,9 @@ export function TooltipLabel(props: TooltipLabelProps) {
 
   return (
     <Section>
-      <Row>{tooltip}</Row>
+      {tooltip.split('\n').map((line, i) => (
+        <Row key={i}>{line}</Row>
+      ))}
     </Section>
   );
 }

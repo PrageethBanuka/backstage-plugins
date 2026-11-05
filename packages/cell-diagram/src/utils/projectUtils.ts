@@ -30,6 +30,7 @@ import {
   Gateways,
   ObservationSummary,
   ComponentType,
+  RolloutMark,
 } from '../types';
 import { CellBounds } from '../components/Cell/CellNode/CellModel';
 import {
@@ -738,6 +739,39 @@ function generateConnectionLinks(
   return links;
 }
 
+/**
+ * Sets a gateway link's tooltip, with one line per Endpoint routing there, and
+ * the rollouts it takes part in.
+ */
+function markEndpoints(
+  link: CellLinkModel,
+  tooltip: string,
+  endpoints: string[],
+  rollouts: RolloutMark[],
+) {
+  const lines = [tooltip, ...endpoints].filter(Boolean);
+  if (lines.length > 0) {
+    link.setTooltip(lines.join('\n'));
+  }
+  if (rollouts.length > 0) {
+    link.setRollouts(rollouts);
+  }
+}
+
+/** Links each gateway link to the other links of its rollouts. */
+function pairRollouts(links: Map<string, CellLinkModel>) {
+  const marked = [...links.values()].filter(l => l.rollouts.length > 0);
+  for (const link of marked) {
+    const endpoints = new Set(link.rollouts.map(r => r.endpoint));
+    link.setRolloutPeers(
+      marked.filter(
+        other =>
+          other !== link && other.rollouts.some(r => endpoints.has(r.endpoint)),
+      ),
+    );
+  }
+}
+
 function generateCellLinks(
   project: Project,
   emptyNodes: Map<string, EmptyModel>,
@@ -754,6 +788,8 @@ function generateCellLinks(
     if (targetComponent) {
       let isExposed = false;
       let tooltip = '';
+      const endpoints: string[] = [];
+      const rollouts: RolloutMark[] = [];
       const observations: Observations[] = [];
       let observationOnly = false;
       for (const serviceId in component.services) {
@@ -763,6 +799,8 @@ function generateCellLinks(
           const service = component.services[serviceId];
           const internet = service.deploymentMetadata?.gateways.internet;
           isExposed = isExposed || !!internet?.isExposed;
+          endpoints.push(...(internet?.endpoints ?? []));
+          rollouts.push(...(internet?.rollouts ?? []));
           // capture service exposed link observations
           if (internet?.observations && internet.observations.length > 0) {
             observations.push(
@@ -803,9 +841,7 @@ function generateCellLinks(
           if (observations?.length > 0) {
             link.setObservations(observations, observationOnly);
           }
-          if (tooltip) {
-            link.setTooltip(tooltip);
-          }
+          markEndpoints(link, tooltip, endpoints, rollouts);
         }
       }
     }
@@ -813,6 +849,8 @@ function generateCellLinks(
     if (targetComponent) {
       let isExposed = false;
       let tooltip = '';
+      const endpoints: string[] = [];
+      const rollouts: RolloutMark[] = [];
       const observations: Observations[] = [];
       let observationOnly = false;
       for (const serviceId in component.services) {
@@ -822,6 +860,8 @@ function generateCellLinks(
           const service = component.services[serviceId];
           const intranet = service.deploymentMetadata?.gateways.intranet;
           isExposed = isExposed || !!intranet?.isExposed;
+          endpoints.push(...(intranet?.endpoints ?? []));
+          rollouts.push(...(intranet?.rollouts ?? []));
           // capture service exposed link observations
           if (intranet?.observations && intranet.observations.length > 0) {
             observations.push(...intranet.observations);
@@ -855,9 +895,7 @@ function generateCellLinks(
           if (observations.length > 0) {
             link.setObservations(observations, observationOnly);
           }
-          if (tooltip) {
-            link.setTooltip(tooltip);
-          }
+          markEndpoints(link, tooltip, endpoints, rollouts);
         }
       }
     }
@@ -1000,6 +1038,7 @@ function generateCellLinks(
     }
   });
 
+  pairRollouts(links);
   return links;
 }
 

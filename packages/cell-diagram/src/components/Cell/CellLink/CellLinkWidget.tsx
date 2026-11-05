@@ -4,16 +4,25 @@ import {
   PortModelAlignment,
 } from '@projectstorm/react-diagrams';
 import { CellLinkModel } from './CellLinkModel';
-import { CELL_LINK, LINK_WIDTH, WarningIcon } from '../../../resources';
+import {
+  CELL_LINK,
+  LABEL_FONT_SIZE,
+  LINK_WIDTH,
+  WarningIcon,
+} from '../../../resources';
 import { ObservationLabel } from '../../ObservationLabel/ObservationLabel';
 import { TooltipLabel } from '../../TooltipLabel/TooltipLabel';
 import { DiagramContext } from '../../DiagramContext/DiagramContext';
-import { DiagramLayer } from '../../../types';
+import { DiagramLayer, RolloutStrategy } from '../../../types';
 import { SharedLink } from '../../SharedLink/SharedLink';
 import Popper from '@mui/material/Popper';
 import Box from '@mui/material/Box';
 import { CellBounds } from '../CellNode/CellModel';
 import { useColors } from '../../../theme';
+import CallSplitIcon from '@mui/icons-material/CallSplit';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import GroupWorkIcon from '@mui/icons-material/GroupWork';
+import FileCopyOutlinedIcon from '@mui/icons-material/FileCopyOutlined';
 
 interface WidgetProps {
   engine: DiagramEngine;
@@ -81,6 +90,22 @@ export function CellLinkWidget(props: WidgetProps) {
       !hasDiffLayer &&
       link.observationOnly) ||
     (previewMode && link.observationOnly);
+  // A rollout's links are marked in the architecture view: current solid,
+  // new dashed (dotted for a mirror's copies) with a chip naming it.
+  const marked =
+    link.rollouts.length > 0 &&
+    hasArchitectureLayer &&
+    !hasDiffLayer &&
+    !hideLink &&
+    !previewMode;
+  const newIn = [...link.rollouts]
+    .filter(r => r.role === 'new')
+    .sort(
+      (a, b) =>
+        Number(a.strategy === 'mirror') - Number(b.strategy === 'mirror'),
+    );
+  const [peerHighlight, setPeerHighlight] = useState(false);
+  useEffect(() => link.onRolloutHighlight(setPeerHighlight), [link]);
 
   useEffect(() => {
     const listener = link.registerListener({
@@ -137,6 +162,9 @@ export function CellLinkWidget(props: WidgetProps) {
     }
     selectPath();
     setAnchorEl(event.currentTarget);
+    if (marked) {
+      link.highlightRolloutPeers(true);
+    }
   };
 
   const handleMouseLeave = (
@@ -148,6 +176,7 @@ export function CellLinkWidget(props: WidgetProps) {
     }
     unselectPath();
     setAnchorEl(null);
+    link.highlightRolloutPeers(false);
   };
 
   const getRequestCount = () => {
@@ -172,7 +201,10 @@ export function CellLinkWidget(props: WidgetProps) {
   };
 
   const strokeColor = () => {
-    if (isSelected && (hasArchitectureLayer || hasDiffLayer)) {
+    if (
+      (isSelected || (marked && peerHighlight)) &&
+      (hasArchitectureLayer || hasDiffLayer)
+    ) {
       return colors.SECONDARY;
     }
     if (hasDiffLayer && link.observationOnly) {
@@ -184,6 +216,9 @@ export function CellLinkWidget(props: WidgetProps) {
     if (hideLink) {
       return 'transparent';
     }
+    if (marked) {
+      return colors.PRIMARY;
+    }
 
     return colors.OUTLINE;
   };
@@ -192,10 +227,20 @@ export function CellLinkWidget(props: WidgetProps) {
     if (hasDiffLayer && !(link.observations?.length > 0)) {
       return '8,8';
     }
+    if (marked && newIn.length > 0) {
+      return newIn.every(r => r.strategy === 'mirror') ? '2,4' : '6,4';
+    }
     return '';
   };
 
   const midPoint = link.getMidPoint();
+  // The rollout chip sits by the component rather than in the bundle of
+  // links leaving the gateway.
+  const endPoint = link.getLastPoint()?.getPosition() ?? midPoint;
+  const chipPoint = {
+    x: midPoint.x + (endPoint.x - midPoint.x) * 0.6,
+    y: midPoint.y + (endPoint.y - midPoint.y) * 0.6,
+  };
 
   return (
     <>
@@ -239,6 +284,20 @@ export function CellLinkWidget(props: WidgetProps) {
               : ''
           }
         />
+        {marked && newIn.length > 0 && (
+          <RolloutChip
+            x={chipPoint.x}
+            y={chipPoint.y}
+            strategy={newIn[0].strategy}
+            text={
+              newIn.length > 1
+                ? `${newIn[0].endpoint} +${newIn.length - 1}`
+                : newIn[0].endpoint
+            }
+            fill={colors.PRIMARY_CONTAINER}
+            color={colors.PRIMARY}
+          />
+        )}
         {hasDiffLayer && link.observationOnly && !previewMode && (
           <WarningIcon
             x={midPoint.x - 10}
@@ -258,12 +317,73 @@ export function CellLinkWidget(props: WidgetProps) {
             }
           >
             {link.tooltip && <TooltipLabel tooltip={link.tooltip} />}
-            {link.observations?.length > 0 && !link.tooltip && (
+            {link.observations?.length > 0 && (
               <ObservationLabel observations={link.observations} />
             )}
           </Box>
         </Popper>
       )}
     </>
+  );
+}
+
+const CHIP_FONT_SIZE = LABEL_FONT_SIZE * 0.7;
+
+const STRATEGY_ICONS: Record<RolloutStrategy, typeof CallSplitIcon> = {
+  canary: CallSplitIcon,
+  blueGreen: SwapHorizIcon,
+  abTest: GroupWorkIcon,
+  mirror: FileCopyOutlinedIcon,
+};
+
+/**
+ * Marks the link to a rollout's new version: the strategy's icon and the
+ * Endpoint, drawn like a component's release-line badge.
+ */
+function RolloutChip(props: {
+  x: number;
+  y: number;
+  strategy: RolloutStrategy;
+  text: string;
+  fill: string;
+  color: string;
+}) {
+  const { x, y, strategy, text, fill, color } = props;
+  const Icon = STRATEGY_ICONS[strategy];
+  const height = CHIP_FONT_SIZE * 1.6;
+  const icon = CHIP_FONT_SIZE;
+  const gap = 4;
+  const textWidth = text.length * CHIP_FONT_SIZE * 0.6;
+  const width = icon + gap + textWidth + 16;
+  const left = x - width / 2;
+  return (
+    <g pointerEvents="none">
+      <rect
+        x={left}
+        y={y - height / 2}
+        width={width}
+        height={height}
+        rx={height / 2}
+        fill={fill}
+        stroke={color}
+      />
+      <Icon
+        x={left + 8}
+        y={y - icon / 2}
+        width={icon}
+        height={icon}
+        htmlColor={color}
+        style={{ fontSize: icon }}
+      />
+      <text
+        x={left + 8 + icon + gap}
+        y={y}
+        dominantBaseline="central"
+        fontSize={CHIP_FONT_SIZE}
+        fill={color}
+      >
+        {text}
+      </text>
+    </g>
   );
 }

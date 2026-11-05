@@ -127,16 +127,33 @@ export interface ConnectorMetadata {
 
 export type ConnectionMetadata = ComponentMetadata | ConnectorMetadata;
 
+/** How a progressive delivery rollout moves traffic to its new version. */
+export type RolloutStrategy = 'canary' | 'blueGreen' | 'abTest' | 'mirror';
+
+/** A rollout a gateway link takes part in, as its current or new version. */
+export interface RolloutMark {
+  /** The Endpoint running the rollout. */
+  endpoint: string;
+  strategy: RolloutStrategy;
+  role: 'current' | 'new';
+}
+
 export interface DeploymentMetadata {
   gateways: {
     internet: {
       isExposed: boolean;
+      /** One line per Endpoint routing here, shown in the link's tooltip. */
+      endpoints?: string[];
+      /** The rollouts this link takes part in, marked on the link. */
+      rollouts?: RolloutMark[];
       tooltip?: string;
       observations?: Observations[];
       observationOnly?: boolean;
     };
     intranet: {
       isExposed: boolean;
+      endpoints?: string[];
+      rollouts?: RolloutMark[];
       tooltip?: string;
       observations?: Observations[];
       observationOnly?: boolean;

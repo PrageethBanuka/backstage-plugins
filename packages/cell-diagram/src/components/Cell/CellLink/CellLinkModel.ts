@@ -4,6 +4,7 @@ import { SharedLinkModel } from '../../SharedLink/SharedLink';
 import { CellBounds } from '../CellNode/CellModel';
 import { getEmptyNodeName } from '../cell-util';
 import { ComponentModel } from '../../Component/ComponentNode/ComponentModel';
+import { RolloutMark } from '../../../types';
 
 interface LinkOrigins {
   nodeId: string;
@@ -14,6 +15,9 @@ export class CellLinkModel extends SharedLinkModel {
   targetNode!: LinkOrigins;
   isExternalConsumerLink!: boolean;
   destinationNode!: ComponentModel;
+  rollouts: RolloutMark[] = [];
+  /** The other links of the rollouts this link takes part in. */
+  rolloutPeers: CellLinkModel[] = [];
 
   constructor(id: string) {
     super(id, 'cellLink');
@@ -25,6 +29,31 @@ export class CellLinkModel extends SharedLinkModel {
 
   setDestinationNode(destinationNode: ComponentModel) {
     this.destinationNode = destinationNode;
+  }
+
+  setRollouts(rollouts: RolloutMark[]) {
+    this.rollouts = rollouts;
+  }
+
+  setRolloutPeers(peers: CellLinkModel[]) {
+    this.rolloutPeers = peers;
+  }
+
+  private rolloutHighlightListeners = new Set<(on: boolean) => void>();
+
+  /** Calls listener when a peer of this link is hovered or left. */
+  onRolloutHighlight(listener: (on: boolean) => void): () => void {
+    this.rolloutHighlightListeners.add(listener);
+    return () => {
+      this.rolloutHighlightListeners.delete(listener);
+    };
+  }
+
+  /** Highlights this link's rollout peers, or clears them. */
+  highlightRolloutPeers(on: boolean) {
+    for (const peer of this.rolloutPeers) {
+      peer.rolloutHighlightListeners.forEach(listener => listener(on));
+    }
   }
 
   setSourceNode(nodeId: string) {
