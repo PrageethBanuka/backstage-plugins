@@ -31,7 +31,11 @@ import {
   parseReleaseLineNodeId,
   releaseLineNodeId,
   toStoredReleaseLine,
+  fromSpecRollout,
+  type EndpointRollout,
+  type RolloutStrategy,
 } from '@openchoreo/backstage-plugin-common';
+import { toBackendWeights } from '../EndpointService/endpointRolloutRefs';
 import type { OpenChoreoComponents } from '@openchoreo/openchoreo-client-node';
 
 // Use generated OpenAPI schemas directly. CellDiagramInfoService previously
@@ -42,6 +46,7 @@ import type { OpenChoreoComponents } from '@openchoreo/openchoreo-client-node';
 // schemas, so we follow the same pattern here.
 type WorkloadSpec = OpenChoreoComponents['schemas']['WorkloadSpec'];
 type WorkloadEndpoint = OpenChoreoComponents['schemas']['WorkloadEndpoint'];
+type Endpoint = OpenChoreoComponents['schemas']['Endpoint'];
 type EndpointDependency = OpenChoreoComponents['schemas']['WorkloadConnection'];
 type ResourceDependency =
   OpenChoreoComponents['schemas']['WorkloadResourceDependency'];
@@ -176,6 +181,28 @@ function componentScope(
  * Service implementation for fetching and managing Cell Diagram information.
  * @implements {CellDiagramService}
  */
+const STRATEGY_NAMES: Record<RolloutStrategy, string> = {
+  canary: 'canary',
+  blueGreen: 'blue/green',
+  abTest: 'A/B',
+  mirror: 'mirror',
+};
+
+/** The rule that reaches a rollout's new backend, for its tooltip. */
+function rolloutRule(
+  rollout: EndpointRollout,
+  ref: NonNullable<Endpoint['spec']>['backendRefs'][number],
+): string {
+  if (rollout.strategy === 'mirror') {
+    return ref.mirror?.percent ? `copy ${ref.mirror.percent}%` : 'copy';
+  }
+  const p = rollout.preview;
+  if (!p) return '';
+  if (p.kind === 'cookie') return `cookie ${p.name}=${p.value}`;
+  if (p.kind === 'path') return `path ${p.value}`;
+  return `${p.name}: ${p.value}`;
+}
+
 export class CellDiagramInfoService implements CellDiagramService {
   private readonly logger: LoggerService;
   private readonly baseUrl: string;
@@ -217,7 +244,7 @@ export class CellDiagramInfoService implements CellDiagramService {
       // resource nodes from each Datastore connection a workload declares.
       // Resources that aren't consumed by any workload are not part of the
       // wired topology and won't appear in the diagram.
-      const [componentItems, workloadItems] = await Promise.all([
+      const [componentItems, workloadItems, endpointItems] = await Promise.all([
         fetchAllPages(cursor =>
           client
             .GET('/api/v1/namespaces/{namespaceName}/components', {
@@ -252,6 +279,7 @@ export class CellDiagramInfoService implements CellDiagramService {
               return res.data;
             }),
         ),
+        this.listEndpoints(client, namespaceName, projectName),
       ]);
 
       if (!componentItems.length) {
@@ -327,6 +355,7 @@ export class CellDiagramInfoService implements CellDiagramService {
         namespaceName,
         completeComponents,
       );
+      this.addEndpointGateways(project, endpointItems);
 
       if (environmentName) {
         await this.enrichWithObservations(project, {
@@ -828,6 +857,111 @@ export class CellDiagramInfoService implements CellDiagramService {
       this.logger.warn(
         `Failed to enrich connections from runtime cell graph: ${err}`,
       );
+    }
+  }
+
+  /**
+   * The project's Endpoints. A failure only leaves Endpoint gateways off the
+   * diagram, so it is logged rather than thrown.
+   */
+  private async listEndpoints(
+    client: ReturnType<typeof createOpenChoreoApiClient>,
+    namespaceName: string,
+    projectName: string,
+  ): Promise<Endpoint[]> {
+    try {
+      return await fetchAllPages(cursor =>
+        client
+          .GET('/api/v1/namespaces/{namespaceName}/endpoints', {
+            params: {
+              path: { namespaceName },
+              query: { project: projectName, limit: 100, cursor },
+            },
+          })
+          .then(res => {
+            if (res.error || !res.response.ok) {
+              throw new Error(
+                `Failed to fetch endpoints: ${res.response.status} ${res.response.statusText}`,
+              );
+            }
+            return res.data;
+          }),
+      );
+    } catch (err) {
+      this.logger.info(`Skipping Endpoints on the cell diagram: ${err}`);
+      return [];
+    }
+  }
+
+  /**
+   * Exposes each Endpoint's backends on the gateway its visibility names:
+   * external on the internet gateway, internal on the intranet one. The
+   * gateway link is labelled with the Endpoint, and with the backend's role
+   * while a rollout runs; its tooltip names the rule that reaches it.
+   */
+  private addEndpointGateways(project: Project, endpoints: Endpoint[]): void {
+    const nodes = new Map(project.components.map(c => [c.id, c]));
+    for (const endpoint of endpoints) {
+      const name = endpoint.metadata?.name;
+      const visibility = endpoint.spec?.visibility ?? [];
+      const internet = visibility.includes('external');
+      const intranet = visibility.includes('internal');
+      if (!name || (!internet && !intranet)) continue;
+      const rollout = endpoint.spec?.rollout
+        ? fromSpecRollout(
+            endpoint.spec.rollout,
+            toBackendWeights(endpoint.spec.backendRefs),
+          )
+        : undefined;
+      for (const ref of endpoint.spec?.backendRefs ?? []) {
+        const component = ref.component?.name;
+        if (!component) continue;
+        const line = toStoredReleaseLine(ref.component?.releaseLine);
+        const node = nodes.get(
+          line ? releaseLineNodeId(component, line) : component,
+        );
+        if (!node) continue;
+
+        let label = name;
+        let tooltip: string | undefined;
+        if (rollout && ref.name === rollout.candidate) {
+          const strategy = STRATEGY_NAMES[rollout.strategy];
+          label = `${name} · new (${strategy})`;
+          tooltip = [`${name} · ${strategy}`, rolloutRule(rollout, ref)]
+            .filter(Boolean)
+            .join(' · ');
+        } else if (rollout && ref.name === rollout.stable) {
+          label = `${name} · current`;
+        }
+
+        const key = ref.component?.endpoint ?? name;
+        const existing = node.services[key]?.deploymentMetadata?.gateways;
+        const gateway = (
+          on: boolean,
+          was?: { isExposed: boolean; label?: string; tooltip?: string },
+        ) =>
+          on
+            ? {
+                isExposed: true,
+                label: was?.label ? `${was.label}, ${label}` : label,
+                tooltip:
+                  [was?.tooltip, tooltip].filter(Boolean).join('; ') ||
+                  undefined,
+              }
+            : was ?? { isExposed: false };
+        node.services[key] = {
+          id: node.id,
+          label: node.label,
+          type: node.services[key]?.type ?? 'HTTP',
+          dependencyIds: node.services[key]?.dependencyIds ?? [],
+          deploymentMetadata: {
+            gateways: {
+              internet: gateway(internet, existing?.internet),
+              intranet: gateway(intranet, existing?.intranet),
+            },
+          },
+        };
+      }
     }
   }
 

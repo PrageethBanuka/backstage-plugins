@@ -738,6 +738,142 @@ describe('CellDiagramInfoService', () => {
         ]);
       });
 
+      const endpoint = (
+        name: string,
+        visibility: string[],
+        backendRefs: any[],
+        rollout?: unknown,
+      ) => ({
+        metadata: { name, namespace: 'test-ns' },
+        spec: { visibility, backendRefs, ...(rollout ? { rollout } : {}) },
+      });
+
+      const wireEndpoints = (endpoints: any[]) =>
+        mockGET.mockImplementation((path: string) => {
+          if (path.endsWith('/components')) {
+            return Promise.resolve(
+              createOkResponse({
+                items: [k8sComponent('api', 'deployment/service')],
+                pagination: {},
+              }),
+            );
+          }
+          if (path.endsWith('/workloads')) {
+            return Promise.resolve(
+              createOkResponse({
+                items: [
+                  k8sWorkload('api', { endpoints: { http: { type: 'HTTP' } } }),
+                  lineWorkload('api', 'v2', {
+                    endpoints: { http: { type: 'HTTP' } },
+                  }),
+                ],
+                pagination: {},
+              }),
+            );
+          }
+          return Promise.resolve(
+            createOkResponse({ items: endpoints, pagination: {} }),
+          );
+        });
+
+      afterEach(() => mockGET.mockReset());
+
+      it("exposes an Endpoint's backends on its gateway, labelled with the Endpoint", async () => {
+        wireEndpoints([
+          endpoint(
+            'api-public',
+            ['external'],
+            [
+              {
+                name: 'api-http',
+                component: { name: 'api', endpoint: 'http' },
+              },
+            ],
+          ),
+        ]);
+
+        const result = await createService().fetchProjectInfo(
+          { projectName: 'my-project', namespaceName: 'test-ns' },
+          'token',
+        );
+
+        const gateways = (id: string) =>
+          (result!.components.find(c => c.id === id)!.services as any).http
+            .deploymentMetadata.gateways;
+        expect(gateways('api').internet).toEqual({
+          isExposed: true,
+          label: 'api-public',
+        });
+        expect(gateways('api').intranet.isExposed).toBe(false);
+        expect(gateways('api@v2').internet.isExposed).toBe(false);
+      });
+
+      it("labels a rollout's versions and names the rule on the new one", async () => {
+        wireEndpoints([
+          endpoint(
+            'api-public',
+            ['internal'],
+            [
+              {
+                name: 'api-http',
+                component: { name: 'api', endpoint: 'http' },
+              },
+              {
+                name: 'api-v2-http',
+                component: { name: 'api', releaseLine: 'v2', endpoint: 'http' },
+                weight: 0,
+                match: { headers: [{ name: 'x-canary', value: 'true' }] },
+              },
+            ],
+            {
+              strategy: 'canary',
+              stable: 'api-http',
+              candidates: [{ name: 'api-v2-http' }],
+              canary: {
+                steps: [5, 50, 100].map(percent => ({
+                  backends: [{ name: 'api-v2-http', percent }],
+                })),
+              },
+            },
+          ),
+        ]);
+
+        const result = await createService().fetchProjectInfo(
+          { projectName: 'my-project', namespaceName: 'test-ns' },
+          'token',
+        );
+
+        const intranet = (id: string) =>
+          (result!.components.find(c => c.id === id)!.services as any).http
+            .deploymentMetadata.gateways.intranet;
+        expect(intranet('api')).toEqual({
+          isExposed: true,
+          label: 'api-public · current',
+        });
+        expect(intranet('api@v2')).toEqual({
+          isExposed: true,
+          label: 'api-public · new (canary)',
+          tooltip: 'api-public · canary · x-canary: true',
+        });
+      });
+
+      it('still draws the diagram when Endpoints cannot be listed', async () => {
+        wireEndpoints([]);
+        const listed = mockGET.getMockImplementation()!;
+        mockGET.mockImplementation((path: string, req: any) =>
+          path.endsWith('/endpoints')
+            ? Promise.reject(new Error('forbidden'))
+            : listed(path, req),
+        );
+
+        const result = await createService().fetchProjectInfo(
+          { projectName: 'my-project', namespaceName: 'test-ns' },
+          'token',
+        );
+
+        expect(result!.components.map(c => c.id)).toEqual(['api', 'api@v2']);
+      });
+
       it('renders a component without release lines without a badge', async () => {
         mockGET
           .mockResolvedValueOnce(
