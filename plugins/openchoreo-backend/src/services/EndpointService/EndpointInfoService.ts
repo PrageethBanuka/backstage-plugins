@@ -60,6 +60,30 @@ function requireBackend(
 
 export type EndpointReleaseSchemaSection = 'parameters' | 'environmentConfigs';
 
+type SpecRollout = NonNullable<NonNullable<Endpoint['spec']>['rollout']>;
+
+/** A rollout plan without one of its candidates and that candidate's steps. */
+function withoutCandidate(rollout: SpecRollout, name: string): SpecRollout {
+  const drop = <
+    T extends { steps: Array<{ backends: Array<{ name: string }> }> },
+  >(
+    block: T | undefined,
+  ) =>
+    block && {
+      ...block,
+      steps: block.steps.map(st => ({
+        ...st,
+        backends: st.backends.filter(b => b.name !== name),
+      })),
+    };
+  return {
+    ...rollout,
+    candidates: rollout.candidates.filter(c => c.name !== name),
+    ...(rollout.canary && { canary: drop(rollout.canary)! }),
+    ...(rollout.mirror && { mirror: drop(rollout.mirror)! }),
+  };
+}
+
 /**
  * BFF service for Endpoint reads beyond the catalog entity: the immutable
  * EndpointReleases the Endpoint controller cuts, and the parameter schemas of
@@ -557,11 +581,12 @@ export class EndpointInfoService {
     request: EndpointRef & { backendName: string },
     token?: string,
   ): Promise<{ success: true }> {
+    if (await this.finishRolloutFor(request, token)) return { success: true };
     await this.updateEndpointBackends(
       request,
       token,
       'remove endpoint backend',
-      refs => {
+      (refs, endpoint) => {
         requireBackend(refs, request);
         if (refs.length === 1) {
           throw new InputError(
@@ -570,10 +595,66 @@ export class EndpointInfoService {
         }
         return {
           backendRefs: refs.filter(ref => ref.name !== request.backendName),
+          ...(endpoint.spec?.rollout && {
+            rollout: withoutCandidate(
+              endpoint.spec.rollout,
+              request.backendName,
+            ),
+          }),
         };
       },
     );
     return { success: true };
+  }
+
+  /**
+   * Removing the stable backend or the only candidate of a rollout ends it:
+   * openchoreo-api finishes the rollout keeping the other one, and refuses
+   * while the backend that leaves still gets traffic. Returns whether it
+   * did; other backends are removed as usual.
+   */
+  private async finishRolloutFor(
+    request: EndpointRef & { backendName: string },
+    token: string | undefined,
+  ): Promise<boolean> {
+    const client = this.client(token);
+    const path = {
+      namespaceName: request.namespaceName,
+      endpointName: request.endpointName,
+    };
+    const res = await client.GET(
+      '/api/v1/namespaces/{namespaceName}/endpoints/{endpointName}',
+      { params: { path } },
+    );
+    assertApiResponse(res, 'fetch endpoint');
+    const rollout = res.data!.spec?.rollout;
+    if (!rollout) return false;
+    const candidates = rollout.candidates.map(c => c.name);
+    let keep: string | undefined;
+    if (request.backendName === rollout.stable) {
+      if (candidates.length > 1) {
+        throw new InputError(
+          `${
+            request.backendName
+          } is the stable backend of a rollout to ${candidates.join(
+            ', ',
+          )}; finish the rollout keeping one of them first`,
+        );
+      }
+      keep = candidates[0];
+    } else if (
+      candidates.length === 1 &&
+      candidates[0] === request.backendName
+    ) {
+      keep = rollout.stable;
+    }
+    if (!keep) return false;
+    const finished = await client.POST(
+      '/api/v1/namespaces/{namespaceName}/endpoints/{endpointName}/rollout/finish',
+      { params: { path }, body: { keep } },
+    );
+    assertApiResponse(finished, 'finish endpoint rollout');
+    return true;
   }
 
   /**
@@ -588,7 +669,11 @@ export class EndpointInfoService {
     change: (
       refs: EndpointBackendRef[],
       endpoint: Endpoint,
-    ) => { backendRefs: unknown[]; labels?: Record<string, string> },
+    ) => {
+      backendRefs: unknown[];
+      labels?: Record<string, string>;
+      rollout?: unknown;
+    },
   ): Promise<void> {
     const client = this.client(token);
     const { data, error, response } = await client.GET(
@@ -607,7 +692,7 @@ export class EndpointInfoService {
     if (!endpoint.spec) {
       throw new InputError(`Endpoint ${request.endpointName} has no spec`);
     }
-    const { backendRefs, labels } = change(
+    const { backendRefs, labels, rollout } = change(
       endpoint.spec.backendRefs ?? [],
       endpoint,
     );
@@ -616,7 +701,7 @@ export class EndpointInfoService {
         ...endpoint.metadata,
         ...(labels && { labels }),
       },
-      spec: { ...endpoint.spec, backendRefs },
+      spec: { ...endpoint.spec, backendRefs, ...(rollout ? { rollout } : {}) },
     };
     const updated = await client.PUT(
       '/api/v1/namespaces/{namespaceName}/endpoints/{endpointName}',

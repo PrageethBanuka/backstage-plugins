@@ -100,6 +100,16 @@ function createMockServices() {
       fetchClusterEndpointTypeSchema: jest.fn(),
       fetchReleaseLineEndpointDrafts: jest.fn(),
     },
+    endpointRolloutService: {
+      fetchEndpointRollout: jest.fn(),
+      updateEndpointOverrides: jest.fn(),
+      startRollout: jest.fn(),
+      setRolloutStage: jest.fn(),
+      convertRollout: jest.fn(),
+      updateRolloutSettings: jest.fn(),
+      deployRelease: jest.fn(),
+      finishRollout: jest.fn(),
+    },
     projectReleaseInfoService: {
       fetchProjectRelease: jest.fn(),
       fetchProjectReleaseSchema: jest.fn(),
@@ -399,6 +409,60 @@ describe('createRouter', () => {
       expect(response.body).toMatchObject({
         error: expect.objectContaining({ message }),
       });
+    });
+  });
+
+  describe('PUT /endpoint-rollout/start', () => {
+    const start = async (plan: unknown) => {
+      const local = createMockServices();
+      (
+        local.endpointRolloutService.startRollout as jest.Mock
+      ).mockResolvedValue({ environments: [] });
+      const localApp = express();
+      localApp.use(express.json());
+      localApp.use(await createRouter(local as any));
+      localApp.use(mockErrorHandler());
+      const body = {
+        endpointName: 'trips-api',
+        namespaceName: 'default',
+        projectName: 'default',
+        plan,
+      };
+      const response = await request(localApp)
+        .put('/endpoint-rollout/start')
+        .send(body);
+      return { response, local, body };
+    };
+
+    it('starts a canary with a named candidate', async () => {
+      const { response, local, body } = await start({
+        strategy: 'canary',
+        candidate: {
+          componentName: 'trips-python',
+          endpoint: 'http',
+          name: 'trips-next',
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(local.endpointRolloutService.startRollout).toHaveBeenCalledWith(
+        body,
+        expect.anything(),
+      );
+    });
+
+    it('refuses a candidate name the Endpoint cannot take', async () => {
+      const { response, local } = await start({
+        strategy: 'canary',
+        candidate: {
+          componentName: 'trips-python',
+          endpoint: 'http',
+          name: 'Trips_Next',
+        },
+      });
+
+      expect(response.status).toBe(400);
+      expect(local.endpointRolloutService.startRollout).not.toHaveBeenCalled();
     });
   });
 
