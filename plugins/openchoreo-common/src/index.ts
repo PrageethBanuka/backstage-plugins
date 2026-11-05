@@ -228,6 +228,82 @@ export {
   type ComponentEndpointSummary,
   type ReleaseLineEndpointTarget,
 } from './utils/componentEndpoint';
+export {
+  backendMatchProblems,
+  uniqueBackendName,
+  buildCanary,
+  buildBlueGreen,
+  buildABTest,
+  buildMirror,
+  finishStrategy,
+  isSameBackend,
+  MOBILE_USER_AGENT,
+  audienceProblem,
+  strategyUnsupported,
+  reachUnsupported,
+} from './utils/endpointStrategies';
+export type {
+  StrategyTarget,
+  StrategyChange,
+} from './utils/endpointStrategies';
+export {
+  DEFAULT_CANARY_STEPS,
+  MIRROR_STEPS,
+  rolloutStages,
+  rolloutPosition,
+  nextRolloutStage,
+  rolloutWeights,
+  rolloutStepProblem,
+  NO_ROLLOUT_TRAFFIC,
+  STAGE_TOO_FINE,
+  stableSplit,
+  untouchedSplit,
+  completeSplit,
+  abAudience,
+  fromSpecRollout,
+  toSpecRollout,
+  planRollout,
+  reconfigureRollout,
+  convertToCanary,
+  effectiveWeights,
+} from './utils/endpointRollout';
+export type { RolloutStage } from './utils/endpointRollout';
+export {
+  hasShare,
+  shareProblem,
+  splitPercents,
+  withShare,
+} from './utils/endpointShares';
+export type {
+  EndpointBackendWeight,
+  EndpointHeaderMatch,
+  EndpointNameValueMatch,
+  EndpointBackendMatch,
+  EndpointMirror,
+  RolloutStrategy,
+  EndpointCapability,
+  RolloutPreview,
+  EndpointRollout,
+  EndpointRolloutSpec,
+  EndpointRolloutStepBackend,
+  RolloutPosition,
+  RolloutPlan,
+  EndpointWeightOverride,
+  EndpointRolloutInfo,
+  EndpointRolloutEnvironment,
+  EndpointServedBackend,
+  UpdateEndpointOverridesRequest,
+  StartRolloutRequest,
+  AddEndpointBackendRequest,
+  SetBackendShareRequest,
+  SetRolloutStageRequest,
+  DeployEndpointReleaseRequest,
+  ConvertRolloutRequest,
+  RolloutSettings,
+  UpdateRolloutSettingsRequest,
+  FinishRolloutRequest,
+  RolloutActionResult,
+} from './types/endpoint-rollout-types';
 
 // Feature flags types
 export type { OpenChoreoFeatures, FeatureName } from './types/features';
