@@ -64,10 +64,32 @@ describe('EtdToTemplateConverter', () => {
     expect(routing.properties.backends['ui:field']).toBe(
       'EndpointBackendsField',
     );
+    expect(routing.properties.strategy).toMatchObject({
+      type: 'object',
+      default: { strategy: 'weight' },
+      'ui:field': 'EndpointStrategyField',
+    });
     expect(routing.properties.schema['ui:field']).toBe('EndpointSchemaField');
     expect(details.properties.parameters['ui:options'].rtdSchema).toEqual(
       httpRoute.spec.parameters.openAPIV3Schema,
     );
+  });
+
+  it("hands the strategy field the type's capabilities", () => {
+    const strategyOptions = (spec: object) =>
+      (
+        converter.convertClusterEtdToTemplateEntity({
+          metadata: { name: 'gamma-httproute' },
+          spec,
+        }).spec as any
+      ).parameters[1].properties.strategy['ui:options'];
+
+    expect(strategyOptions({ capabilities: ['Match'] })).toEqual({
+      backendsField: 'backends',
+      typeName: 'gamma-httproute',
+      capabilities: ['Match'],
+    });
+    expect(strategyOptions({})).not.toHaveProperty('capabilities');
   });
 
   it('creates the Endpoint through openchoreo:endpoint:create', () => {
@@ -80,6 +102,7 @@ describe('EtdToTemplateConverter', () => {
       typeName: 'http-route',
       endpointName: '${{ parameters.endpoint_name }}',
       backends: '${{ parameters.backends }}',
+      strategy: '${{ parameters.strategy }}',
       schema: '${{ parameters.schema }}',
     });
   });

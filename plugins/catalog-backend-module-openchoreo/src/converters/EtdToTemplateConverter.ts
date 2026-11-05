@@ -19,6 +19,8 @@ export interface EndpointTypeCRD {
     parameters?: {
       openAPIV3Schema?: JSONSchema7;
     };
+    /** The routing features the type renders; limits the strategies offered. */
+    capabilities?: string[];
   };
 }
 
@@ -202,10 +204,30 @@ export class EtdToTemplateConverter {
             properties: {
               name: { type: 'string' },
               component: { type: 'string' },
+              releaseLine: { type: 'string' },
               endpoint: { type: 'string' },
               weight: { type: 'number' },
             },
             required: ['name', 'component', 'endpoint'],
+          },
+        },
+        strategy: {
+          title: 'How traffic moves',
+          type: 'object',
+          default: { strategy: 'weight' },
+          properties: {
+            strategy: {
+              type: 'string',
+              enum: ['weight', 'canary', 'blueGreen', 'abTest', 'mirror'],
+            },
+          },
+          'ui:field': 'EndpointStrategyField',
+          'ui:options': {
+            backendsField: 'backends',
+            typeName: et.metadata.name,
+            ...(et.spec.capabilities?.length && {
+              capabilities: et.spec.capabilities,
+            }),
           },
         },
         schema: {
@@ -264,6 +286,7 @@ export class EtdToTemplateConverter {
           typeName: et.metadata.name,
           visibility: '${{ parameters.visibility }}',
           backends: '${{ parameters.backends }}',
+          strategy: '${{ parameters.strategy }}',
           schema: '${{ parameters.schema }}',
           parameters: '${{ parameters.parameters }}',
         },

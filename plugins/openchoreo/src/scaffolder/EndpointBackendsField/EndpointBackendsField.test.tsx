@@ -79,6 +79,16 @@ function makeApis(): [any, any][] {
         ? Promise.resolve(workload)
         : Promise.reject(new Error('No workload found for this component'));
     }),
+    fetchReleaseLines: jest.fn((entity: any) =>
+      Promise.resolve(
+        entity.metadata.name === 'orders'
+          ? [
+              { name: 'main', isMain: true },
+              { name: 'v2', isMain: false },
+            ]
+          : [],
+      ),
+    ),
   };
   return [
     [catalogApiRef, catalog],
@@ -145,6 +155,9 @@ describe('deriveBackendName', () => {
       'orders-http-2',
     );
     expect(deriveBackendName('Orders', 'HTTP_v2', [])).toBe('orders-http-v2');
+    expect(deriveBackendName('orders', 'http', [], 'v2')).toBe(
+      'orders-v2-http',
+    );
   });
 });
 
@@ -161,6 +174,15 @@ describe('endpointBackendsFieldValidation', () => {
       'Backend 2: name "orders-http" is already used.',
     );
     expect(validate([{ ...row, weight: 1.5 }])[0]).toMatch(/whole number/);
+  });
+
+  it('rejects two backends routing to the same workload endpoint', () => {
+    expect(validate([row, { ...row, name: 'orders-http-2' }])).toContain(
+      'Backend 2: routes to the same workload endpoint as backend 1.',
+    );
+    expect(
+      validate([row, { ...row, name: 'orders-v2-http', releaseLine: 'v2' }]),
+    ).toEqual([]);
   });
 
   it('requires some backend to take traffic', () => {
@@ -212,7 +234,7 @@ describe('EndpointBackendsField', () => {
         'metadata.annotations.openchoreo.io/project': 'store',
       },
     });
-    expect(client.fetchWorkloadInfo).toHaveBeenCalledTimes(3);
+    expect(client.fetchWorkloadInfo).toHaveBeenCalledTimes(4);
 
     fireEvent.click(screen.getByRole('button', { name: /add backend/i }));
     expect(onChange).toHaveBeenCalledWith([
@@ -220,7 +242,7 @@ describe('EndpointBackendsField', () => {
     ]);
   });
 
-  it('offers only routable workload endpoints of the chosen component', async () => {
+  it('offers every workload endpoint of the chosen component', async () => {
     render(
       <TestApiProvider apis={makeApis()}>
         <EndpointBackendsField
@@ -246,7 +268,49 @@ describe('EndpointBackendsField', () => {
     );
     const listbox = await screen.findByRole('listbox');
     expect(within(listbox).getByText('http (external)')).toBeInTheDocument();
-    expect(within(listbox).queryByText(/admin/)).toBeNull();
+    expect(within(listbox).getByText('admin')).toBeInTheDocument();
+  });
+
+  it('offers release lines and not a workload endpoint another backend routes to', async () => {
+    render(
+      <TestApiProvider apis={makeApis()}>
+        <EndpointBackendsField
+          {...({
+            formData: [
+              { name: 'orders-http', component: 'orders', endpoint: 'http' },
+              { name: '', component: 'orders', endpoint: '' },
+            ],
+            onChange: jest.fn(),
+            formContext,
+            uiSchema: {},
+          } as any)}
+        />
+      </TestApiProvider>,
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /add backend/i }),
+      ).toBeEnabled(),
+    );
+    fireEvent.mouseDown(
+      screen.getByRole('button', { name: 'Component for backend 2' }),
+    );
+    expect(
+      within(await screen.findByRole('listbox')).getByText('orders @ v2'),
+    ).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' });
+
+    fireEvent.mouseDown(
+      screen.getByRole('button', { name: 'Workload endpoint for backend 2' }),
+    );
+    const listbox = await screen.findByRole('listbox');
+    expect(
+      within(listbox).getByText('http (external)').closest('li'),
+    ).toHaveAttribute('aria-disabled', 'true');
+    expect(
+      within(listbox).getByText('admin').closest('li'),
+    ).not.toHaveAttribute('aria-disabled', 'true');
   });
 
   it('offers a workload endpoint that has no schema', async () => {
@@ -345,5 +409,29 @@ describe('EndpointSchemaField', () => {
     ).toBeInTheDocument();
     await new Promise(r => setTimeout(r, 0));
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('names the rows Current and New version, with no weights, under a strategy', async () => {
+    render(
+      <TestApiProvider apis={makeApis()}>
+        <EndpointBackendsField
+          {...({
+            formData: [
+              { name: 'a', component: 'orders', endpoint: 'http', weight: 100 },
+              { name: 'b', component: 'billing', endpoint: 'grpc', weight: 0 },
+            ],
+            onChange: jest.fn(),
+            formContext: {
+              formData: { ...formContext.formData, strategy: 'canary' },
+            },
+            uiSchema: {},
+          } as any)}
+        />
+      </TestApiProvider>,
+    );
+
+    expect(await screen.findByText('Current')).toBeInTheDocument();
+    expect(screen.getByText('New version')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Weight')).toBeNull();
   });
 });
