@@ -13,6 +13,12 @@ import type {
   ComponentEndpointInput,
   ComponentEndpointSummary,
   EndpointTypeKind,
+  EndpointBackendWeight,
+  EndpointRolloutInfo,
+  EndpointWeightOverride,
+  RolloutActionResult,
+  RolloutPlan,
+  RolloutSettings,
 } from '@openchoreo/backstage-plugin-common';
 import type { Environment } from '../components/RuntimeLogs/types';
 import type { EndpointURLDetails } from '../components/Environments/hooks/useEnvironmentData';
@@ -867,6 +873,76 @@ export interface OpenChoreoClientApi {
       endpointTypeEnvironmentConfigs?: Record<string, unknown>;
     },
   ): Promise<unknown>;
+
+  /**
+   * Fetch an Endpoint's backends with their matches, mirrors and release
+   * lines, its rollout, and what each bound environment sets and serves.
+   */
+  fetchEndpointRollout(entity: Entity): Promise<EndpointRolloutInfo>;
+
+  /** Set one environment's weights and mirror shares. No release is cut. */
+  updateEndpointOverrides(
+    entity: Entity,
+    environment: string,
+    overrides: EndpointWeightOverride[],
+  ): Promise<{ bindingName: string; applied: boolean }>;
+
+  /** Start a rollout: the candidate joins the Endpoint at 0%, in a new release. */
+  startRollout(entity: Entity, plan: RolloutPlan): Promise<RolloutActionResult>;
+
+  /**
+   * Add a backend that gets traffic right away, in a new release: `share`
+   * percent of the shared requests, the others keeping their ratio, or at
+   * weight 0 the requests its match selects. Refused while a rollout runs.
+   */
+  addBackend(
+    entity: Entity,
+    backend: EndpointBackendWeight,
+    share?: number,
+  ): Promise<RolloutActionResult>;
+
+  /**
+   * Give a backend a percentage of the shared requests, in a new release;
+   * the others keep their ratio. Refused while a rollout runs.
+   */
+  setBackendShare(
+    entity: Entity,
+    backendName: string,
+    percent: number,
+  ): Promise<RolloutActionResult>;
+
+  /** Move one environment to a stage: the candidate gets `percent`. */
+  setRolloutStage(
+    entity: Entity,
+    environment: string,
+    percent: number,
+  ): Promise<{ bindingName: string; applied: boolean }>;
+
+  /** Deploy a release to an environment, dropping overrides it can't use. */
+  deployEndpointRelease(
+    entity: Entity,
+    environment: string,
+    releaseName: string,
+  ): Promise<RolloutActionResult>;
+
+  /** Turn a mirror rollout into a canary on the same backend, at 0%, with these steps. */
+  convertRollout(
+    entity: Entity,
+    testerHeader?: { name: string; value: string },
+    steps?: number[],
+  ): Promise<RolloutActionResult>;
+
+  /** Change how the new version is reached and the steps of the running rollout. */
+  updateRolloutSettings(
+    entity: Entity,
+    settings: RolloutSettings,
+  ): Promise<RolloutActionResult>;
+
+  /** Complete (keep the candidate) or abandon (keep stable) the rollout. */
+  finishRollout(
+    entity: Entity,
+    outcome: 'complete' | 'abandon',
+  ): Promise<RolloutActionResult>;
 
   /** Undeploy an Endpoint from an environment by deleting its binding there. */
   deleteEndpointReleaseBinding(

@@ -11,15 +11,21 @@ import AddIcon from '@material-ui/icons/Add';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import EditOutlinedIcon from '@material-ui/icons/EditOutlined';
 import { useAsyncEntity, useEntity } from '@backstage/plugin-catalog-react';
+import { useNavigate } from 'react-router-dom';
 import {
   EndpointBackendList,
   type EndpointBackend,
 } from '../EndpointOverview/EndpointBackendList';
-import { AddEndpointBackendDialog } from './AddEndpointBackendDialog';
 import {
-  EditBackendWeightDialog,
-  RemoveBackendDialog,
-} from './EndpointBackendDialogs';
+  hasShare,
+  type EndpointBackendWeight,
+} from '@openchoreo/backstage-plugin-common';
+import { EditShareDialog } from './progressive/EditShareDialog';
+import { pairFirst, roleOf } from './progressive/endpointUi';
+import { ProgressiveDeliveryEntry } from './progressive/ProgressiveDeliveryEntry';
+import { useProgressiveDelivery } from './progressive/ProgressiveDeliveryContext';
+import { RolloutPairGroup } from './progressive/RolloutPairGroup';
+import { RemoveBackendDialog } from './EndpointBackendDialogs';
 
 /** The most backends an Endpoint takes, as the Endpoint CRD allows. */
 const MAX_BACKENDS = 16;
@@ -30,10 +36,14 @@ const MAX_BACKENDS = 16;
  */
 const RELEASE_RECHECK_MS = [3000, 8000];
 
+const FROZEN =
+  'Finish the rollout first. While it runs, the other backends stay as they are.';
+
 /**
  * The Endpoint's backends on the Set up pane, where they are changed: added
- * (moving a component-managed Endpoint to its project), reweighted and
- * removed. Each change cuts a new release, which the pane then offers to
+ * (moving a component-managed Endpoint to its project), given a share and
+ * removed. While a rollout runs, its pair is grouped with its Finish button and
+ * the other backends stay as they are. Each change cuts a new release, which the pane then offers to
  * deploy; `onChanged` is called to look for it.
  */
 export const EndpointBackendsSection = ({
@@ -43,8 +53,8 @@ export const EndpointBackendsSection = ({
 }) => {
   const { entity } = useEntity();
   const { refresh } = useAsyncEntity();
-  const [addOpen, setAddOpen] = useState(false);
-  const [editing, setEditing] = useState<EndpointBackend | null>(null);
+  const navigate = useNavigate();
+  const [editing, setEditing] = useState<EndpointBackendWeight | null>(null);
   const [removing, setRemoving] = useState<EndpointBackend | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -60,7 +70,21 @@ export const EndpointBackendsSection = ({
     backends?: EndpointBackend[];
     managedByComponent?: string;
   };
-  const backends = spec.backends ?? [];
+  // The Endpoint's own backends when progressive delivery has read them:
+  // the catalog entity follows the Endpoint only after a refresh.
+  const pd = useProgressiveDelivery();
+  const live = pd?.endpoint.backends;
+  const rollout = pd?.endpoint.rollout;
+  const backends: EndpointBackend[] = live
+    ? live.map(b => ({
+        name: b.name ?? b.componentName,
+        kind: 'Component',
+        component: b.componentName,
+        endpoint: b.endpoint,
+        releaseLine: b.releaseLine,
+        weight: b.weight,
+      }))
+    : spec.backends ?? [];
   const namespace = entity.metadata.namespace ?? 'default';
 
   const handleSaved = (message: string) => {
@@ -77,6 +101,64 @@ export const EndpointBackendsSection = ({
     );
   };
 
+  const pdBackends = pd?.endpoint.backends ?? [];
+  const byName = new Map(pdBackends.map(b => [b.name ?? b.componentName, b]));
+  const shared = pdBackends.filter(hasShare);
+  const inPair = (b: EndpointBackend) => Boolean(roleOf(b.name, rollout));
+  const pair = pairFirst(backends.filter(inPair), b => b.name, rollout);
+  const others = backends.filter(b => !inPair(b));
+
+  let addBlocked = '';
+  if (rollout) {
+    addBlocked = `One rollout at a time. Finish ${rollout.stable} → ${rollout.candidate} first.`;
+  } else if (backends.length >= MAX_BACKENDS) {
+    addBlocked = `An Endpoint takes at most ${MAX_BACKENDS} backends.`;
+  }
+
+  const renderActions = (backend: EndpointBackend) => {
+    const own = byName.get(backend.name);
+    // A backend reached by its match or copies has no share to edit.
+    const sharable = own ? hasShare(own) : (backend.weight ?? 1) > 0;
+    let editBlocked = rollout ? FROZEN : '';
+    if (!editBlocked && shared.length === 1) {
+      editBlocked = `${backend.name} gets every request no match takes.`;
+    }
+    let removeBlocked = rollout ? FROZEN : '';
+    if (!removeBlocked && backends.length === 1) {
+      removeBlocked = 'An Endpoint needs at least one backend.';
+    }
+    return (
+      <>
+        {sharable && (
+          <Tooltip title={editBlocked || 'Edit share'}>
+            <span>
+              <IconButton
+                size="small"
+                aria-label={`Edit share of ${backend.name}`}
+                onClick={() => setEditing(own ?? null)}
+                disabled={Boolean(editBlocked) || !own}
+              >
+                <EditOutlinedIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
+        <Tooltip title={removeBlocked || 'Remove backend'}>
+          <span>
+            <IconButton
+              size="small"
+              aria-label={`Remove ${backend.name}`}
+              onClick={() => setRemoving(backend)}
+              disabled={Boolean(removeBlocked)}
+            >
+              <DeleteOutlineIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      </>
+    );
+  };
+
   return (
     <Box>
       <Box
@@ -88,20 +170,14 @@ export const EndpointBackendsSection = ({
         <Typography variant="subtitle2">
           Backends ({backends.length})
         </Typography>
-        <Tooltip
-          title={
-            backends.length >= MAX_BACKENDS
-              ? `An Endpoint takes at most ${MAX_BACKENDS} backends.`
-              : ''
-          }
-        >
+        <Tooltip title={addBlocked}>
           <span>
             <Button
               size="small"
               color="primary"
               startIcon={<AddIcon />}
-              onClick={() => setAddOpen(true)}
-              disabled={backends.length >= MAX_BACKENDS}
+              onClick={() => navigate('add-backend')}
+              disabled={Boolean(addBlocked)}
             >
               Add backend
             </Button>
@@ -117,64 +193,28 @@ export const EndpointBackendsSection = ({
         </Box>
       )}
 
-      {backends.length === 0 ? (
+      {backends.length === 0 && (
         <Typography variant="body2" color="textSecondary">
           No backends configured.
         </Typography>
-      ) : (
+      )}
+      {pair.length > 0 && (
+        <RolloutPairGroup backends={pair} namespace={namespace} />
+      )}
+      {others.length > 0 && (
         <EndpointBackendList
-          backends={backends}
+          backends={others}
           namespace={namespace}
-          renderActions={backend => (
-            <>
-              <Tooltip title={`Weight ${backend.weight ?? 1}. Edit`}>
-                <IconButton
-                  size="small"
-                  aria-label={`Edit weight of ${backend.name}`}
-                  onClick={() => setEditing(backend)}
-                >
-                  <EditOutlinedIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Tooltip
-                title={
-                  backends.length === 1
-                    ? 'An Endpoint needs at least one backend.'
-                    : 'Remove backend'
-                }
-              >
-                <span>
-                  <IconButton
-                    size="small"
-                    aria-label={`Remove ${backend.name}`}
-                    onClick={() => setRemoving(backend)}
-                    disabled={backends.length === 1}
-                  >
-                    <DeleteOutlineIcon fontSize="small" />
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </>
-          )}
+          showShares={!rollout}
+          renderActions={renderActions}
         />
       )}
 
-      <AddEndpointBackendDialog
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onAdded={() =>
-          handleSaved(
-            spec.managedByComponent
-              ? 'Backend added. The Endpoint belongs to its project now.'
-              : 'Backend added.',
-          )
-        }
-        entity={entity}
-        backends={backends}
-        managedByComponent={spec.managedByComponent}
-      />
-      <EditBackendWeightDialog
+      <ProgressiveDeliveryEntry />
+
+      <EditShareDialog
         backend={editing}
+        backends={pdBackends}
         entity={entity}
         onClose={() => setEditing(null)}
         onSaved={handleSaved}

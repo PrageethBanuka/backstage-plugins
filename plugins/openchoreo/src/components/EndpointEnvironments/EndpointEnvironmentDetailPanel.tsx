@@ -38,6 +38,8 @@ import { URLRow } from '../Environments/components/InvokeUrlsDialog';
 import { buildUrl } from '../Environments/utils/invokeUrlUtils';
 import { useResourceEnvironmentDetailPanelStyles } from '../ResourceEnvironments/styles';
 import { useEndpointEnvironmentsContext } from './EndpointEnvironmentsContext';
+import { sharePercents } from './progressive/endpointUi';
+import { TrafficBlock } from './progressive/TrafficBlock';
 import {
   deriveEndpointEnvBadgeStatus,
   envResourceName,
@@ -278,6 +280,8 @@ function EndpointEnvironmentDetailContent({
 
             <InvokeUrlsSection urls={env.urls} />
 
+            <TrafficBlock env={env} />
+
             <BackendsSection backends={env.backends ?? []} />
 
             <Box className={classes.section}>
@@ -433,13 +437,14 @@ function BackendsSection({
   const classes = useResourceEnvironmentDetailPanelStyles();
   const backendClasses = useBackendStyles();
   if (backends.length === 0) return null;
+  const shares = sharePercents(backends.map(b => b.weight ?? 0));
 
   return (
     <Box className={classes.section}>
       <Typography className={classes.sectionHeading}>
         Backends ({backends.length})
       </Typography>
-      {backends.map(backend => {
+      {backends.map((backend, i) => {
         const url = formatServiceURL(backend.serviceURL);
         return (
           <Box key={backend.name} mt={1} display="flex" gridGap={8}>
@@ -465,7 +470,7 @@ function BackendsSection({
                     variant="caption"
                     color="textSecondary"
                   >
-                    {` · weight ${backend.weight}`}
+                    {` · ${shares[i]}%`}
                   </Typography>
                 )}
               </Typography>

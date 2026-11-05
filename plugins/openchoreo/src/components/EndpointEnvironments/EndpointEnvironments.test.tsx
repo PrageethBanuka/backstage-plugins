@@ -164,6 +164,20 @@ function renderList(client: Record<string, jest.Mock>) {
 }
 
 describe('EndpointEnvironmentsList', () => {
+  it('loads the rollout once when it fails, without retrying in a loop', async () => {
+    const fetchEndpointRollout = jest
+      .fn()
+      .mockRejectedValue(new Error('forbidden'));
+    renderList({
+      fetchEndpointEnvironmentInfo: jest.fn().mockResolvedValue(ENVS),
+      fetchEndpointRollout,
+    });
+
+    await screen.findByTestId('endpoint-deploy-flow-canvas');
+    await new Promise(resolve => setTimeout(resolve, 200));
+    expect(fetchEndpointRollout.mock.calls.length).toBeLessThanOrEqual(2);
+  });
+
   it('renders a tile per environment on the canvas', async () => {
     renderList({
       fetchEndpointEnvironmentInfo: jest.fn().mockResolvedValue(ENVS),
