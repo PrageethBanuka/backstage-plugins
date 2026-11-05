@@ -2661,6 +2661,106 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/namespaces/{namespaceName}/endpoints/{endpointName}/rollout': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get endpoint rollout
+     * @description Returns the Endpoint's rollout plan, its stages and where each environment stands.
+     */
+    get: operations['getEndpointRollout'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/namespaces/{namespaceName}/endpoints/{endpointName}/rollout/start': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start endpoint rollout
+     * @description Writes the rollout plan, adding or replacing the backends it names in the same update. Refused while a plan is already set.
+     */
+    post: operations['startEndpointRollout'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/namespaces/{namespaceName}/endpoints/{endpointName}/rollout/step': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Step endpoint rollout
+     * @description Moves an environment to the next stage, or to the stage given in to, by writing its backendOverrides. expectedStep refuses the change unless the environment is at that stage.
+     */
+    post: operations['stepEndpointRollout'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/namespaces/{namespaceName}/endpoints/{endpointName}/rollout/abort': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Abort endpoint rollout
+     * @description Returns an environment's traffic to the stable backend.
+     */
+    post: operations['abortEndpointRollout'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/namespaces/{namespaceName}/endpoints/{endpointName}/rollout/finish': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Finish endpoint rollout
+     * @description Ends the rollout keeping one backend and clears the plan. Refused while a backend that leaves still gets traffic in an environment, except for an abTest.
+     */
+    post: operations['finishEndpointRollout'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/namespaces/{namespaceName}/endpointreleases': {
     parameters: {
       query?: never;
@@ -5939,6 +6039,17 @@ export interface components {
       validations?: components['schemas']['ValidationRule'][];
       urls?: components['schemas']['EndpointTypeURLs'];
       /**
+       * @description Routing features this type renders beyond weighted backends. An Endpoint
+       *     that uses one the type doesn't list is not released. Unset means the
+       *     type doesn't declare them, and nothing is checked.
+       */
+      capabilities?: (
+        | 'Match'
+        | 'RegularExpression'
+        | 'Mirror'
+        | 'MirrorPercent'
+      )[];
+      /**
        * @description Routing manifests (e.g. HTTPRoute, Ingress) emitted on the data plane for each
        *     EndpointReleaseBinding. Templates see metadata.*, parameters.*,
        *     environmentConfigs.*, visibility, backends[], dataplane.*, environment.*,
@@ -6090,6 +6201,7 @@ export interface components {
       parameters?: {
         [key: string]: unknown;
       };
+      rollout?: components['schemas']['EndpointRollout'];
     };
     /** @description One traffic backend of an Endpoint. A discriminated union on kind; exactly the payload matching kind must be set. */
     EndpointBackendRef: {
@@ -6112,6 +6224,201 @@ export interface components {
        * @example 90
        */
       weight: number;
+      match?: components['schemas']['EndpointMatch'];
+      mirror?: components['schemas']['EndpointMirror'];
+    };
+    /**
+     * @description Conditions a request must meet to go to this backend before any weighted
+     *     split. All set conditions must hold. A backend with a match gets the
+     *     requests that meet it in addition to its weighted share.
+     */
+    EndpointMatch: {
+      path?: components['schemas']['EndpointPathMatch'];
+      /** @description Headers the request must carry. */
+      headers?: components['schemas']['EndpointHeaderMatch'][];
+      /** @description Cookies the request must carry, by exact value. */
+      cookies?: components['schemas']['EndpointCookieMatch'][];
+    };
+    /** @description A path condition, relative to where the Endpoint is served. */
+    EndpointPathMatch: {
+      /**
+       * @description How the path is compared.
+       * @default PathPrefix
+       * @enum {string}
+       */
+      type: 'PathPrefix' | 'Exact';
+      /**
+       * @description The path, relative to where the Endpoint is served.
+       * @example /next
+       */
+      value: string;
+    };
+    /** @description A header condition. */
+    EndpointHeaderMatch: {
+      /**
+       * @description Header name, case-insensitive.
+       * @example x-canary
+       */
+      name: string;
+      /**
+       * @description How the value is compared.
+       * @default Exact
+       * @enum {string}
+       */
+      type: 'Exact' | 'RegularExpression';
+      /**
+       * @description The expected value, or an RE2 regular expression.
+       * @example true
+       */
+      value: string;
+    };
+    /** @description A cookie condition, by exact value. */
+    EndpointCookieMatch: {
+      /**
+       * @description Cookie name.
+       * @example group
+       */
+      name: string;
+      /**
+       * @description Exact cookie value.
+       * @example b
+       */
+      value: string;
+    };
+    /**
+     * @description Copies a share of the requests to this backend. Its answers are discarded.
+     *     A mirror backend has weight 0 and no match.
+     */
+    EndpointMirror: {
+      /**
+       * Format: int32
+       * @description Percent of the requests to copy, from 0 to 100.
+       * @example 10
+       */
+      percent: number;
+    };
+    /**
+     * @description The plan for moving traffic from a stable backend to candidate backends.
+     *     Clients turn each step into an environment's backendOverrides. The
+     *     controller doesn't read it, and it isn't part of a release.
+     */
+    EndpointRollout: {
+      /**
+       * @description How traffic moves. canary and mirror carry their steps in the block of the same name.
+       * @example canary
+       * @enum {string}
+       */
+      strategy: 'canary' | 'blueGreen' | 'abTest' | 'mirror';
+      /**
+       * @description The backend serving now. Aborting returns its traffic to it.
+       * @example stable
+       */
+      stable: string;
+      /** @description The backend being rolled out. A list so a rollout can later take several. */
+      candidates: {
+        /**
+         * @description Name of the backend in backendRefs.
+         * @example canary
+         */
+        name: string;
+      }[];
+      canary?: components['schemas']['EndpointRolloutSteps'];
+      mirror?: components['schemas']['EndpointRolloutSteps'];
+    };
+    /** @description The steps of a rollout, in order. */
+    EndpointRolloutSteps: {
+      steps: components['schemas']['EndpointRolloutStep'][];
+    };
+    /** @description The share each candidate gets at one step. Shares add up to at most 100. */
+    EndpointRolloutStep: {
+      backends: {
+        /**
+         * @description Name of the candidate.
+         * @example canary
+         */
+        name: string;
+        /**
+         * Format: int32
+         * @description The candidate's share of the traffic stable had, or for a mirror rollout the share of requests copied to it.
+         * @example 25
+         */
+        percent: number;
+      }[];
+    };
+    EndpointRolloutStartRequest: {
+      rollout: components['schemas']['EndpointRollout'];
+      /** @description Backends to add, or to replace by name, in the same update. */
+      backends?: components['schemas']['EndpointBackendRef'][];
+      /** @description Return the change without writing it. */
+      dryRun?: boolean;
+    };
+    EndpointRolloutStepRequest: {
+      /** @example dev */
+      environment: string;
+      /** @description The stage to move to. Defaults to the next one. */
+      to?: number;
+      /** @description Refuse the change unless the environment is at this stage, so a retried call can't skip a step. -1 is weights set by hand. */
+      expectedStep?: number;
+      /** @description Return the change without writing it. */
+      dryRun?: boolean;
+    };
+    EndpointRolloutAbortRequest: {
+      /** @example dev */
+      environment: string;
+      /** @description Return the change without writing it. */
+      dryRun?: boolean;
+    };
+    EndpointRolloutFinishRequest: {
+      /**
+       * @description The backend to keep, stable or a candidate.
+       * @example v2
+       */
+      keep: string;
+      /** @description Return the change without writing it. */
+      dryRun?: boolean;
+    };
+    EndpointRolloutStage: {
+      /** @description Stage 0 has every candidate at 0. */
+      index: number;
+      backends: {
+        name: string;
+        /** Format: int32 */
+        percent: number;
+      }[];
+    };
+    EndpointRolloutEnvironment: {
+      environment: string;
+      bindingName: string;
+      endpointRelease?: string;
+      /** @description The stage the environment's weights match, or -1 when set by hand. */
+      step?: number;
+      /** @description Each candidate's current share, as a step states it. */
+      percents?: {
+        [key: string]: number;
+      };
+      /** @description Rollout backends the environment's release doesn't have yet. */
+      missing?: string[];
+      overrides: components['schemas']['EndpointBackendOverride'][];
+      /** @description What the environment serves. */
+      backends: components['schemas']['ResolvedEndpointBackend'][];
+      /** @description Whether the environment serves its latest change. */
+      ready: boolean;
+      message?: string;
+    };
+    /** @description What the call wrote, or would write on a dry run. */
+    EndpointRolloutChange: {
+      environment?: string;
+      before?: components['schemas']['EndpointBackendOverride'][];
+      after?: components['schemas']['EndpointBackendOverride'][];
+      endpoint?: components['schemas']['EndpointSpec'];
+    };
+    EndpointRolloutStatus: {
+      endpoint: string;
+      latestRelease?: string;
+      rollout?: components['schemas']['EndpointRollout'];
+      stages?: components['schemas']['EndpointRolloutStage'][];
+      environments: components['schemas']['EndpointRolloutEnvironment'][];
+      change?: components['schemas']['EndpointRolloutChange'];
     };
     /** @description References a named workload endpoint of a Component in the Endpoint's project. */
     EndpointComponentBackend: {
@@ -6280,6 +6587,27 @@ export interface components {
       endpointTypeEnvironmentConfigs?: {
         [key: string]: unknown;
       };
+      /**
+       * @description Environment-specific weight and mirror share for the release's backends,
+       *     matched by name. Entries for a backend the pinned release does not have
+       *     are ignored and reported in the BackendOverridesApplied condition.
+       */
+      backendOverrides?: components['schemas']['EndpointBackendOverride'][];
+    };
+    /** @description Environment-specific values for one backend. */
+    EndpointBackendOverride: {
+      /**
+       * @description Name of the backend in the release.
+       * @example canary
+       */
+      name: string;
+      /**
+       * Format: int32
+       * @description Replaces the release's weight for this backend in this environment.
+       * @example 25
+       */
+      weight?: number;
+      mirror?: components['schemas']['EndpointMirror'];
     };
     /**
      * @description Per-visibility URL templates. Each entry is optional; a type declares only the visibilities it
@@ -6396,11 +6724,12 @@ export interface components {
        * @example 90
        */
       weight?: number;
+      mirror?: components['schemas']['EndpointMirror'];
       /** @description Whether the backend was found and can receive traffic in this environment. */
       resolved: boolean;
       serviceURL?: components['schemas']['EndpointURL'];
       /**
-       * @description Why the backend could not be resolved (e.g. NotDeployed, EndpointNotAvailable, UnsupportedProtocol, NamespaceMismatch).
+       * @description Why the backend could not be resolved (e.g. NotDeployed, NotReady, EndpointNotAvailable, UnsupportedProtocol, NamespaceMismatch).
        * @example NotDeployed
        */
       reason?: string;
@@ -6414,7 +6743,7 @@ export interface components {
        * @description When the controller first observed the binding's current spec, such as a new endpointRelease being deployed.
        */
       lastSpecUpdateTime?: string;
-      /** @description Latest available observations of the binding's state. Includes BackendsResolved, Synced, ResourcesReady, URLsResolved, Ready (aggregate), and Finalizing. */
+      /** @description Latest available observations of the binding's state. Includes BackendsResolved, BackendOverridesApplied, Synced, ResourcesReady, URLsResolved, Ready (aggregate), and Finalizing. */
       conditions?: components['schemas']['Condition'][];
       /** @description Resolution of each backendRef in this binding's environment. */
       backends?: components['schemas']['ResolvedEndpointBackend'][];
@@ -15331,6 +15660,175 @@ export interface operations {
       401: components['responses']['Unauthorized'];
       403: components['responses']['Forbidden'];
       404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  getEndpointRollout: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint name */
+        endpointName: components['parameters']['EndpointNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The Endpoint's rollout after the call */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EndpointRolloutStatus'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  startEndpointRollout: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint name */
+        endpointName: components['parameters']['EndpointNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['EndpointRolloutStartRequest'];
+      };
+    };
+    responses: {
+      /** @description The Endpoint's rollout after the call */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EndpointRolloutStatus'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      409: components['responses']['Conflict'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  stepEndpointRollout: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint name */
+        endpointName: components['parameters']['EndpointNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['EndpointRolloutStepRequest'];
+      };
+    };
+    responses: {
+      /** @description The Endpoint's rollout after the call */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EndpointRolloutStatus'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      409: components['responses']['Conflict'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  abortEndpointRollout: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint name */
+        endpointName: components['parameters']['EndpointNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['EndpointRolloutAbortRequest'];
+      };
+    };
+    responses: {
+      /** @description The Endpoint's rollout after the call */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EndpointRolloutStatus'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      409: components['responses']['Conflict'];
+      500: components['responses']['InternalError'];
+    };
+  };
+  finishEndpointRollout: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Namespace name */
+        namespaceName: components['parameters']['NamespaceNameParam'];
+        /** @description Endpoint name */
+        endpointName: components['parameters']['EndpointNameParam'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['EndpointRolloutFinishRequest'];
+      };
+    };
+    responses: {
+      /** @description The Endpoint's rollout after the call */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EndpointRolloutStatus'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      409: components['responses']['Conflict'];
       500: components['responses']['InternalError'];
     };
   };
