@@ -398,14 +398,14 @@ describe('mirror steps', () => {
   ];
   const candidate = { componentName: 'trips-go', endpoint: 'http' };
 
-  it('uses the chosen steps and starts copying at the first', () => {
+  it('uses the chosen steps and copies nothing until the first', () => {
     const plan = planRollout(backends, {
       strategy: 'mirror',
       candidate,
       steps: [10, 50, 100],
     });
     expect(plan.rollout.steps).toEqual([10, 50, 100]);
-    expect(plan.backends[1].mirror).toEqual({ percent: 10 });
+    expect(plan.backends[1].mirror).toEqual({ percent: 0 });
   });
 
   it('keeps the share a running mirror copies when only its steps change', () => {

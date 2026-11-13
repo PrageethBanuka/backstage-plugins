@@ -349,7 +349,7 @@ describe('StartRolloutPage', () => {
     fireEvent.click(
       await screen.findByRole('option', { name: 'trips-go · http' }),
     );
-    expect(screen.getByText(/mirror: \{percent: 5\}/)).toBeInTheDocument();
+    expect(screen.getByText(/mirror: \{percent: 0\}/)).toBeInTheDocument();
     expect(screen.getAllByText('Copy steps')[1]).toBeInTheDocument();
     expect(screen.getAllByText('5 → 25 → 50 → 100%')[0]).toBeInTheDocument();
     expect(screen.getByText('trips-go, copies only')).toBeInTheDocument();

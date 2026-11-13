@@ -334,12 +334,8 @@ export function planRollout(
       );
       break;
     case 'mirror':
-      // Copying starts at the first step when the release is deployed.
-      change = buildMirror(
-        backends,
-        plan.candidate,
-        plan.mirrorPercent ?? mirrorSteps(plan)[0],
-      );
+      // Nothing is copied until an environment takes the first step.
+      change = buildMirror(backends, plan.candidate, plan.mirrorPercent ?? 0);
       break;
     case 'abTest':
       change = buildABTest(

@@ -311,7 +311,8 @@ export const RolloutOptionsFields = ({
           />
           {strategy === 'mirror' && (
             <Typography variant="caption" color="textSecondary">
-              Copying starts at the first step when the release is deployed.
+              Nothing is copied until you take the first step in an
+              environment.
               Users always get {stableName}'s answer; the new backend's answers
               are discarded. Copies of writes (POST, PUT) run too, so give it
               its own database.
