@@ -187,25 +187,6 @@ export function useProgressiveDeliveryState({
     [client, endpoint, entity, run],
   );
 
-  const convert = useCallback(() => {
-    const r = endpoint?.rollout;
-    if (!r) return;
-    setConfirmation({
-      title: 'Convert the mirror to a canary?',
-      body: 'The new version stops getting copies and joins as a canary at 0%. Step it up from Configure.',
-      note: NEW_RELEASE_NOTE,
-      confirmLabel: 'Convert',
-      header: { name: 'x-canary', value: 'true' },
-      run: header =>
-        run(async () => ({
-          ok: true,
-          message: releaseReady(
-            (await client.convertRollout(entity, header)).latestRelease,
-          ),
-        })),
-    });
-  }, [client, endpoint, entity, run]);
-
   /**
    * Deploys or promotes a release into an environment the Endpoint already
    * runs in, through the BFF when it needs care: when the release drops a
@@ -278,11 +259,10 @@ export function useProgressiveDeliveryState({
             onOpenRolloutDialog: setRolloutEnv,
             onCopy,
             onFinish: finish,
-            onConvert: convert,
             changeBlocked: busy ? 'Wait for the current change to finish' : '',
           }
         : null,
-    [endpoint, envs, onCopy, finish, convert, busy],
+    [endpoint, envs, onCopy, finish, busy],
   );
 
   const rolloutEnvironment = envs.find(e => e.name === rolloutEnv) ?? null;

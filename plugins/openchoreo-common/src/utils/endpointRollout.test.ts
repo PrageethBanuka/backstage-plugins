@@ -389,6 +389,15 @@ describe('mirror rollouts', () => {
       strategy: 'canary',
       steps: [5, 25, 50, 100],
     });
+
+    const chosen = convertToCanary(
+      plan.backends,
+      plan.rollout,
+      undefined,
+      [50, 10],
+    );
+    expect(chosen.rollout.steps).toEqual([10, 50, 100]);
+    expect(chosen.backends[1].match).toBeUndefined();
   });
 });
 

@@ -9,8 +9,6 @@ export interface ProgressiveDeliveryContextValue {
   onCopy: (text: string, what: string) => void;
   /** Asks to keep only the new version, or to remove it, everywhere. */
   onFinish?: (outcome: 'complete' | 'abandon') => void;
-  /** Asks to turn a mirror into a canary. */
-  onConvert?: () => void;
   /** Why rollout changes are blocked right now; empty when they are not. */
   changeBlocked?: string;
 }

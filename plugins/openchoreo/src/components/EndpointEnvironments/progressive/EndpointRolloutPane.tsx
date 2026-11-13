@@ -15,6 +15,8 @@ import { RolloutStepTrack } from './RolloutStepTrack';
 interface EndpointRolloutPaneProps {
   /** Opens the rollout's settings; absent once it is deployed. */
   onEdit?: () => void;
+  /** Opens the page that turns a mirror into a canary. */
+  onConvert?: () => void;
 }
 
 /**
@@ -23,12 +25,14 @@ interface EndpointRolloutPaneProps {
  * stands. Each environment's Configure moves its traffic; the backends above
  * are tagged Current and New, and removing one of them finishes the rollout.
  */
-export const EndpointRolloutPane = ({ onEdit }: EndpointRolloutPaneProps) => {
+export const EndpointRolloutPane = ({
+  onEdit,
+  onConvert,
+}: EndpointRolloutPaneProps) => {
   const classes = useResourceEnvironmentDetailPanelStyles();
   const {
     endpoint,
     environments,
-    onConvert,
     changeBlocked = '',
   } = useEndpointEnvironmentsContext();
   const rollout = endpoint.rollout;

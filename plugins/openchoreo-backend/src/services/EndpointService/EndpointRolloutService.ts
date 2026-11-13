@@ -865,7 +865,12 @@ export class EndpointRolloutService {
         `${request.endpointName} is running a ${rollout.strategy} rollout, not a mirror`,
       );
     }
-    const converted = convertToCanary(backends, rollout, request.testerHeader);
+    const converted = convertToCanary(
+      backends,
+      rollout,
+      request.testerHeader,
+      request.steps,
+    );
     validateMatches(converted.backends);
     return this.writeEndpoint(client, request.namespaceName, endpoint, {
       ...endpoint.spec!,

@@ -24,7 +24,10 @@ const rollout: EndpointRollout = {
   steps: [5, 25, 50, 100],
 };
 
-function renderEntry(environments: EndpointEnvironment[]) {
+function renderEntry(
+  environments: EndpointEnvironment[],
+  plan: EndpointRollout = rollout,
+) {
   const ctx: ProgressiveDeliveryContextValue = {
     endpoint: {
       backends: [
@@ -37,7 +40,7 @@ function renderEntry(environments: EndpointEnvironment[]) {
           weight: 0,
         },
       ],
-      rollout,
+      rollout: plan,
       rolloutSource: 'plan',
       environments: [],
     },
@@ -45,7 +48,6 @@ function renderEntry(environments: EndpointEnvironment[]) {
     onOpenRolloutDialog: jest.fn(),
     onCopy: jest.fn(),
     onFinish: jest.fn(),
-    onConvert: jest.fn(),
   };
   render(
     <ProgressiveDeliveryProvider value={ctx}>
@@ -73,6 +75,13 @@ describe('ProgressiveDeliveryEntry', () => {
     expect(screen.getByText(/Not deployed yet/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(mockNavigate).toHaveBeenCalledWith('rollout-settings');
+  });
+
+  it('opens the convert page for a mirror, deployed or not', () => {
+    renderEntry([development], { ...rollout, strategy: 'mirror' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Convert to canary' }));
+    expect(mockNavigate).toHaveBeenCalledWith('convert-to-canary');
   });
 
   it('shows each environment read-only and hides Edit once deployed', () => {

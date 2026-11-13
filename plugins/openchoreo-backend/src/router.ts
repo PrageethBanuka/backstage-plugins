@@ -128,6 +128,11 @@ function isBackendWeight(weight: unknown): weight is number {
   );
 }
 
+/** A rollout step or copy share: a whole percent from 1 to 100. */
+function isRolloutPercent(p: unknown): p is number {
+  return Number.isInteger(p) && (p as number) > 0 && (p as number) <= 100;
+}
+
 export async function createRouter({
   environmentInfoService,
   cellDiagramInfoService,
@@ -1946,6 +1951,13 @@ export async function createRouter({
     ) {
       throw new InputError('testerHeader needs a name and a value');
     }
+    const steps = req.body.steps;
+    if (
+      steps !== undefined &&
+      !(Array.isArray(steps) && steps.every(isRolloutPercent))
+    ) {
+      throw new InputError('steps must be whole percentages from 1 to 100');
+    }
     res.json(
       await endpointRolloutService.convertRollout(
         req.body,
@@ -1957,15 +1969,13 @@ export async function createRouter({
   router.put('/endpoint-rollout/settings', requireAuth, async (req, res) => {
     requireFields(req.body, ['endpointName', 'namespaceName', 'projectName']);
     const { steps, preview, mirrorPercent } = req.body.settings ?? {};
-    const isPercent = (p: unknown) =>
-      Number.isInteger(p) && (p as number) > 0 && (p as number) <= 100;
     if (
       steps !== undefined &&
-      !(Array.isArray(steps) && steps.every(isPercent))
+      !(Array.isArray(steps) && steps.every(isRolloutPercent))
     ) {
       throw new InputError('steps must be whole percentages from 1 to 100');
     }
-    if (mirrorPercent !== undefined && !isPercent(mirrorPercent)) {
+    if (mirrorPercent !== undefined && !isRolloutPercent(mirrorPercent)) {
       throw new InputError(
         'mirrorPercent must be a whole number from 1 to 100',
       );

@@ -2,59 +2,46 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ConfirmTrafficDialog } from './ConfirmTrafficDialog';
 
 const confirmation = (run: jest.Mock) => ({
-  title: 'Convert the mirror to a canary?',
+  title: 'Keep only the new version?',
   body: 'body',
-  confirmLabel: 'Convert',
-  header: { name: 'x-canary', value: 'true' },
+  note: 'This cuts a new release.',
+  confirmLabel: 'Keep',
   run,
 });
 
-const field = (label: RegExp) =>
-  screen.getByLabelText(label, { selector: 'input' }) as HTMLInputElement;
-
-describe('ConfirmTrafficDialog header', () => {
-  it('passes the prefilled header', async () => {
+describe('ConfirmTrafficDialog', () => {
+  it('runs the change and closes', async () => {
     const run = jest.fn().mockResolvedValue(undefined);
+    const onClose = jest.fn();
     render(
       <ConfirmTrafficDialog
         confirmation={confirmation(run)}
-        onClose={jest.fn()}
+        onClose={onClose}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Convert' }));
+    expect(screen.getByText('This cuts a new release.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep' }));
 
-    await waitFor(() =>
-      expect(run).toHaveBeenCalledWith({ name: 'x-canary', value: 'true' }),
-    );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(run).toHaveBeenCalled();
   });
 
-  it('converts without a header when it is turned off', async () => {
-    const run = jest.fn().mockResolvedValue(undefined);
+  it('stays open and says why when the change fails', async () => {
+    const run = jest.fn().mockRejectedValue(new Error('v2 still gets traffic'));
+    const onClose = jest.fn();
     render(
       <ConfirmTrafficDialog
         confirmation={confirmation(run)}
-        onClose={jest.fn()}
+        onClose={onClose}
       />,
     );
 
-    fireEvent.click(screen.getByRole('checkbox'));
-    expect(screen.queryByLabelText(/^Header$/)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Convert' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep' }));
 
-    await waitFor(() => expect(run).toHaveBeenCalledWith(undefined));
-  });
-
-  it('waits for both a header and a value while the header is on', () => {
-    render(
-      <ConfirmTrafficDialog
-        confirmation={confirmation(jest.fn())}
-        onClose={jest.fn()}
-      />,
-    );
-
-    fireEvent.change(field(/Value/), { target: { value: '' } });
-
-    expect(screen.getByRole('button', { name: 'Convert' })).toBeDisabled();
+    expect(
+      await screen.findByText(/v2 still gets traffic/),
+    ).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

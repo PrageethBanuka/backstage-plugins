@@ -765,10 +765,11 @@ export class OpenChoreoClient implements OpenChoreoClientApi {
   async convertRollout(
     entity: Entity,
     testerHeader?: { name: string; value: string },
+    steps?: number[],
   ): Promise<RolloutActionResult> {
     return this.apiFetch(`${API_ENDPOINTS.ENDPOINT_ROLLOUT}/convert`, {
       method: 'PUT',
-      body: { ...extractEndpointEntityMetadata(entity), testerHeader },
+      body: { ...extractEndpointEntityMetadata(entity), testerHeader, steps },
     });
   }
 

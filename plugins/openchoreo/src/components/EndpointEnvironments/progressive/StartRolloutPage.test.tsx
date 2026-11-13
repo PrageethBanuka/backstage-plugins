@@ -10,6 +10,7 @@ const mockClient = {
   fetchEndpointEnvironmentInfo: jest.fn(),
   startRollout: jest.fn(),
   updateRolloutSettings: jest.fn(),
+  convertRollout: jest.fn(),
   deployEndpointRelease: jest.fn(),
 };
 
@@ -173,6 +174,59 @@ describe('StartRolloutPage', () => {
       mirrorPercent: undefined,
     });
     expect(mockClient.startRollout).not.toHaveBeenCalled();
+  });
+
+  it('converts a mirror to a canary with the steps picked here', async () => {
+    mockClient.convertRollout.mockResolvedValue({
+      latestRelease: 'rel-3',
+      environments: [],
+    });
+    mockClient.fetchEndpointRollout.mockResolvedValue({
+      ...summary,
+      backends: [
+        {
+          name: 'trips-python',
+          componentName: 'trips-python',
+          endpoint: 'http',
+          weight: 100,
+        },
+        {
+          name: 'trips-go',
+          componentName: 'trips-go',
+          endpoint: 'http',
+          weight: 0,
+          mirror: { percent: 50 },
+        },
+      ],
+      rollout: {
+        strategy: 'mirror',
+        stable: 'trips-python',
+        candidate: 'trips-go',
+        steps: [10, 50, 100],
+      },
+      rolloutSource: 'plan',
+    });
+    render(
+      <MemoryRouter>
+        <StartRolloutPage editing convert />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText('Canary (was a mirror)'),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Header')).toHaveValue('x-canary');
+    expect(screen.getByText('Convert').closest('button')).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: '10 → 100' }));
+    fireEvent.click(screen.getByText('Convert'));
+
+    await waitFor(() => expect(mockClient.convertRollout).toHaveBeenCalled());
+    expect(mockClient.convertRollout.mock.calls[0].slice(1)).toEqual([
+      { name: 'x-canary', value: 'true' },
+      [10, 100],
+    ]);
+    expect(mockClient.deployEndpointRelease).not.toHaveBeenCalled();
   });
 
   it('replaces the busiest version unless another is picked', async () => {

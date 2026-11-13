@@ -32,6 +32,7 @@ import {
   abAudience,
   backendMatchProblems,
   CHOREO_ANNOTATIONS,
+  convertToCanary,
   isSameBackend,
   uniqueBackendName,
   planRollout,
@@ -261,6 +262,53 @@ function backendsYaml(backends: EndpointBackendWeight[]): string {
   return lines.join('\n');
 }
 
+/** The testers' header a plan sends early traffic by, if any. */
+function testerHeader(
+  plan: RolloutPlan,
+): { name: string; value: string } | undefined {
+  const p = plan.preview;
+  return p?.kind === 'header' ? { name: p.name, value: p.value } : undefined;
+}
+
+function pageTitle(editing: boolean, convert: boolean): string {
+  if (convert) return 'Convert to a canary';
+  return editing ? 'Rollout settings' : 'Add a backend';
+}
+
+function pageSubtitle(
+  editing: boolean,
+  convert: boolean,
+  firstEnvironment = 'the first environment',
+): string {
+  if (convert) {
+    return 'The new version stops getting copies and joins as a canary at 0%. Step it up from Configure.';
+  }
+  if (editing) {
+    return 'Change how people reach the new version and its steps before the rollout is deployed.';
+  }
+  return `The new backend joins at 0% and the release is deployed to ${firstEnvironment}. Promote it onward and step each environment from Configure.`;
+}
+
+/** What saving does to releases, under the saved YAML. */
+function savedCaption(
+  editing: boolean,
+  convert: boolean,
+  firstEnvironment = 'the first environment',
+): string {
+  if (convert) {
+    return 'One update to the Endpoint, so one new release. Deploy and promote it as usual.';
+  }
+  if (editing) {
+    return 'A new header, cookie, path or copy share cuts a new release, deployed to the first environment. New steps alone cut none.';
+  }
+  return `One update to the Endpoint, so one new release, deployed to ${firstEnvironment} with the new backend at 0%.`;
+}
+
+function convertLabel(convert: boolean, busy: boolean): string {
+  if (convert) return busy ? 'Converting' : 'Convert';
+  return busy ? 'Deploying' : 'Save & Deploy';
+}
+
 /**
  * Adds a backend to the Endpoint and chooses how it gets traffic, from the
  * Deploy tab's Set up pane, on the Configure Resource page's layout: one
@@ -268,11 +316,14 @@ function backendsYaml(backends: EndpointBackendWeight[]): string {
  * it), and what will be saved next to it. Saving cuts a release with the
  * new backend at 0%, deployed and promoted like any other, so nothing moves
  * until an environment is stepped. With `editing`, the same page changes
- * the rollout's settings before it is deployed.
+ * the rollout's settings before it is deployed; with `convert` as well, it
+ * turns a running mirror into a canary on the same backend, with the steps
+ * chosen here.
  */
 export const StartRolloutPage = ({
   editing = false,
-}: { editing?: boolean } = {}) => {
+  convert = false,
+}: { editing?: boolean; convert?: boolean } = {}) => {
   const classes = useStyles();
   const theme = useTheme();
   const navigate = useNavigate();
@@ -320,7 +371,16 @@ export const StartRolloutPage = ({
           first ? { name: envResourceName(first), label: first.name } : null,
         );
         const running = summary?.rollout;
-        if (editing && running) {
+        if (convert && running) {
+          setStrategy('canary');
+          setReplaces(running.stable);
+          setRolloutOptions(o =>
+            withStrategyDefaults({ ...o, steps: [] }, 'canary', {
+              typeName: summary?.typeName,
+              capabilities: summary?.capabilities,
+            }),
+          );
+        } else if (editing && running) {
           const p = running.preview;
           const audienceHeader = abAudience(p);
           setStrategy(running.strategy);
@@ -348,7 +408,7 @@ export const StartRolloutPage = ({
     return () => {
       ignore = true;
     };
-  }, [client, entity, editing]);
+  }, [client, entity, editing, convert]);
 
   const { options: workloadEndpoints } = useProjectWorkloadEndpoints(
     namespace,
@@ -462,11 +522,18 @@ export const StartRolloutPage = ({
     nameProblem,
   ]);
 
-  const saved = useMemo(
-    () =>
-      endpoint && plan ? planRollout(endpoint.backends, plan).backends : [],
-    [endpoint, plan],
-  );
+  const saved = useMemo(() => {
+    if (!endpoint || !plan) return [];
+    if (convert && endpoint.rollout) {
+      return convertToCanary(
+        endpoint.backends,
+        endpoint.rollout,
+        testerHeader(plan),
+        plan.steps,
+      ).backends;
+    }
+    return planRollout(endpoint.backends, plan).backends;
+  }, [endpoint, plan, convert]);
   const savedCandidate = saved.find(b =>
     isSameBackend(b, {
       componentName: component,
@@ -483,6 +550,12 @@ export const StartRolloutPage = ({
     setBusy(true);
     setError(null);
     try {
+      if (convert) {
+        await client.convertRollout(entity, testerHeader(plan), plan.steps);
+        [0, 3000, 8000].forEach(ms => setTimeout(() => refreshEntity?.(), ms));
+        back();
+        return;
+      }
       const { latestRelease } = editing
         ? await client.updateRolloutSettings(entity, {
             steps: plan.steps,
@@ -528,6 +601,8 @@ export const StartRolloutPage = ({
   let blocked = '';
   if (editing && endpoint && !endpoint.rollout)
     blocked = 'No rollout is running';
+  else if (convert && endpoint?.rollout?.strategy !== 'mirror')
+    blocked = 'Only a mirror converts to a canary';
   else if (!editing && endpoint?.rollout)
     blocked = 'A rollout is already running';
   else if (!component) blocked = 'Pick the new backend';
@@ -548,7 +623,7 @@ export const StartRolloutPage = ({
           }
           onClick={() => void start()}
         >
-          {busy ? 'Deploying' : 'Save & Deploy'}
+          {convertLabel(convert, busy)}
         </Button>
       </span>
     </Tooltip>
@@ -556,14 +631,8 @@ export const StartRolloutPage = ({
 
   return (
     <DetailPageLayout
-      title={editing ? 'Rollout settings' : 'Add a backend'}
-      subtitle={
-        editing
-          ? 'Change how people reach the new version and its steps before the rollout is deployed.'
-          : `The new backend joins at 0% and the release is deployed to ${
-              firstEnvironment?.label ?? 'the first environment'
-            }. Promote it onward and step each environment from Configure.`
-      }
+      title={pageTitle(editing, convert)}
+      subtitle={pageSubtitle(editing, convert, firstEnvironment?.label)}
       onBack={back}
       actions={actions}
     >
@@ -600,16 +669,20 @@ export const StartRolloutPage = ({
             {editing && (
               <Box className={classes.field}>
                 <Typography variant="body2" className={classes.label}>
-                  {STRATEGY_COPY[strategy].name}
+                  {convert
+                    ? `${STRATEGY_COPY.canary.name} (was a mirror)`
+                    : STRATEGY_COPY[strategy].name}
                 </Typography>
                 <Typography variant="body2">
                   {releaseLine ? `${component} · ${releaseLine}` : component}{' '}
                   next to {stable}
                 </Typography>
-                <Typography variant="caption" color="textSecondary">
-                  To use another strategy or backend, remove the new version
-                  from the Set up card first.
-                </Typography>
+                {!convert && (
+                  <Typography variant="caption" color="textSecondary">
+                    To use another strategy or backend, remove the new version
+                    from the Set up card first.
+                  </Typography>
+                )}
               </Box>
             )}
             <Box className={classes.field}>
@@ -840,11 +913,7 @@ export const StartRolloutPage = ({
                 </pre>
               </Collapse>
               <Typography variant="caption" color="textSecondary">
-                {editing
-                  ? 'A new header, cookie, path or copy share cuts a new release, deployed to the first environment. New steps alone cut none.'
-                  : `One update to the Endpoint, so one new release, deployed to ${
-                      firstEnvironment?.label ?? 'the first environment'
-                    } with the new backend at 0%.`}
+                {savedCaption(editing, convert, firstEnvironment?.label)}
               </Typography>
             </Box>
           </Box>

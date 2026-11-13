@@ -6,7 +6,7 @@ import { inRollout } from './endpointRolloutUi';
 /**
  * The running rollout's card on the Set up pane; nothing when no rollout
  * runs. Its settings can be edited until the rollout is deployed to an
- * environment.
+ * environment; a mirror can be converted to a canary at any time.
  */
 export const ProgressiveDeliveryEntry = () => {
   const pd = useProgressiveDelivery();
@@ -19,6 +19,7 @@ export const ProgressiveDeliveryEntry = () => {
     return (
       <EndpointRolloutPane
         onEdit={deployed ? undefined : () => navigate('rollout-settings')}
+        onConvert={() => navigate('convert-to-canary')}
       />
     );
   }

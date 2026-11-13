@@ -11,6 +11,7 @@ import { StartRolloutPage } from './progressive/StartRolloutPage';
  * - `/overrides/:envName` — per-environment overrides
  * - `/add-backend` — add a backend through a progressive delivery strategy
  * - `/rollout-settings` — change the running rollout's settings
+ * - `/convert-to-canary` — turn a running mirror into a canary
  */
 export const EndpointEnvironments = () => (
   <Routes>
@@ -21,5 +22,9 @@ export const EndpointEnvironments = () => (
     />
     <Route path="/add-backend" element={<StartRolloutPage />} />
     <Route path="/rollout-settings" element={<StartRolloutPage editing />} />
+    <Route
+      path="/convert-to-canary"
+      element={<StartRolloutPage editing convert />}
+    />
   </Routes>
 );

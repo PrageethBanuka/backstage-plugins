@@ -359,17 +359,11 @@ export function planRollout(
     change.backends[change.backends.length - 1];
   let steps = [100];
   if (plan.strategy === 'canary') {
-    steps = [
-      ...new Set(
-        (plan.steps?.length ? plan.steps : DEFAULT_CANARY_STEPS).filter(
-          p => p > 0 && p <= 100,
-        ),
-      ),
-    ].sort((a, b) => a - b);
+    steps = canarySteps(plan.steps);
   } else if (plan.strategy === 'mirror') {
     steps = mirrorSteps(plan);
+    if (steps[steps.length - 1] !== 100) steps.push(100);
   }
-  if (steps[steps.length - 1] !== 100) steps.push(100);
   const candidateName = candidate.name ?? candidate.componentName;
   // The rollout replaces one version, the picked one or else the one with
   // the most traffic; the others keep their weights.
@@ -389,6 +383,22 @@ export function planRollout(
       ...(preview && { preview }),
     },
   };
+}
+
+/**
+ * A canary's steps: the chosen ones, or the usual ramp, in increasing order
+ * and ending at 100.
+ */
+function canarySteps(chosen?: number[]): number[] {
+  const steps = [
+    ...new Set(
+      (chosen?.length ? chosen : DEFAULT_CANARY_STEPS).filter(
+        p => p > 0 && p <= 100,
+      ),
+    ),
+  ].sort((a, b) => a - b);
+  if (steps[steps.length - 1] !== 100) steps.push(100);
+  return steps;
 }
 
 /**
@@ -456,13 +466,14 @@ export function reconfigureRollout(
 
 /**
  * Turns a mirror rollout into a canary on the same backend: the mirror goes,
- * the testers header (if any) becomes its match, and the plan restarts at
- * the canary's first stage.
+ * the testers header (if any) becomes its match, and the plan becomes a
+ * canary with the chosen steps, or the usual ramp, starting at 0%.
  */
 export function convertToCanary(
   backends: EndpointBackendWeight[],
   rollout: EndpointRollout,
   testerHeader?: { name: string; value: string },
+  steps?: number[],
 ): StrategyChange & { rollout: EndpointRollout } {
   const candidate = backends.find(
     b => (b.name ?? b.componentName) === rollout.candidate,
@@ -475,7 +486,7 @@ export function convertToCanary(
     rollout: {
       ...rollout,
       strategy: 'canary',
-      steps: DEFAULT_CANARY_STEPS,
+      steps: canarySteps(steps),
       preview: testerHeader && { kind: 'header', ...testerHeader },
     },
   };

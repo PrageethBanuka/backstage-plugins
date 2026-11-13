@@ -466,6 +466,49 @@ describe('createRouter', () => {
     });
   });
 
+  describe('PUT /endpoint-rollout/convert', () => {
+    const convert = async (steps: unknown) => {
+      const local = createMockServices();
+      (
+        local.endpointRolloutService.convertRollout as jest.Mock
+      ).mockResolvedValue({ environments: [] });
+      const localApp = express();
+      localApp.use(express.json());
+      localApp.use(await createRouter(local as any));
+      localApp.use(mockErrorHandler());
+      const body = {
+        endpointName: 'trips-api',
+        namespaceName: 'default',
+        projectName: 'default',
+        testerHeader: { name: 'x-canary', value: 'true' },
+        steps,
+      };
+      const response = await request(localApp)
+        .put('/endpoint-rollout/convert')
+        .send(body);
+      return { response, local, body };
+    };
+
+    it('passes the chosen steps on', async () => {
+      const { response, local, body } = await convert([10, 50, 100]);
+
+      expect(response.status).toBe(200);
+      expect(local.endpointRolloutService.convertRollout).toHaveBeenCalledWith(
+        body,
+        expect.anything(),
+      );
+    });
+
+    it('refuses a step that is not a whole percent', async () => {
+      const { response, local } = await convert([0, 100]);
+
+      expect(response.status).toBe(400);
+      expect(
+        local.endpointRolloutService.convertRollout,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
   describe('GET /component', () => {
     it('should return component details on success', async () => {
       const mockComponent = {

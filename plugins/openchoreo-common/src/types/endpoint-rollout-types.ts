@@ -236,6 +236,8 @@ export interface ConvertRolloutRequest {
   endpointName: string;
   /** A header testers send to reach the canary early, if any. */
   testerHeader?: { name: string; value: string };
+  /** The canary's steps; the usual ramp when unset. */
+  steps?: number[];
 }
 
 /** What can change on a running rollout: how the new version is reached and its steps. */

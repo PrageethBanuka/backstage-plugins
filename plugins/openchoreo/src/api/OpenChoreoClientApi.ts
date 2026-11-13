@@ -903,10 +903,11 @@ export interface OpenChoreoClientApi {
     releaseName: string,
   ): Promise<RolloutActionResult>;
 
-  /** Turn a mirror rollout into a canary on the same backend, at 0%. */
+  /** Turn a mirror rollout into a canary on the same backend, at 0%, with these steps. */
   convertRollout(
     entity: Entity,
     testerHeader?: { name: string; value: string },
+    steps?: number[],
   ): Promise<RolloutActionResult>;
 
   /** Change how the new version is reached and the steps of the running rollout. */
